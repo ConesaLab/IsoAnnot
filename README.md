@@ -1,4 +1,4 @@
-# IsoAnnot documentation
+# IsoAnnot
 
 IsoAnnot is a new tool for generating functional and structural annotation at isoform level, capable of collecting and integrating information from different databases to categorize and describe each isoform, including functional and structural information for both transcript and protein.
 
