@@ -112,7 +112,7 @@ uniprot_dat:
 
 reactome: https://reactome.org/download/current/Ensembl2Reactome_All_Levels.txt
 ```
-For a conventional species having all the required files in both Refseq and Ensembl databases, the procedure should be as easy as to change human references and links to the other organism. For instance, to adapt the previous template to rat, we would need to modify the prefix, scientific name, common name and other self-explanatory variables, we would also need to browse the Refseq/Ensembl FTP and copy the address for each required file. For Rattus norvegicus, a preliminary file could be like this:
+For a conventional species having all the required files in both Refseq and Ensembl databases, the procedure should be as easy as to change human references and links to the other organism. For instance, to adapt the previous template to rat, we would need to modify the prefix, scientific name, common name and other self-explanatory variables, we would also need to browse the Refseq/Ensembl FTP and copy the address for each required file. For Solanum tuberosum, a preliminary file could be like this:
 
 ```yaml
 species: Solanum tuberosum
