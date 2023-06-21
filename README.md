@@ -43,7 +43,7 @@ The necessary files are included in the IsoAnnot compressed file, but you will h
 
 ## Usage
 
-IsoAnnot works by gathering information from multiple sources, trying to merge them and generate a final GTF, provided the required config files are available for the requested species.
+IsoAnnot works by gathering information from multiple sources, trying to merge them and generate a final GFF3, provided the required config files are available for the requested species.
 
 The origin of some of those files is what IsoAnnot calls "database", and 3 of them are supported:
 
