@@ -67,7 +67,7 @@ As a first example, the generation of Homo sapiens reference annotation for Ense
 ./isoannot.sh --database ensembl --species hsapiens
 ```
 
-Once finished, the final GFF3 output should be located in "data/Hsapiens/".
+Once finished, the final GFF3 output should be located in "data/Hsapiens/". The name of the final output file indicates the species and database parameters used: {species}_tappas_{database}_annotation_file.gff3.
 
 For an example of using our own fasta, we will use "mytranscripts" as database option, and populate the "fasta_cdna" option using the config parameter.
 
