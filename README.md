@@ -51,7 +51,7 @@ The origin of some of those files is what IsoAnnot calls "database", and 3 of th
 - refseq
 - mytranscripts
 
-Both ensembl and refseq will generate an annotation reference file, and since the files are publicly available, the workflow will automatically download all of them. The database option "mytranscript" is designed to use our own transcripts files obtained for instance using Pacbio technology, so this probably will be the option you are looking for.
+Both ensembl and refseq will generate an annotation reference file, and since the files are publicly available, the workflow will automatically download all of them. The database option "mytranscripts" is designed to use our own transcripts files obtained for instance using Pacbio technology, so this probably will be the option you are looking for.
 
 The basic usage of Isoannot is the following:
 
@@ -72,7 +72,7 @@ Once finished, the final GFF3 output should be located in "data/Hsapiens/". The 
 For an example of using our own fasta, we will use "mytranscripts" as database option, and populate the "fasta_cdna" option using the config parameter.
 
 ```
-./isoannot.sh --database mytranscript --species stuberosum --config fasta_cdna=/path/to/my/fasta/potato.fasta 
+./isoannot.sh --database mytranscripts --species stuberosum --config fasta_cdna=/path/to/my/fasta/potato.fasta 
 ```
 
 ## Providing custom configuration files
