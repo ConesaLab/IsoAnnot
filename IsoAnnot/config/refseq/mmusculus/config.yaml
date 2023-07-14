@@ -1,0 +1,29 @@
+species:  Mus musculus
+species_name: mouse
+
+biomart_host: http://www.ensembl.org
+biomart_dataset: mmusculus_gene_ensembl
+
+ensembl_cdna: ftp://ftp.ensembl.org/pub/release-108/fasta/mus_musculus/cdna/Mus_musculus.GRCm39.cdna.all.fa.gz
+ensembl_proteins: ftp://ftp.ensembl.org/pub/release-108/fasta/mus_musculus/pep/Mus_musculus.GRCm39.pep.all.fa.gz
+ensembl_gtf: ftp://ftp.ensembl.org/pub/release-108/gtf/mus_musculus/Mus_musculus.GRCm39.108.chr.gtf.gz
+ensembl_reference: ftp://ftp.ensembl.org/pub/release-108/fasta/mus_musculus/dna/Mus_musculus.GRCm39.dna.primary_assembly.fa.gz
+
+prefix: Mmusculus
+db: refseq
+transcript_versioned: False
+
+refseq_protein_dir: ftp://ftp.ncbi.nlm.nih.gov/refseq/M_musculus/mRNA_Prot/
+refseq_protein_fasta: ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Mus_musculus/all_assembly_versions/GCF_000001635.27_GRCm39/GCF_000001635.27_GRCm39_protein.faa.gz
+refseq_gtf: ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Mus_musculus/all_assembly_versions/GCF_000001635.27_GRCm39/GCF_000001635.27_GRCm39_genomic.gtf.gz
+refseq_chr_accessions: ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Mus_musculus/all_assembly_versions/GCF_000001635.27_GRCm39/GCF_000001635.27_GRCm39_assembly_structure/Primary_Assembly/assembled_chromosomes/chr2acc
+
+uniprot_fasta:
+  - ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/Eukaryota/UP000000589/UP000000589_10090.fasta.gz
+  - ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/Eukaryota/UP000000589/UP000000589_10090_additional.fasta.gz
+
+uniprot_dat:
+  - ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/Eukaryota/UP000000589/UP000000589_10090.dat.gz
+  - ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/Eukaryota/UP000000589/UP000000589_10090_additional.dat.gz
+
+reactome: https://reactome.org/download/current/Ensembl2Reactome_All_Levels.txt

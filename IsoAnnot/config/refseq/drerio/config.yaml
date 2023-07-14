@@ -1,0 +1,28 @@
+species:  Danio rerio
+species_name: zebrafish
+
+biomart_host: http://www.ensembl.org
+biomart_dataset: drerio_gene_ensembl
+
+ensembl_cdna: ftp://ftp.ensembl.org/pub/release-108/fasta/danio_rerio/cdna/Danio_rerio.GRCz11.cdna.all.fa.gz
+ensembl_proteins: ftp://ftp.ensembl.org/pub/release-108/fasta/danio_rerio/pep/Danio_rerio.GRCz11.pep.all.fa.gz
+ensembl_gtf: ftp://ftp.ensembl.org/pub/release-108/gtf/danio_rerio/Danio_rerio.GRCz11.108.chr.gtf.gz
+ensembl_reference: ftp://ftp.ensembl.org/pub/release-108/fasta/danio_rerio/dna/Danio_rerio.GRCz11.dna.primary_assembly.fa.gz
+
+prefix: Drerio
+db: refseq
+transcript_versioned: True
+
+refseq_protein_dir: ftp://ftp.ncbi.nlm.nih.gov/refseq/D_rerio/mRNA_Prot/ 
+refseq_protein_fasta: ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_other/Danio_rerio/all_assembly_versions/GCF_000002035.6_GRCz11/GCF_000002035.6_GRCz11_protein.faa.gz
+refseq_gtf: ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_other/Danio_rerio/all_assembly_versions/GCF_000002035.6_GRCz11/GCF_000002035.6_GRCz11_genomic.gtf.gz
+refseq_chr_accessions: ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_other/Danio_rerio/all_assembly_versions/GCF_000002035.6_GRCz11/GCF_000002035.6_GRCz11_assembly_structure/Primary_Assembly/assembled_chromosomes/chr2acc
+
+uniprot_fasta:
+  - ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/Eukaryota/UP000000437/UP000000437_7955.fasta.gz
+  - ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/Eukaryota/UP000000437/UP000000437_7955_additional.fasta.gz
+uniprot_dat:
+  - ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/Eukaryota/UP000000437/UP000000437_7955.dat.gz
+  - ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/Eukaryota/UP000000437/UP000000437_7955_additional.dat.gz
+
+reactome: https://reactome.org/download/current/Ensembl2Reactome_All_Levels.txt
