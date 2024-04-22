@@ -1,0 +1,22 @@
+name: genepred
+channels:
+  - rmg
+  - conda-forge
+  - bioconda
+  - defaults
+  - anaconda
+dependencies:
+  - _libgcc_mutex=0.1=conda_forge
+  - _openmp_mutex=4.5=2_gnu
+  - ca-certificates=2020.6.20=hecda079_0
+  - libgcc-ng=12.2.0=h65d4601_19
+  - libgomp=12.2.0=h65d4601_19
+  - libpng=1.6.39=h753d276_0
+  - libstdcxx-ng=12.2.0=h46fd767_19
+  - libuuid=2.32.1=h7f98852_1000
+  - libzlib=1.2.13=h166bdaf_4
+  - mysql-connector-c=6.1.11=h876a3cc_1006
+  - openssl=1.1.1g=h516909a_0
+  - ucsc-gtftogenepred=377=h446ed27_3
+  - zlib=1.2.13=h166bdaf_4
+prefix: /home/almartin/.conda/envs/genepred
