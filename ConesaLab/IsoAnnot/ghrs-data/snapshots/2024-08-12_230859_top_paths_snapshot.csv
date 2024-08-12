@@ -1,0 +1,11 @@
+url_path,views_total,views_unique
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot,15,2
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot/config,6,1
+/ConesaLab/IsoAnnot,5,3
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot/config/generic,5,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/isoannot.sh,4,1
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot/config/ensembl,3,1
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot/config/refseq,3,1
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot/config/refseq/athaliana,3,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/config/generic/Snakefile.smk,2,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/config/refseq/athaliana/Snakefile.smk,2,1
