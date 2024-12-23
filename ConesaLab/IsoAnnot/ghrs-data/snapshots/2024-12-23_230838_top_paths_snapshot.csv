@@ -1,0 +1,11 @@
+url_path,views_total,views_unique
+/ConesaLab/IsoAnnot,22,13
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot,9,2
+/ConesaLab/IsoAnnot/commits/main,5,1
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot/scripts,4,2
+/ConesaLab/IsoAnnot/tree/main,3,2
+/ConesaLab/IsoAnnot/commit/4b3f4e5f7d3cd79b8766187c9f8aaa0e2b61dfd8,3,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/config/mytranscripts/hsapiens/config.yaml,2,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/isoannot.sh,2,1
+/ConesaLab/IsoAnnot/blob/4b3f4e5f7d3cd79b8766187c9f8aaa0e2b61dfd8/IsoAnnot/scripts/uniprot_parse.py,1,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/config/generic/Snakefile.smk,1,1
