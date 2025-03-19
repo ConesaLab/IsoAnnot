@@ -1,0 +1,11 @@
+url_path,views_total,views_unique
+/ConesaLab/IsoAnnot,15,8
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot,7,5
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot/scripts,4,4
+/ConesaLab/IsoAnnot/issues,3,1
+/ConesaLab/IsoAnnot/issues/2,2,2
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot/software/bin,2,2
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/scripts/layer_exons.py,1,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/snakemake.yaml,1,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/software/bin/UtrScan,1,1
+/ConesaLab/IsoAnnot/commits,1,1
