@@ -1,0 +1,11 @@
+url_path,views_total,views_unique
+/ConesaLab/IsoAnnot,10,8
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot,4,3
+/ConesaLab/IsoAnnot/issues,4,2
+/ConesaLab/IsoAnnot/issues/2,2,2
+/ConesaLab/IsoAnnot/blob/main/README.md,2,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/scripts/IsoAnnot.py,1,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/scripts/layer_exons.py,1,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/scripts/layer_go.py,1,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/scripts/layer_interproscan.py,1,1
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot/scripts,1,1
