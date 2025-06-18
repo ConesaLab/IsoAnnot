@@ -1,0 +1,11 @@
+url_path,views_total,views_unique
+/ConesaLab/IsoAnnot,12,9
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot,4,1
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot/config,3,1
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot/config/ensembl,3,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/config/ensembl/hsapiens/config.yaml,1,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/isoannot.sh,1,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/software/bin/UtrScan,1,1
+/ConesaLab/IsoAnnot/issues,1,1
+/ConesaLab/IsoAnnot/issues/2,1,1
+/ConesaLab/IsoAnnot/tree/github-repo-stats,1,1
