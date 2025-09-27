@@ -163,7 +163,7 @@ def ReverseComplement(seq):
 	RCseq = ""
 	for base in seq:
 		if base not in basecomplement:
-			print "Error: NOT a DNA sequence"
+			print("Error: NOT a DNA sequence")
 			return None
 			break
 		RCseq = basecomplement[base]+RCseq
@@ -413,7 +413,7 @@ def main():
 				else:
 					site = site.upper()
 					if any([base not in ["A","T","C","G","N"] for base in site]):
-						print "Error: NOT a DNA sequence"
+						print("Error: NOT a DNA sequence")
 						return None
 						break
 
