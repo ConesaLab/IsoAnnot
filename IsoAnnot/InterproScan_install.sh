@@ -53,7 +53,7 @@ if [ $execution_option == "a" ]; then
         else
             echo "The downloaded file is corrupted!"
             echo "Retrying..."
-            TRY += 1
+            TRY=$((TRY + 1))
             rm -f $INTERPROSCAN_DOWNLOAD
             rm -f $INTERPROSCAN_HASH_DOWNLOAD
         fi
@@ -122,13 +122,15 @@ if [ $execution_option == "a" ]; then
 
     # Download and decompress the program
     echo "Downloading file"
-    wget -P software/temp -nd  -np -r -nH -l1 -A "signalp*.tar.gz" $LINK
+    wget -P software/temp/ -nd  -np -r -nH -l1 -A "signalp*.tar.gz" $LINK
 
-    tar -xvzf software/temp/signalp-* -C software/interproscan/bin/signalp/4.1/ --strip-components=1
-
+    mkdir -p software/temp/signalp_extract
+    tar -xvzf software/temp/signalp-*.tar.gz -C software/temp/signalp_extract --strip-components=1
+    
     # Move files to InterProScan folder
     echo "Moving required files to InterProScan file tree"
-    mv software/temp/signalp-*/* software/interproscan/bin/signalp/4.1/
+    rm -rf software/interproscan/bin/signalp/4.1/lib
+    mv software/temp/signalp_extract/* software/interproscan/bin/signalp/4.1/
 
     # Modify the `signalp` binary file so it can execute correctly
     echo "Configuring SignalP"
@@ -151,8 +153,8 @@ if [ $execution_option == "a" ]; then
 
     echo "Finished installing SignalP"
 
-    Install TMHMM database
-    Print SignalP manual installation message
+    # Install TMHMM database
+    # Print SignalP manual installation message
     echo
     echo "# Installing TMHMM #"
     echo "Follow the link bellow to the download page for TMHMM, read and accept the license."
