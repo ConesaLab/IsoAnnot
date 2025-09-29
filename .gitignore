@@ -1,0 +1,17 @@
+# Ignorar archivos .pyc generados por Python
+*.pyc
+
+# Ignorar base de datos SQLite local
+IsoAnnot/.pybiomart.sqlite
+
+# Ignorar directorios y archivos específicos de Snakemake
+IsoAnnot/.snakemake/
+
+# Ignorar directorios de datos generados
+IsoAnnot/data/
+
+# Ignorar directorio de logs
+IsoAnnot/logs/
+
+# Ignorar archivos Interproscan
+IsoAnnot/software/interproscan/

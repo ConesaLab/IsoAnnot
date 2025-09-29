@@ -37,7 +37,7 @@ def _remove_extension(config_value, all=False):
 
 rule all:
     input:
-        expand("data/{prefix}/{species_name}tappas{db}_annotation_file.gff3_mod",
+        expand("data/{prefix}/{species_name}_tappas_{db}_annotation_file.gff3_mod",
                prefix=prefix,
                species_name=species_name,
                db=db)
@@ -159,7 +159,7 @@ rule prepare_refseq_gtf:
     input:
         rules.get_refseq_gtf.output
     output:
-        os.path.join("data", prefix, "config", "refseq", f"{_remove_extension(config['refseq_gtf'], all=True)}_nopartial_nc.gtf")
+        gtf=os.path.join("data", prefix, "config", "refseq", f"{_remove_extension(config['refseq_gtf'], all=True)}_nopartial_nc.gtf")
     log:
         os.path.join("logs", prefix, "prepare_refseq_gtf.log")
     shell:
@@ -189,7 +189,7 @@ rule get_ensembl_proteins:
 
 rule get_ensembl_cdna:
     output:
-        os.path.join("data", prefix, "config", "ensembl", os.path.basename(config["ensembl_cdna"]))
+        gz=os.path.join("data", prefix, "config", "ensembl", os.path.basename(config["ensembl_cdna"]))
     params:
         URL=config["ensembl_cdna"]
     log:
@@ -197,7 +197,7 @@ rule get_ensembl_cdna:
     shell:
         """
         wget -nv -P data/{prefix}/config/ensembl/ {params.URL} &> {log}
-        """
+	"""
 
 
 rule prepare_ensembl_cdna:
@@ -206,7 +206,7 @@ rule prepare_ensembl_cdna:
     input:
         rules.get_ensembl_cdna.output
     output:
-        os.path.join("data", prefix, "config", "ensembl", _remove_extension(config["ensembl_cdna"]))
+        fa=os.path.join("data", prefix, "config", "ensembl", _remove_extension(config["ensembl_cdna"]))
     log:
         os.path.join("logs", prefix, "prepare_ensembl_cdna.log")
     shell:
@@ -591,7 +591,7 @@ rule layer_go:
         biomart_host=config.get("biomart_host", []),
         biomart_dataset=config.get("biomart_dataset", []),
     log:
-        os.path.join("logs", prefix, "layer_go.log")
+        os.path.join("logs", prefix, "{db}", "layer_go.log")
     shell:
         """
         scripts/layer_go.py --classification_file {input.classification_file} --output {output} --biomart_host {params.biomart_host} --biomart_dataset {params.biomart_dataset} &> {log}
@@ -611,7 +611,7 @@ rule layer_interproscan:
     params:
         keep_version=config["transcript_versioned"]
     log:
-        os.path.join("logs", prefix, "layer_interproscan.log")
+        os.path.join("logs", prefix, "{db}", "layer_interproscan.log")
     shell:
         """
         echo {input.t}
@@ -629,7 +629,7 @@ rule layer_exons:
     output:
         _output_layer_db("layer_exons", external_rule=select_gtf)
     log:
-        os.path.join("logs", prefix, "layer_exons.log")
+        os.path.join("logs", prefix, "{db}", "layer_exons.log")
     shell:
         """
         scripts/layer_exons.py --gtf_file {input.gtf_file} --chr_ref {input.chr_ref} --output {output} &> {log}
@@ -645,7 +645,7 @@ rule layer_junctions:
     output:
         _output_layer_db("layer_junctions", external_rule=lambda x: select_sqanti_output(x).junctions)
     log:
-        os.path.join("logs", prefix, "layer_junctions.log")
+        os.path.join("logs", prefix, "{db}", "layer_junctions.log")
     shell:
         """
         scripts/layer_junctions.py --junctions_file {input.junctions_file} --classification_file {input.classification_file} --output {output} &> {log}
@@ -660,7 +660,7 @@ rule layer_nmd:
     output:
         _output_layer_db("layer_nmd", external_rule=select_nmd_file)
     log:
-        os.path.join("logs", prefix, "layer_nmd.log")
+        os.path.join("logs", prefix, "{db}", "layer_nmd.log")
     shell:
         """
         scripts/layer_nmd.py --nmd_file {input.nmd_file} --classification_file {input.classification_file} --output {output} &> {log}
@@ -680,7 +680,7 @@ rule layer_reactome:
     output:
         _output_layer_db("layer_reactome", external_rule=rules.get_reactome.output)
     log:
-        os.path.join("logs", prefix, "layer_reactome.log")
+        os.path.join("logs", prefix, "{db}", "layer_reactome.log")
     shell:
         """
         scripts/layer_reactome.py --reactome_file {input.reactome_file} --classification_file {input.classification_file} --biomart_host {params.biomart_host} --biomart_dataset {params.biomart_dataset} --species {params.species:q} --output {output} &> {log}
@@ -698,7 +698,7 @@ rule layer_repeatmasker:
     params:
         keep_version=config["transcript_versioned"]
     log:
-        os.path.join("logs", prefix, "layer_repeatmasker.log")
+        os.path.join("logs", prefix, "{db}", "layer_repeatmasker.log")
     shell:
         """
         scripts/layer_repeatmasker.py --keep_version {params.keep_version} --repeatmasker_file {input.repeatmasker_file} --classification_file {input.classification_file} --output {output} &> {log}
@@ -711,7 +711,7 @@ rule layer_uniprot:
     output:
         _output_layer_db("layer_uniprot", external_rule=rules.get_uniprot_phosphosite_annotation.output)
     log:
-        os.path.join("logs", prefix, "layer_uniprot.log")
+        os.path.join("logs", prefix, "{db}", "layer_uniprot.log")
     shell:
         """
         cat {input.uniprot_file} | sort -k1 -k3 -k4 -k5 | uniq | sort -k1 > {output} &> {log}
@@ -729,7 +729,7 @@ rule layer_utrscan:
     params:
         keep_version=config.get("transcript_versioned", False)
     log:
-        os.path.join("logs", prefix, "layer_utrscan.log")
+        os.path.join("logs", prefix, "{db}", "layer_utrscan.log")
     shell:
         """
         scripts/layer_utrscan.py --keep_version {params.keep_version} --utrscan_file {input.utrscan_file} --classification_file {input.classification_file} --output {output} &> {log}
@@ -742,19 +742,19 @@ rule tappas_annotation:
         "../../envs/isoannotpy.yaml"
     input:
         transcript_block = [
-            # rules.layer_utrscan.output,
-            # rules.layer_repeatmasker.output,
-            # rules.layer_nmd.output
+            rules.layer_utrscan.output,
+            rules.layer_repeatmasker.output,
+            rules.layer_nmd.output
         ] + config.get("transcript_gtf", []),
         genomic_block = [
-            # rules.layer_exons.output,
-            # rules.layer_junctions.output,
+            rules.layer_exons.output,
+            rules.layer_junctions.output,
         ] + config.get("genomic_gtf", []),
         protein_block = [
             rules.layer_go.output if config["layer_go"] == "si" else [],
-            # rules.layer_reactome.output if config["reactome"] else [],
-            # rules.layer_interproscan.output,
-            # rules.layer_uniprot.output
+            rules.layer_reactome.output if config["reactome"] else [],
+            rules.layer_interproscan.output,
+            rules.layer_uniprot.output
         ] + config.get("protein_gtf", []),
         classification_file=select_sqanti_classification,
         gene_desc=[],

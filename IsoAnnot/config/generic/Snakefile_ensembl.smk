@@ -5,7 +5,7 @@ def select_user_fasta_cdna(wildcards):
     return []
 
 def select_fasta_cdna(wildcards):
-    return rules.prepare_ensembl_cdna.output
+    return rules.prepare_ensembl_cdna.output.fa
 
 def select_gtf(wildcards):
     return rules.prepare_ensembl_gtf.output
