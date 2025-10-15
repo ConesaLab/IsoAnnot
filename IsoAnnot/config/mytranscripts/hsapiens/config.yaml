@@ -28,3 +28,4 @@ uniprot_dat:
   - https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/Eukaryota/UP000005640/UP000005640_9606_additional.dat.gz
 
 reactome: https://reactome.org/download/current/Ensembl2Reactome_All_Levels.txt
+layer_go: si

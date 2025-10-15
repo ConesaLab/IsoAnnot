@@ -4,7 +4,48 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=2.7
-  - pysam
-  - psutil
-  - gmap
+  - _libgcc_mutex=0.1=conda_forge
+  - _openmp_mutex=4.5=2_gnu
+  - bzip2=1.0.8=hda65f42_8
+  - c-ares=1.34.5=hb9d3cd8_0
+  - ca-certificates=2025.10.5=hbd8a1cb_0
+  - certifi=2019.11.28=py27h8c360ce_1
+  - gmap=2024.11.20=pl5321h9d449c0_0
+  - keyutils=1.6.3=hb9d3cd8_0
+  - krb5=1.20.1=hf9c8cef_0
+  - ld_impl_linux-64=2.44=ha97dd6f_2
+  - libcurl=7.87.0=h6312ad2_0
+  - libdeflate=1.24=h86f0d12_0
+  - libedit=3.1.20250104=pl5321h7949ede_0
+  - libev=4.33=hd590300_2
+  - libffi=3.2.1=he1b5a44_1007
+  - libgcc=15.2.0=h767d61c_6
+  - libgcc-ng=15.2.0=h69a702a_6
+  - libgomp=15.2.0=h767d61c_6
+  - libnghttp2=1.51.0=hdcd2b5c_0
+  - libsqlite=3.46.0=hde9e2c9_0
+  - libssh2=1.10.0=haa6b8db_3
+  - libstdcxx=15.2.0=h8f9b012_6
+  - libstdcxx-ng=15.2.0=h4852527_6
+  - libxcrypt=4.4.36=hd590300_1
+  - libzlib=1.2.13=h4ab18f5_6
+  - ncurses=6.5=h2d0b736_3
+  - openssl=1.1.1w=hd590300_0
+  - perl=5.32.1=7_hd590300_perl5
+  - perl-constant=1.33=pl5321hdfd78af_2
+  - perl-exporter=5.72=pl5321hdfd78af_2
+  - perl-file-util=4.201720=pl5321hdfd78af_0
+  - perl-lib=0.63=pl5321hdfd78af_2
+  - pip=20.1.1=pyh9f0ad1d_0
+  - psutil=5.7.0=py27hdf8410d_1
+  - pysam=0.20.0=py27h7835474_0
+  - python=2.7.15=h5a48372_1011_cpython
+  - python_abi=2.7=1_cp27mu
+  - readline=8.2=h8c095d6_2
+  - setuptools=44.0.0=py27_0
+  - sqlite=3.46.0=h6d4b2fc_0
+  - tk=8.6.13=noxft_h4845f30_101
+  - wheel=0.37.1=pyhd8ed1ab_0
+  - xz=5.2.6=h166bdaf_0
+  - zlib=1.2.13=h4ab18f5_6
+

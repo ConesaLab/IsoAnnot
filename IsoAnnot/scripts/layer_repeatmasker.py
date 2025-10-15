@@ -11,7 +11,7 @@ it into GTF.
 
 import argparse, sys, os, logging, csv, itertools
 from IsoAnnot import openfile
-from t2goAnnotationFile_clean import get_structural_classification_df
+from t2goAnnotationFile import get_structural_classification_df
 
 def get_repeatmasker_info(filename):
     '''

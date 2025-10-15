@@ -19,4 +19,4 @@ dependencies:
   - openssl=1.1.1g=h516909a_0
   - ucsc-gtftogenepred=377=h446ed27_3
   - zlib=1.2.13=h166bdaf_4
-prefix: /home/almartin/.conda/envs/genepred
+

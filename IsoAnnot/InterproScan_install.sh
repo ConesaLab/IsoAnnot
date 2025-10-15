@@ -129,7 +129,7 @@ if [ $execution_option == "a" ]; then
     
     # Move files to InterProScan folder
     echo "Moving required files to InterProScan file tree"
-    rm -rf software/interproscan/bin/signalp/4.1/lib
+    rm -rf software/interproscan/bin/signalp/4.1/lib #lib se genera por defecto y muestra error al mover los archivos al directorio
     mv software/temp/signalp_extract/* software/interproscan/bin/signalp/4.1/
 
     # Modify the `signalp` binary file so it can execute correctly

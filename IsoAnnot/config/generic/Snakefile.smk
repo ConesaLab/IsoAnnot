@@ -89,7 +89,6 @@ checkpoint get_refseq_proteins:
         os.path.join("logs", prefix, "get_refseq_proteins.log")
     shell:
         """
-        mkdir -p logs/get_refseq_proteins
         wget -nv -P data/{prefix}/config/refseq/faa/ -nd -np -r -nH -l1 -A *protein.faa.gz {params.URL} &> {log}
         """
 
@@ -108,7 +107,7 @@ rule prepare_refseq_proteins:
         os.path.join("logs", prefix, "prepare_refseq_proteins.log")
     shell:
        """
-       zcat data/{prefix}/config/refseq/faa/*.faa.gz > {output} &> {log}
+       zcat data/{prefix}/config/refseq/faa/*.faa.gz > {output} 2> {log}
        """
 
 checkpoint get_refseq_cdna:
@@ -134,12 +133,12 @@ rule prepare_refseq_cdna:
     input:
         gather_refseq_cdna
     output:
-        os.path.join("data", prefix, "config", "refseq", "all_refseq_cdna.fna")
+        fa=os.path.join("data", prefix, "config", "refseq", "all_refseq_cdna.fna")
     log:
         os.path.join("logs", prefix, "prepare_refseq_cdna.log")
     shell:
         """
-        zcat data/{prefix}/config/refseq/fna/*.fna.gz > {output} &> {log}
+        zcat data/{prefix}/config/refseq/fna/*.fna.gz > {output} 2> {log}
         """
 
 rule get_refseq_gtf:
@@ -159,12 +158,12 @@ rule prepare_refseq_gtf:
     input:
         rules.get_refseq_gtf.output
     output:
-        gtf=os.path.join("data", prefix, "config", "refseq", f"{_remove_extension(config['refseq_gtf'], all=True)}_nopartial_nc.gtf")
+        os.path.join("data", prefix, "config", "refseq", f"{_remove_extension(config['refseq_gtf'], all=True)}_nopartial_nc.gtf")
     log:
         os.path.join("logs", prefix, "prepare_refseq_gtf.log")
     shell:
         """
-        zcat {input}|grep -v -F 'partial=true' | grep NC_0  > {output} &> {log}
+        zcat {input}|grep -v -F 'partial=true' | grep NC_0  > {output} 2> {log}
         """
 
 
@@ -180,16 +179,16 @@ rule get_ensembl_proteins:
         os.path.join("logs", prefix, "get_ensembl_proteins.log")
     shell:
         """
-        wget -nv -P data/{prefix}/config/ensembl/ {params.URL}
-        gunzip {output.gz}
-        sed -i s/\*//g {output.fa}
-        gzip -k {output.fa} &> {log}
+        (wget -nv -P data/{prefix}/config/ensembl/ {params.URL}
+        gunzip -c {output.gz} > {output.fa}.tmp
+        sed s/\*//g {output.fa}.tmp > {output.fa}
+        rm {output.fa}.tmp) 2> {log}
         """
-
+     
 
 rule get_ensembl_cdna:
     output:
-        gz=os.path.join("data", prefix, "config", "ensembl", os.path.basename(config["ensembl_cdna"]))
+        os.path.join("data", prefix, "config", "ensembl", os.path.basename(config["ensembl_cdna"]))
     params:
         URL=config["ensembl_cdna"]
     log:
@@ -299,10 +298,10 @@ rule get_uniprot_data:
     output:
         [os.path.join("data",prefix,"config","uniprot",os.path.basename(uniprot_url)) for uniprot_url in config["uniprot_dat"] + config["uniprot_fasta"]]
     log:
-        os.path.join("logs", prefix, "get_uniprot_data.log")
+        [os.path.join("logs", prefix, "get_uniprot_data", f"{_remove_extension(uniprot_url)}.log") for uniprot_url in config["uniprot_dat"] + config["uniprot_fasta"]]
     run:
-        for uniprot_url in config["uniprot_dat"] + config["uniprot_fasta"]:
-            shell(f"wget -nv -P data/{prefix}/config/uniprot/ {uniprot_url} &> {log}")
+        for uniprot_url, log_file in zip(config["uniprot_dat"] + config["uniprot_fasta"], log):
+            shell(f"wget -nv -P data/{prefix}/config/uniprot/ {uniprot_url} &> {log_file}")
 
 
 rule prepare_uniprot_data:
@@ -367,7 +366,7 @@ rule run_gmap_index:
         os.path.join("logs", prefix, "run_gmap_index.log")
     shell:
         """
-        gmap_build --dir {params.outdir} --genomedb {params.index_name} {input.ref_genome} &> {log}
+        gmap_build -D {params.outdir} -d {params.index_name} {input.ref_genome} &> {log}
         """
 
 
@@ -421,7 +420,12 @@ rule run_repeatmasker:
     log:
         os.path.join("logs", prefix, "{db}", "run_repeatmasker.log")
     shell:
-        """
+        r"""
+        LIBDIR="$CONDA_PREFIX/lib"
+        if [ ! -e "$LIBDIR/libnsl.so.1" ]; then
+            ln -s "$LIBDIR/libnsl.so.3" "$LIBDIR/libnsl.so.1"  #se crea un enlace simbólico, no hay ninguna versión que instale la dependencia requerida
+        fi
+        export LD_LIBRARY_PATH="$LIBDIR:$LD_LIBRARY_PATH"
         RepeatMasker {input} -species {params.species_name} -dir {params.outdir} &> {log}
         """
 
@@ -439,10 +443,7 @@ checkpoint run_interproscan:
         os.path.join("logs", prefix, "{db}", "run_interproscan.log")
     shell:
         """
-        for i in {input}
-        do
-        mkdir -p {output} && {params.interproscan_path} -i {input} -d {output} --disable-precalc  -appl Coils,Pfam,MobiDBLite,SignalP_EUK,TMHMM  -f XML -iprlookup
-        done &> {log}
+        mkdir -p {output} && {params.interproscan_path} -i {input} -d {output} --disable-precalc  -appl Coils,Pfam,MobiDBLite,SignalP_EUK,TMHMM  -f XML -iprlookup &> {log}
         """
 
 def gather_interproscan(wildcards):
@@ -496,7 +497,7 @@ rule get_genomic_coordinates:
             "data/global/PSP_data/Phosphorylation_site_dataset",
             "data/global/PSP_data/Sumoylation_site_dataset",
             "data/global/PSP_data/Ubiquitination_site_dataset"],
-        refseq_gtf = rules.prepare_refseq_gtf.output.gtf if config["refseq_gtf"] else [],
+        refseq_gtf = rules.prepare_refseq_gtf.output if config["refseq_gtf"] else [],
         ensembl_gtf = rules.prepare_ensembl_gtf.output,
         uniprot_parsed = rules.prepare_uniprot_data.output,
         chr_ref = rules.get_refseq_acc.output
@@ -528,6 +529,8 @@ rule get_uniprot_phosphosite_annotation:
         biomart_host = config.get("biomart_host", [])        
     output:
         os.path.join("data", prefix, "output", "{db}", "uniprot_Phosphosite_info.txt")
+    log:
+        os.path.join("logs", prefix, "{db}", "get_uniprot_phosphosite_annotation.log")
     shell:           
         """
         scripts/uniprotPhosphosite_annotation.py --orf_fasta {input.fasta_orf} --classification_file {input.classification} --genepred_file {input.gene_prediction} --uniprotmotif_file {input.motif_info} --chr_ref {input.chr_ref} --protein_association {input.protein_assoc} --keep_version {params.keep_version} --db {wildcards.db} --biomart_host {params.biomart_host} --output {output} &> {log}
@@ -558,7 +561,7 @@ rule transcript_to_reference:
     conda:
         "../../envs/isoannotpy.yaml"
     input:
-        refseq_gtf=rules.prepare_refseq_gtf.output.gtf if config["refseq_gtf"] else [],
+        refseq_gtf=rules.prepare_refseq_gtf.output if config["refseq_gtf"] else [],
         ensembl_gtf=rules.prepare_ensembl_gtf.output,
         chr_ref=rules.get_refseq_acc.output if config["refseq_chr_accessions"] else [],
         classification_file=select_sqanti_classification,
@@ -614,9 +617,9 @@ rule layer_interproscan:
         os.path.join("logs", prefix, "{db}", "layer_interproscan.log")
     shell:
         """
-        echo {input.t}
+        (echo {input.t}
         echo {input.pfam}
-        scripts/layer_interproscan.py --interproscan_file {input.interproscan_file} --pfam_file {input.pfam} --classification_file {input.classification_file} --keep_version {params.keep_version} --output {output} &> {log}
+        scripts/layer_interproscan.py --interproscan_file {input.interproscan_file} --pfam_file {input.pfam} --classification_file {input.classification_file} --keep_version {params.keep_version} --output {output}) &> {log}
         """
 
 
@@ -714,7 +717,7 @@ rule layer_uniprot:
         os.path.join("logs", prefix, "{db}", "layer_uniprot.log")
     shell:
         """
-        cat {input.uniprot_file} | sort -k1 -k3 -k4 -k5 | uniq | sort -k1 > {output} &> {log}
+        cat {input.uniprot_file} | sort -k1 -k3 -k4 -k5 | uniq | sort -k1 > {output} 2> {log}
         """
 
 
