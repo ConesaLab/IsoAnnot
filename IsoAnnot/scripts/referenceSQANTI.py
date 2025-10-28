@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # -*- coding: utf8 -*-
 
 '''
@@ -48,7 +48,7 @@ class myTranscripts:
 			v = []
 
 			for exon in self.exons_coord:
-				v = v + range(exon[0],exon[1]+1)
+				v.extend(range(exon[0], exon[1] + 1))
 
 			if self.strand == "+":
 				v = sorted(v)

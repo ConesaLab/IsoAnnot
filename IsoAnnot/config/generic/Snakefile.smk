@@ -336,7 +336,7 @@ rule get_reactome:
 
 rule run_refsqanti:
     conda:
-        "../../envs/sqanti.yaml"
+        "../../envs/sqanti3.yaml"
     input:
         gtf=select_reference_gtf,
         reference=rules.prepare_ensembl_reference.output,
@@ -354,7 +354,7 @@ rule run_refsqanti:
 
 rule run_gmap_index:
     conda:
-        "../../envs/sqanti.yaml"
+        "../../envs/sqanti3.yaml"
     input:
         ref_genome=rules.prepare_ensembl_reference.output
     output:
@@ -368,20 +368,33 @@ rule run_gmap_index:
         """
         gmap_build -D {params.outdir} -d {params.index_name} {input.ref_genome} &> {log}
         """
-
+rule install_sqanti:
+    conda:
+        "../../envs/git.yaml"
+    output:
+        touch(os.path.join(config["dir_sqanti"],"sqanti_installed.done"))
+    params:
+        dir_sqanti=config["dir_sqanti"]
+    log:
+        os.path.join("logs", prefix, "install_sqanti.log")
+    shell:
+        """
+        git clone https://github.com/ConesaLab/SQANTI3.git {params.dir_sqanti} &> {log}
+        """
 
 rule run_sqanti:
     conda:
-        "../../envs/sqanti.yaml"
+        "../../envs/sqanti3.yaml"
     input:
         user_fasta=select_user_fasta_cdna,
         reference_gtf=select_reference_gtf,
         genome_fasta=rules.prepare_ensembl_reference.output,
-        genome_fasta_index=rules.run_gmap_index.output
+        genome_fasta_index=rules.run_gmap_index.output,
+        sqanti_installed=os.path.join(config["dir_sqanti"], "sqanti_installed.done")
     output:
         corrected_cdna=os.path.join("data", prefix, "output", "{db}", "sqanti_corrected.fasta"),
-        fasta_proteins=os.path.join("data", prefix, "output", "{db}", "sqanti_fasta_proteins.fasta"),
-        gtf=os.path.join("data", prefix, "output", "{db}", "sqanti_gtf.gtf"),
+        fasta_proteins=os.path.join("data", prefix, "output", "{db}", "sqanti_corrected.faa"),
+        gtf=os.path.join("data", prefix, "output", "{db}", "sqanti_corrected.gtf"),
         classification=os.path.join("data", prefix, "output", "{db}", "sqanti_classification.txt"),
         junctions=os.path.join("data", prefix, "output", "{db}", "sqanti_junctions.txt"),
     params:
@@ -391,9 +404,21 @@ rule run_sqanti:
         os.path.join("logs", prefix, "{db}", "run_sqanti.log")
     shell:
         """
-        scripts/sqanti/sqanti_qc.py {input.user_fasta} {input.reference_gtf} {input.genome_fasta} -d {params.outdir} -x {input.genome_fasta_index}/gmap_index -o {params.out_name} -n 8 --skipORF &> {log}
+        export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+        scripts/sqanti3/sqanti3_qc.py --fasta --isoforms {input.user_fasta} --refGTF {input.reference_gtf} --refFasta {input.genome_fasta} -d {params.outdir} -x {input.genome_fasta_index} -o {params.out_name} &> {log}
         """
 
+rule clean_sqanti_proteins:
+    input:
+        rules.run_sqanti.output.fasta_proteins
+    output:
+        os.path.join("data", prefix, "output", "{db}", "final_sqanti_corrected.faa")
+    log:
+        os.path.join("logs", prefix, "{db}", "clean_sqanti_proteins.log")
+    shell:
+        """
+        sed s/\*//g {input} > {output} 2> {log}
+        """
 
 rule run_utrscan:
     input:
@@ -454,7 +479,7 @@ def gather_interproscan(wildcards):
 
 rule parse_interproscan:
     conda:
-        "../../envs/sqanti.yaml"
+        "../../envs/sqanti3.yaml"
     input:
         gather_interproscan
     output:
@@ -593,11 +618,12 @@ rule layer_go:
     params:
         biomart_host=config.get("biomart_host", []),
         biomart_dataset=config.get("biomart_dataset", []),
+        db=config.get("db")
     log:
         os.path.join("logs", prefix, "{db}", "layer_go.log")
     shell:
         """
-        scripts/layer_go.py --classification_file {input.classification_file} --output {output} --biomart_host {params.biomart_host} --biomart_dataset {params.biomart_dataset} &> {log}
+        scripts/layer_go.py --classification_file {input.classification_file} --output {output} --biomart_host {params.biomart_host} --biomart_dataset {params.biomart_dataset} --db {params.db} &> {log}
         """
 
 
@@ -679,14 +705,15 @@ rule layer_reactome:
     params:
         biomart_host=config.get("biomart_host", []),
         biomart_dataset=config.get("biomart_dataset", []),
-        species=config["species"]
+        species=config["species"],
+        db=config.get("db")
     output:
         _output_layer_db("layer_reactome", external_rule=rules.get_reactome.output)
     log:
         os.path.join("logs", prefix, "{db}", "layer_reactome.log")
     shell:
         """
-        scripts/layer_reactome.py --reactome_file {input.reactome_file} --classification_file {input.classification_file} --biomart_host {params.biomart_host} --biomart_dataset {params.biomart_dataset} --species {params.species:q} --output {output} &> {log}
+        scripts/layer_reactome.py --reactome_file {input.reactome_file} --classification_file {input.classification_file} --biomart_host {params.biomart_host} --biomart_dataset {params.biomart_dataset} --species {params.species:q} --db {params.db} --output {output} &> {log}
         """
 
 

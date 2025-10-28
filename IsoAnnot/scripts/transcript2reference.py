@@ -37,7 +37,7 @@ def _get_transcript_exons_location(gtf_data, transcript):
             transcript_exon_start=int(line.split("\t")[3])
             transcript_exon_end=int(line.split("\t")[4])
             transcript_exon_strand = line.split("\t")[6]
-            isoform_exons.append({"start" :transcript_exon_start, "end": transcript_exon_end, "strand": transcript_exon_strand})
+            isoform_exons.append({"start" :transcript_exon_start, "end": transcript_exon_end + 1, "strand": transcript_exon_strand})
 
     isoforms_exon_locs = [
         FeatureLocation(exon_block['start'], exon_block['end'], strand_table.get(exon_block['strand'], None)) for exon_block
@@ -96,7 +96,7 @@ def _retrieve_pacbio_info(gtf_data, fasta_data):
     '''
     Gets header information from predicted ORFs (isoform ID and CDS)
     '''
-    capture_regex = re.compile(r"(.+)\s.*?\|.*?\|.*?\|.*?\|([0-9]+)")
+    capture_regex = re.compile(r"^(\S+)\s.*?\|.*?\|.*?\|([0-9]+)\|[0-9]+$")
     isoforms_cds = {}
 
     for fasta_id, fasta_seq in fasta_data.items():

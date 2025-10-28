@@ -15,3 +15,6 @@ IsoAnnot/logs/
 
 # Ignorar archivos Interproscan
 IsoAnnot/software/interproscan/
+
+#Ignorar directorio SQANTI
+IsoAnnot/scripts/sqanti3/

@@ -1,7 +1,7 @@
 import sys, os
 
 def select_fasta_proteins(wildcards):
-    return "data/Hsapiens/output/mytranscripts/sqanti_fasta_proteins.fasta"
+    return "data/Hsapiens/output/mytranscripts/final_sqanti_corrected.faa"
 
 def select_user_fasta_cdna(wildcards):
     user_fasta = config.get("fasta_cdna", None)
@@ -14,7 +14,7 @@ def select_fasta_cdna(wildcards):
     return "data/Hsapiens/output/mytranscripts/sqanti_corrected.fasta"
 
 def select_gtf(wildcards):
-    return "data/Hsapiens/output/mytranscripts/sqanti_gtf.gtf"
+    return "data/Hsapiens/output/mytranscripts/sqanti_corrected.gtf"
 
 def select_reference_gtf(wildcards):
     return rules.prepare_ensembl_gtf.output
