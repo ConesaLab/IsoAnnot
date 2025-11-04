@@ -1,7 +1,7 @@
 import sys, os
 
 def select_fasta_proteins(wildcards):
-    return "data/Hsapiens/output/mytranscripts/sqanti_fasta_proteins.fasta"
+    return "data/Hsapiens/output/mytranscripts/final_sqanti_corrected.faa"
 
 def select_user_fasta_cdna(wildcards):
     user_fasta = config.get("fasta_cdna", None)
@@ -14,10 +14,10 @@ def select_fasta_cdna(wildcards):
     return "data/Hsapiens/output/mytranscripts/sqanti_corrected.fasta"
 
 def select_gtf(wildcards):
-    return "data/Hsapiens/output/mytranscripts/sqanti_gtf.gtf"
+    return "data/Hsapiens/output/mytranscripts/sqanti_corrected.gtf"
 
 def select_reference_gtf(wildcards):
-    return expand(rules.prepare_ensembl_gtf.output, prefix=wildcards['prefix'])
+    return rules.prepare_ensembl_gtf.output
 
 def select_sqanti_classification(wildcards):
     return "data/Hsapiens/output/mytranscripts/sqanti_classification.txt"
@@ -26,7 +26,7 @@ def select_sqanti_output(wildcards):
     return rules.run_sqanti.output
 
 def select_nmd_file(wildcards):
-    return expand(rules.transcript_to_reference.output.nmd, prefix=wildcards['prefix'], db=wildcards['db'])
+    return expand(rules.transcript_to_reference.output.nmd, db=wildcards['db'])
 
 def select_prot_assoc(wildcards):
     return rules.transcript_to_reference.output.protein_assoc

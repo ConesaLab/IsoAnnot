@@ -447,7 +447,7 @@ def main():
                             match_tag = "CDS_incomplete"
                             cds_len = len(protein_cds)
                             protein_chr = protein_cds.id
-                            protein_strand = protein_cds.strand
+                            protein_strand = protein_cds.location.strand
                             protein_strand = strand_back_conversion.get(protein_strand, None)
 
                             # Complete the SeqFeature attributes if CDS length corresponds to protein length
@@ -504,12 +504,12 @@ def main():
                                 prot_feature.type, # Feature type
                                 prot_feature.qualifiers['desc'], # Description 
                                 cds.id, # Chromosome
-                                strand_back_conversion.get(cds.strand, None), # Strand
+                                strand_back_conversion.get(cds.location.strand, None), # Strand
                                 parts_in_cds["start"][0],   # Feature genomic start
                                 parts_in_cds["end"][-1],    # Feature genomic end
                                 ",".join(map(str, parts_in_cds["start"])), # Start position of feature in each CDS part
                                 ",".join(map(str, parts_in_cds["end"])), # End position offeature in each CDS part
-                                abs((int(feature_pend) - int(feature_pstart))) + 1, # Feature length (aa)
+                                abs(feature_pend.pos - feature_pstart.pos) + 1, # Feature length (aa)
                                 parts_in_cds["len"],    # Feature length (nt)
                                 motif_sequence,         # Feature sequence
                                 "SwissProt",            # Source
@@ -548,7 +548,7 @@ def main():
                                             phospho_mod['feature'], # Feature type
                                             phospho_mod['desc'],    # Description
                                             cds.id,  # Chromosome
-                                            strand_back_conversion.get(cds.strand, None), # Strand
+                                            strand_back_conversion.get(cds.location.strand, None), # Strand
                                             # 1-based coordinates
                                             domain_ppos_start +1,  # Feature genomic start
                                             domain_ppos_end,    # Feature genomic end

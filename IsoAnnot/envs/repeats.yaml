@@ -6,34 +6,17 @@ channels:
   - defaults
   - anaconda
 dependencies:
-  - _libgcc_mutex=0.1=conda_forge
-  - _openmp_mutex=4.5=2_gnu
-  - blast=2.5.0=hc0b0e79_3
-  - boost=1.56.0=py27_4
-  - bzip2=1.0.8=h7f98852_4
-  - ca-certificates=2020.6.20=hecda079_0
-  - hmmer=3.3.2=h87f3376_2
-  - icu=70.1=h27087fc_0
-  - ld_impl_linux-64=2.39=hcc3a1bd_1
-  - libffi=3.2.1=he1b5a44_1007
-  - libgcc=7.2.0=h69d50b8_2
-  - libgcc-ng=12.2.0=h65d4601_19
-  - libgomp=12.2.0=h65d4601_19
-  - libstdcxx-ng=12.2.0=h46fd767_19
-  - libzlib=1.2.11=h166bdaf_1014
-  - ncurses=6.3=h27087fc_1
-  - openssl=1.1.1g=h516909a_0
+  - blast=2.16.0=h66d330f_5
+  - curl=8.16.0=h4e3cde8_0
+  - entrez-direct=22.4=he881be0_0
+  - gsl=2.7=he838d99_0
+  - hmmer=3.4=hb6cb901_4
+  - numpy=2.3.4=py313hf6604e3_0
+  - openmpi=4.1.6=hc5af2df_101
+  - pandas=2.3.3=py313h08cd8bf_1
   - perl=5.26.2=h36c2ea0_1008
-  - perl-text-soundex=3.05=pl526_1000
-  - pip=20.1.1=pyh9f0ad1d_0
-  - python=2.7.15=h5a48372_1010_cpython
-  - readline=8.1.2=h0f457ee_0
+  - pip=25.2=pyh145f28c_0
+  - python=3.13.9=hc97d973_101_cp313
   - repeatmasker=4.0.9_p2=pl526_2
-  - rmblast=2.2.28=3
-  - setuptools=23.0.0=py27_0
-  - sqlite=3.38.5=h4ff8645_0
-  - tk=8.6.12=h27826a3_0
-  - trf=4.09.1=hec16e2b_2
-  - wheel=0.37.1=pyhd8ed1ab_0
-  - zlib=1.2.11=h166bdaf_1014
-prefix: /home/almartin/.conda/envs/repeats
+  - rmblast=2.14.1=hdb21ba3_2
+  - trf=4.10.0rc2=h7b50bb2_0
