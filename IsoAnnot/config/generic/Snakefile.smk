@@ -448,7 +448,7 @@ rule run_repeatmasker:
         r"""
         LIBDIR="$CONDA_PREFIX/lib"
         if [ ! -e "$LIBDIR/libnsl.so.1" ]; then
-            ln -s "$LIBDIR/libnsl.so.3" "$LIBDIR/libnsl.so.1"  #se crea un enlace simbólico, no hay ninguna versión que instale la dependencia requerida
+            ln -sf "$LIBDIR/libnsl.so.3" "$LIBDIR/libnsl.so.1"  #se crea un enlace simbólico, no hay ninguna versión que instale la dependencia requerida
         fi
         export LD_LIBRARY_PATH="$LIBDIR:$LD_LIBRARY_PATH"
         RepeatMasker {input} -species {params.species_name} -dir {params.outdir} &> {log}
