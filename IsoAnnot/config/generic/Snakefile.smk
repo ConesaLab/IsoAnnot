@@ -4,7 +4,7 @@ configfile: "config/generic/config.yaml"
 prefix = config["prefix"]
 db = config["db"]
 species_name = config["species_name"]
-path_output = config.get("path_output", os.getcwd())
+path_output = config["path_output"]
 
 def _output_layer_db(layer_name, external_rule=[], wildcards=None):
 
