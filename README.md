@@ -114,7 +114,7 @@ InterProScan is used for protein domain and functional annotation.
    ./InterproScan_install.sh
    ```
 
-2. Activate SignalP and TMHMM by following the installation script instructions.
+2. Activate SignalP and TMHMM by following the installation script instructions. When prompted, include the link you see in the website once you have completed the verification, not the one sent to you.
 
 **Configuration:**
 - Default location: `IsoAnnot/software/interproscan/`
