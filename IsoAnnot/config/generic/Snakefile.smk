@@ -4,13 +4,14 @@ configfile: "config/generic/config.yaml"
 prefix = config["prefix"]
 db = config["db"]
 species_name = config["species_name"]
+path_output = config["path_output"]
 
 def _output_layer_db(layer_name, external_rule=[], wildcards=None):
 
     if callable(external_rule):
         external_rule = external_rule({"prefix": prefix, "db": db })
     if len(config.get(layer_name, [])) or len(external_rule):
-        return os.path.join("data", prefix, "output", "{db}", "layers", f"{layer_name}.gtf")
+        return os.path.join(path_output, "data", prefix, "output", "{db}", "layers", f"{layer_name}.gtf")
     else:
         return []
 
@@ -37,7 +38,8 @@ def _remove_extension(config_value, all=False):
 
 rule all:
     input:
-        expand("data/{prefix}/{species_name}_tappas_{db}_annotation_file.gff3_mod",
+        expand("{path_output}/data/{prefix}/{species_name}_tappas_{db}_annotation_file.gff3_mod",
+               path_output=path_output,
                prefix=prefix,
                species_name=species_name,
                db=db)
@@ -69,27 +71,27 @@ rule all:
 
 rule get_refseq_acc: 
     output: 
-        os.path.join("data",prefix,"config","refseq", os.path.basename(config["refseq_chr_accessions"])) 
+        os.path.join(path_output, "data",prefix,"config","refseq", os.path.basename(config["refseq_chr_accessions"])) 
     params: 
         URL=config["refseq_chr_accessions"] 
     log: 
-        os.path.join("logs", prefix, "get_refseq_acc.log")
+        os.path.join(path_output, "logs", prefix, "get_refseq_acc.log")
     shell: 
         """ 
-        wget -nv -P data/{prefix}/config/refseq/ {params.URL} &> {log} 
+        wget -nv -P {path_output}/data/{prefix}/config/refseq/ {params.URL} &> {log} 
         """
 
 
 checkpoint get_refseq_proteins:
     output:
-        directory(os.path.join("data", prefix, "config", "refseq", "faa"))
+        directory(os.path.join(path_output, "data", prefix, "config", "refseq", "faa"))
     params:
         URL=config["refseq_protein_dir"]
     log:
-        os.path.join("logs", prefix, "get_refseq_proteins.log")
+        os.path.join(path_output, "logs", prefix, "get_refseq_proteins.log")
     shell:
         """
-        wget -nv -P data/{prefix}/config/refseq/faa/ -nd -np -r -nH -l1 -A *protein.faa.gz {params.URL} &> {log}
+        wget -nv -P {path_output}/data/{prefix}/config/refseq/faa/ -nd -np -r -nH -l1 -A *protein.faa.gz {params.URL} &> {log}
         """
 
 def gather_refseq_proteins(wildcards):
@@ -102,24 +104,24 @@ rule prepare_refseq_proteins:
     input:
        gather_refseq_proteins
     output:
-        os.path.join("data", prefix, "config", "refseq", "all_refseq_proteins.faa")
+        os.path.join(path_output, "data", prefix, "config", "refseq", "all_refseq_proteins.faa")
     log:
-        os.path.join("logs", prefix, "prepare_refseq_proteins.log")
+        os.path.join(path_output, "logs", prefix, "prepare_refseq_proteins.log")
     shell:
        """
-       zcat data/{prefix}/config/refseq/faa/*.faa.gz > {output} 2> {log}
+       zcat {path_output}/data/{prefix}/config/refseq/faa/*.faa.gz > {output} 2> {log}
        """
 
 checkpoint get_refseq_cdna:
     output:
-        directory(os.path.join("data", prefix, "config", "refseq", "fna"))
+        directory(os.path.join(path_output, "data", prefix, "config", "refseq", "fna"))
     params:
         URL=config["refseq_protein_dir"]
     log:
-        os.path.join("logs", prefix, "get_refseq_cdna.log")
+        os.path.join(path_output, "logs", prefix, "get_refseq_cdna.log")
     shell:
         """
-        wget -nv -P data/{prefix}/config/refseq/fna/ -nd -np -r -nH -l1 -A *rna.fna.gz {params.URL} &> {log}
+        wget -nv -P {path_output}/data/{prefix}/config/refseq/fna/ -nd -np -r -nH -l1 -A *rna.fna.gz {params.URL} &> {log}
         """
 
 
@@ -133,24 +135,24 @@ rule prepare_refseq_cdna:
     input:
         gather_refseq_cdna
     output:
-        fa=os.path.join("data", prefix, "config", "refseq", "all_refseq_cdna.fna")
+        fa=os.path.join(path_output, "data", prefix, "config", "refseq", "all_refseq_cdna.fna")
     log:
-        os.path.join("logs", prefix, "prepare_refseq_cdna.log")
+        os.path.join(path_output, "logs", prefix, "prepare_refseq_cdna.log")
     shell:
         """
-        zcat data/{prefix}/config/refseq/fna/*.fna.gz > {output} 2> {log}
+        zcat {path_output}/data/{prefix}/config/refseq/fna/*.fna.gz > {output} 2> {log}
         """
 
 rule get_refseq_gtf:
     output:
-        os.path.join("data", prefix, "config", "refseq", os.path.basename(config["refseq_gtf"]))
+        os.path.join(path_output, "data", prefix, "config", "refseq", os.path.basename(config["refseq_gtf"]))
     params:
         URL=config["refseq_gtf"]
     log:
-        os.path.join("logs", prefix, "get_refseq_gtf.log")
+        os.path.join(path_output, "logs", prefix, "get_refseq_gtf.log")
     shell:
         """
-        wget -nv -P data/{prefix}/config/refseq/ {params.URL} &> {log}
+        wget -nv -P {path_output}/data/{prefix}/config/refseq/ {params.URL} &> {log}
         """
 
 
@@ -158,9 +160,9 @@ rule prepare_refseq_gtf:
     input:
         rules.get_refseq_gtf.output
     output:
-        os.path.join("data", prefix, "config", "refseq", f"{_remove_extension(config['refseq_gtf'], all=True)}_nopartial_nc.gtf")
+        os.path.join(path_output, "data", prefix, "config", "refseq", f"{_remove_extension(config['refseq_gtf'], all=True)}_nopartial_nc.gtf")
     log:
-        os.path.join("logs", prefix, "prepare_refseq_gtf.log")
+        os.path.join(path_output, "logs", prefix, "prepare_refseq_gtf.log")
     shell:
         """
         zcat {input}|grep -v -F 'partial=true' | grep NC_0  > {output} 2> {log}
@@ -171,15 +173,15 @@ rule get_ensembl_proteins:
     conda:
         "../../envs/isoannotpy.yaml"   
     output:
-        gz=os.path.join("data", prefix, "config", "ensembl", os.path.basename(config["ensembl_proteins"])),
-        fa=os.path.join("data", prefix, "config", "ensembl", _remove_extension(config["ensembl_proteins"]))
+        gz=os.path.join(path_output, "data", prefix, "config", "ensembl", os.path.basename(config["ensembl_proteins"])),
+        fa=os.path.join(path_output, "data", prefix, "config", "ensembl", _remove_extension(config["ensembl_proteins"]))
     params:
         URL=config["ensembl_proteins"]
     log:
-        os.path.join("logs", prefix, "get_ensembl_proteins.log")
+        os.path.join(path_output, "logs", prefix, "get_ensembl_proteins.log")
     shell:
         """
-        (wget -nv -P data/{prefix}/config/ensembl/ {params.URL}
+        (wget -nv -P {path_output}/data/{prefix}/config/ensembl/ {params.URL}
         gunzip -c {output.gz} > {output.fa}.tmp
         sed s/\*//g {output.fa}.tmp > {output.fa}
         rm {output.fa}.tmp) 2> {log}
@@ -188,14 +190,14 @@ rule get_ensembl_proteins:
 
 rule get_ensembl_cdna:
     output:
-        os.path.join("data", prefix, "config", "ensembl", os.path.basename(config["ensembl_cdna"]))
+        os.path.join(path_output, "data", prefix, "config", "ensembl", os.path.basename(config["ensembl_cdna"]))
     params:
         URL=config["ensembl_cdna"]
     log:
-        os.path.join("logs", prefix, "get_ensembl_cdna.log")
+        os.path.join(path_output, "logs", prefix, "get_ensembl_cdna.log")
     shell:
         """
-        wget -nv -P data/{prefix}/config/ensembl/ {params.URL} &> {log}
+        wget -nv -P {path_output}/data/{prefix}/config/ensembl/ {params.URL} &> {log}
 	"""
 
 
@@ -205,9 +207,9 @@ rule prepare_ensembl_cdna:
     input:
         rules.get_ensembl_cdna.output
     output:
-        fa=os.path.join("data", prefix, "config", "ensembl", _remove_extension(config["ensembl_cdna"]))
+        fa=os.path.join(path_output, "data", prefix, "config", "ensembl", _remove_extension(config["ensembl_cdna"]))
     log:
-        os.path.join("logs", prefix, "prepare_ensembl_cdna.log")
+        os.path.join(path_output, "logs", prefix, "prepare_ensembl_cdna.log")
     shell:
         """
         gunzip -k {input} &> {log}
@@ -216,23 +218,23 @@ rule prepare_ensembl_cdna:
 
 rule get_ensembl_reference:
     output:
-        os.path.join("data", prefix, "config", "ensembl", os.path.basename(config["ensembl_reference"]))
+        os.path.join(path_output, "data", prefix, "config", "ensembl", os.path.basename(config["ensembl_reference"]))
     params:
         URL=config["ensembl_reference"]
     log:
-        os.path.join("logs", prefix, "get_ensembl_reference.log")
+        os.path.join(path_output, "logs", prefix, "get_ensembl_reference.log")
     shell:
         """
-        wget -nv -P data/{prefix}/config/ensembl/ {params.URL} &> {log}
+        wget -nv -P {path_output}/data/{prefix}/config/ensembl/ {params.URL} &> {log}
         """
 
 rule prepare_ensembl_reference:
     input:
         rules.get_ensembl_reference.output
     output:
-        os.path.join("data", prefix, "config", "ensembl", _remove_extension(config["ensembl_reference"]))
+        os.path.join(path_output, "data", prefix, "config", "ensembl", _remove_extension(config["ensembl_reference"]))
     log:
-        os.path.join("logs", prefix, "prepare_ensembl_reference.log")
+        os.path.join(path_output, "logs", prefix, "prepare_ensembl_reference.log")
     shell:
         """
         gunzip -k {input} &> {log}
@@ -240,14 +242,14 @@ rule prepare_ensembl_reference:
 
 rule get_ensembl_gtf:
     output:
-        os.path.join("data", prefix, "config", "ensembl", os.path.basename(config["ensembl_gtf"]))
+        os.path.join(path_output, "data", prefix, "config", "ensembl", os.path.basename(config["ensembl_gtf"]))
     params:
         URL=config["ensembl_gtf"]
     log:
-        os.path.join("logs", prefix, "get_ensembl_gtf.log")
+        os.path.join(path_output, "logs", prefix, "get_ensembl_gtf.log")
     shell:
         """
-        wget -nv -P data/{prefix}/config/ensembl/ {params.URL} &> {log}
+        wget -nv -P {path_output}/data/{prefix}/config/ensembl/ {params.URL} &> {log}
         """
 
 
@@ -257,9 +259,9 @@ rule prepare_ensembl_gtf:
     input:
         rules.get_ensembl_gtf.output
     output:
-        os.path.join("data", prefix, "config", "ensembl", _remove_extension(config["ensembl_gtf"]))
+        os.path.join(path_output, "data", prefix, "config", "ensembl", _remove_extension(config["ensembl_gtf"]))
     log:
-        os.path.join("logs", prefix, "prepare_ensembl_gtf.log")
+        os.path.join(path_output, "logs", prefix, "prepare_ensembl_gtf.log")
     shell:
         """
         gunzip -k {input} &> {log}
@@ -268,14 +270,14 @@ rule prepare_ensembl_gtf:
 
 rule get_pfam_clan:
     output:
-        os.path.join("data", "global", "pfam", os.path.basename(config["pfam_clan_url"]))
+        os.path.join(path_output, "data", "global", "pfam", os.path.basename(config["pfam_clan_url"]))
     params:
         URL=config["pfam_clan_url"]
     log:
-        os.path.join("logs", prefix, "get_pfam_clan.log")
+        os.path.join(path_output, "logs", prefix, "get_pfam_clan.log")
     shell:
         """
-        wget -nv -P data/global/pfam/ {params.URL} &> {log}
+        wget -nv -P {path_output}/data/global/pfam/ {params.URL} &> {log}
         """
 
 
@@ -285,9 +287,9 @@ rule prepare_pfam_clan:
     input:
         rules.get_pfam_clan.output
     output:
-        os.path.join("data", "global", "pfam", _remove_extension(config["pfam_clan_url"]))
+        os.path.join(path_output, "data", "global", "pfam", _remove_extension(config["pfam_clan_url"]))
     log:
-        os.path.join("logs", prefix, "prepare_pfam_clan.log")
+        os.path.join(path_output, "logs", prefix, "prepare_pfam_clan.log")
     shell:
         """
         gunzip -k {input} &> {log}
@@ -296,12 +298,12 @@ rule prepare_pfam_clan:
 
 rule get_uniprot_data: 
     output:
-        [os.path.join("data",prefix,"config","uniprot",os.path.basename(uniprot_url)) for uniprot_url in config["uniprot_dat"] + config["uniprot_fasta"]]
+        [os.path.join(path_output, "data",prefix,"config","uniprot",os.path.basename(uniprot_url)) for uniprot_url in config["uniprot_dat"] + config["uniprot_fasta"]]
     log:
-        [os.path.join("logs", prefix, "get_uniprot_data", f"{_remove_extension(uniprot_url)}.log") for uniprot_url in config["uniprot_dat"] + config["uniprot_fasta"]]
+        [os.path.join(path_output, "logs", prefix, "get_uniprot_data", f"{_remove_extension(uniprot_url)}.log") for uniprot_url in config["uniprot_dat"] + config["uniprot_fasta"]]
     run:
         for uniprot_url, log_file in zip(config["uniprot_dat"] + config["uniprot_fasta"], log):
-            shell(f"wget -nv -P data/{prefix}/config/uniprot/ {uniprot_url} &> {log_file}")
+            shell(f"wget -nv -P {path_output}/data/{prefix}/config/uniprot/ {uniprot_url} &> {log_file}")
 
 
 rule prepare_uniprot_data:
@@ -310,9 +312,9 @@ rule prepare_uniprot_data:
     input:
         [file for file in rules.get_uniprot_data.output if file.endswith(".dat.gz")]
     output:
-        os.path.join("data", prefix, "config", "uniprot", "uniprot_parsed.txt")
+        os.path.join(path_output, "data", prefix, "config", "uniprot", "uniprot_parsed.txt")
     log:
-        os.path.join("logs", prefix, "prepare_uniprot_data.log")
+        os.path.join(path_output, "logs", prefix, "prepare_uniprot_data.log")
     shell:
         """
         scripts/uniprot_parse.py --uniprot_files {input} --output {output} &> {log}
@@ -321,14 +323,14 @@ rule prepare_uniprot_data:
 
 rule get_reactome:
     output:
-        os.path.join("data", "global", os.path.basename(config["reactome"]))
+        os.path.join(path_output, "data", "global", os.path.basename(config["reactome"]))
     params:
         URL=config["reactome"]
     log:
-        os.path.join("logs", prefix, "get_reactome.log")
+        os.path.join(path_output, "logs", prefix, "get_reactome.log")
     shell:
         """
-        wget -nv --no-check-certificate -P data/global/ {params.URL} &> {log}
+        wget -nv --no-check-certificate -P {path_output}/data/global/ {params.URL} &> {log}
         """
 	
 
@@ -342,11 +344,11 @@ rule run_refsqanti:
         reference=rules.prepare_ensembl_reference.output,
         chr_ref=rules.get_refseq_acc.output  # we use this even in ensembl mode to filter only chromosome sequences (avoid MT)
     output:
-        classification=os.path.join("data", prefix, "config", "{db}", "sqanti_classification.txt"),
-        junctions=os.path.join("data", prefix, "config", "{db}", "sqanti_junctions.txt"),
-        NMD=os.path.join("data", prefix, "config", "{db}", "sqanti_NMD.txt")
+        classification=os.path.join(path_output, "data", prefix, "config", "{db}", "sqanti_classification.txt"),
+        junctions=os.path.join(path_output, "data", prefix, "config", "{db}", "sqanti_junctions.txt"),
+        NMD=os.path.join(path_output, "data", prefix, "config", "{db}", "sqanti_NMD.txt")
     log:
-        os.path.join("logs", prefix, "{db}", "run_refsqanti.log")
+        os.path.join(path_output, "logs", prefix, "{db}", "run_refsqanti.log")
     shell:
         """
         scripts/referenceSQANTI.py --gtf_file {input.gtf} --reference_file {input.reference} --chr_ref {input.chr_ref} --database {wildcards.db} --output_classification {output.classification} --output_junctions {output.junctions} --output_nmd {output.NMD} &> {log}
@@ -358,12 +360,12 @@ rule run_gmap_index:
     input:
         ref_genome=rules.prepare_ensembl_reference.output
     output:
-        directory(os.path.join("data", prefix, "config", "ensembl", "gmap_index"))
+        directory(os.path.join(path_output, "data", prefix, "config", "ensembl", "gmap_index"))
     params:
-        outdir=os.path.join("data",prefix,"config","ensembl"),
+        outdir=os.path.join(path_output, "data",prefix,"config","ensembl"),
         index_name="gmap_index"
     log:
-        os.path.join("logs", prefix, "run_gmap_index.log")
+        os.path.join(path_output, "logs", prefix, "run_gmap_index.log")
     shell:
         """
         gmap_build -D {params.outdir} -d {params.index_name} {input.ref_genome} &> {log}
@@ -376,7 +378,7 @@ rule install_sqanti:
     params:
         dir_sqanti=config["dir_sqanti"]
     log:
-        os.path.join("logs", prefix, "install_sqanti.log")
+        os.path.join(path_output, "logs", prefix, "install_sqanti.log")
     shell:
         """
         git clone https://github.com/ConesaLab/SQANTI3.git {params.dir_sqanti} &> {log}
@@ -392,16 +394,16 @@ rule run_sqanti:
         genome_fasta_index=rules.run_gmap_index.output,
         sqanti_installed=os.path.join(config["dir_sqanti"], "sqanti_installed.done")
     output:
-        corrected_cdna=os.path.join("data", prefix, "output", "{db}", "sqanti_corrected.fasta"),
-        fasta_proteins=os.path.join("data", prefix, "output", "{db}", "sqanti_corrected.faa"),
-        gtf=os.path.join("data", prefix, "output", "{db}", "sqanti_corrected.gtf"),
-        classification=os.path.join("data", prefix, "output", "{db}", "sqanti_classification.txt"),
-        junctions=os.path.join("data", prefix, "output", "{db}", "sqanti_junctions.txt"),
+        corrected_cdna=os.path.join(path_output, "data", prefix, "output", "{db}", "sqanti_corrected.fasta"),
+        fasta_proteins=os.path.join(path_output, "data", prefix, "output", "{db}", "sqanti_corrected.faa"),
+        gtf=os.path.join(path_output, "data", prefix, "output", "{db}", "sqanti_corrected.gtf"),
+        classification=os.path.join(path_output, "data", prefix, "output", "{db}", "sqanti_classification.txt"),
+        junctions=os.path.join(path_output, "data", prefix, "output", "{db}", "sqanti_junctions.txt"),
     params:
-        outdir=os.path.join("data",prefix,"output","{db}"),
+        outdir=os.path.join(path_output, "data",prefix,"output","{db}"),
         out_name="sqanti"
     log:
-        os.path.join("logs", prefix, "{db}", "run_sqanti.log")
+        os.path.join(path_output, "logs", prefix, "{db}", "run_sqanti.log")
     shell:
         """
         export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
@@ -412,9 +414,9 @@ rule clean_sqanti_proteins:
     input:
         rules.run_sqanti.output.fasta_proteins
     output:
-        os.path.join("data", prefix, "output", "{db}", "final_sqanti_corrected.faa")
+        os.path.join(path_output, "data", prefix, "output", "{db}", "final_sqanti_corrected.faa")
     log:
-        os.path.join("logs", prefix, "{db}", "clean_sqanti_proteins.log")
+        os.path.join(path_output, "logs", prefix, "{db}", "clean_sqanti_proteins.log")
     shell:
         """
         sed s/\*//g {input} > {output} 2> {log}
@@ -424,9 +426,9 @@ rule run_utrscan:
     input:
         select_fasta_cdna
     output:
-        os.path.join("data", prefix, "output", "{db}", "utrscan.txt")
+        os.path.join(path_output, "data", prefix, "output", "{db}", "utrscan.txt")
     log:
-        os.path.join("logs", prefix, "{db}", "run_utrscan.log")
+        os.path.join(path_output, "logs", prefix, "{db}", "run_utrscan.log")
     shell:
         """
         software/bin/UtrScan -SIGNALLIST -COMMAND=software/bin/UtrSite.Command -INPUT={input} -OUTPUT={output} &> {log}
@@ -438,12 +440,12 @@ rule run_repeatmasker:
     input:
         select_fasta_cdna
     output:
-        os.path.join("data", prefix, "output", "{db}", "repeat_masker", f"{os.path.basename(select_fasta_cdna(config))}.out")
+        os.path.join(path_output, "data", prefix, "output", "{db}", "repeat_masker", f"{os.path.basename(select_fasta_cdna(config))}.out")
     params:
         species_name=config["species_name"],
-        outdir=os.path.join("data", prefix, "output", "{db}", "repeat_masker/")
+        outdir=os.path.join(path_output, "data", prefix, "output", "{db}", "repeat_masker/")
     log:
-        os.path.join("logs", prefix, "{db}", "run_repeatmasker.log")
+        os.path.join(path_output, "logs", prefix, "{db}", "run_repeatmasker.log")
     shell:
         r"""
         LIBDIR="$CONDA_PREFIX/lib"
@@ -461,11 +463,11 @@ checkpoint run_interproscan:
     input:
         select_fasta_proteins
     output:
-        directory(os.path.join("data", prefix, "output", "{db}", "interproscan", "splitProteins"))  
+        directory(os.path.join(path_output, "data", prefix, "output", "{db}", "interproscan", "splitProteins"))  
     params:
         interproscan_path=config["interproscan_path"]
     log:
-        os.path.join("logs", prefix, "{db}", "run_interproscan.log")
+        os.path.join(path_output, "logs", prefix, "{db}", "run_interproscan.log")
     shell:
         """
         mkdir -p {output} && {params.interproscan_path} -i {input} -d {output} --disable-precalc  -appl Coils,Pfam,MobiDBLite,SignalP_EUK,TMHMM  -f XML -iprlookup &> {log}
@@ -483,9 +485,9 @@ rule parse_interproscan:
     input:
         gather_interproscan
     output:
-        os.path.join("data", prefix, "output", "{db}", "interproscan", "interproResultsPfam.tsv")
+        os.path.join(path_output, "data", prefix, "output", "{db}", "interproscan", "interproResultsPfam.tsv")
     log:
-        os.path.join("logs", prefix, "{db}", "parse_interproscan.log")
+        os.path.join(path_output, "logs", prefix, "{db}", "parse_interproscan.log")
     shell:
         """
         scripts/parseInterproscanXml.py --interproscan_files {input} --output {output} &> {log}
@@ -498,9 +500,9 @@ rule run_gtftogenepred:
     input:
         select_gtf
     output:
-        os.path.join("data", prefix, "config", "{db}", "genePrediction.txt")
+        os.path.join(path_output, "data", prefix, "config", "{db}", "genePrediction.txt")
     log:
-        os.path.join("logs", prefix, "{db}", "run_gtftogenepred.log")
+        os.path.join(path_output, "logs", prefix, "{db}", "run_gtftogenepred.log")
     shell:
         """
         gtfToGenePred {input} {output} -genePredExt -allErrors -ignoreGroupsWithoutExons &> {log}
@@ -527,12 +529,12 @@ rule get_genomic_coordinates:
         uniprot_parsed = rules.prepare_uniprot_data.output,
         chr_ref = rules.get_refseq_acc.output
     output:
-        protein=os.path.join("data", prefix, "config", "uniprot", "uniprot_gcord_proteinGenomic.txt"),
-        domain=os.path.join("data", prefix, "config", "uniprot", "uniprot_gcord_domainGenomic.txt"),
+        protein=os.path.join(path_output, "data", prefix, "config", "uniprot", "uniprot_gcord_proteinGenomic.txt"),
+        domain=os.path.join(path_output, "data", prefix, "config", "uniprot", "uniprot_gcord_domainGenomic.txt"),
     params:
         biomart_host = config.get("biomart_host", [])
     log:
-        os.path.join("logs", prefix, "get_genomic_coordinates.log")
+        os.path.join(path_output, "logs", prefix, "get_genomic_coordinates.log")
     shell:
         """
         scripts/uniprotPhosphosite_genomicCoordinates.py --uniprot_fasta {input.uniprot_fasta} --refseq_fasta {input.refseq_fasta} --ensembl_fasta {input.ensembl_fasta} --uniprot_parsed {input.uniprot_parsed} --phosphosite_files {input.phosphosite_files} --refseq_gtf {input.refseq_gtf} --ensembl_gtf {input.ensembl_gtf}  --output_protein {output.protein} --output_domain {output.domain} --chr_ref {input.chr_ref} --biomart_host {params.biomart_host} &> {log}
@@ -553,9 +555,9 @@ rule get_uniprot_phosphosite_annotation:
         keep_version = config["transcript_versioned"],
         biomart_host = config.get("biomart_host", [])        
     output:
-        os.path.join("data", prefix, "output", "{db}", "uniprot_Phosphosite_info.txt")
+        os.path.join(path_output, "data", prefix, "output", "{db}", "uniprot_Phosphosite_info.txt")
     log:
-        os.path.join("logs", prefix, "{db}", "get_uniprot_phosphosite_annotation.log")
+        os.path.join(path_output, "logs", prefix, "{db}", "get_uniprot_phosphosite_annotation.log")
     shell:           
         """
         scripts/uniprotPhosphosite_annotation.py --orf_fasta {input.fasta_orf} --classification_file {input.classification} --genepred_file {input.gene_prediction} --uniprotmotif_file {input.motif_info} --chr_ref {input.chr_ref} --protein_association {input.protein_assoc} --keep_version {params.keep_version} --db {wildcards.db} --biomart_host {params.biomart_host} --output {output} &> {log}
@@ -570,12 +572,12 @@ rule parse_protein_databases:
         refseq_fasta=rules.prepare_refseq_proteins.output,
         ensembl_fasta=rules.get_ensembl_proteins.output.fa,
     output:
-        os.path.join("data", prefix, "config", "parsed_databases.json")
+        os.path.join(path_output, "data", prefix, "config", "parsed_databases.json")
     params:
         ensembl_fasta_regex=_optional_param("ensembl_fasta_regex", "--ensembl_fasta_regex"),
         refseq_fasta_regex=_optional_param("refseq_fasta_regex", "--refseq_fasta_regex"),
     log:
-        os.path.join("logs", prefix, "parse_protein_databases.log")
+        os.path.join(path_output, "logs", prefix, "parse_protein_databases.log")
     shell:
         """
         scripts/parse_protein_databases.py --uniprot_fasta {input.uniprot_fasta} {params.ensembl_fasta_regex} {params.refseq_fasta_regex} --ensembl_fasta {input.ensembl_fasta} --refseq_fasta {input.refseq_fasta} --output {output} &> {log}
@@ -594,10 +596,10 @@ rule transcript_to_reference:
         fasta_proteins=rules.run_sqanti.output.fasta_proteins,
         species_db=rules.parse_protein_databases.output
     output:
-        protein_assoc=os.path.join("data", prefix, "output", "{db}", "protein_assoc_data.txt"),
-        nmd=os.path.join("data", prefix, "output", "{db}", "nmd_data.txt")
+        protein_assoc=os.path.join(path_output, "data", prefix, "output", "{db}", "protein_assoc_data.txt"),
+        nmd=os.path.join(path_output, "data", prefix, "output", "{db}", "nmd_data.txt")
     log:
-        os.path.join("logs", prefix, "{db}", "transcript_to_reference.log")
+        os.path.join(path_output, "logs", prefix, "{db}", "transcript_to_reference.log")
     shell:
         """
         scripts/transcript2reference.py --ensembl_gtf {input.ensembl_gtf} \
@@ -620,7 +622,7 @@ rule layer_go:
         biomart_dataset=config.get("biomart_dataset", []),
         db=config.get("db")
     log:
-        os.path.join("logs", prefix, "{db}", "layer_go.log")
+        os.path.join(path_output, "logs", prefix, "{db}", "layer_go.log")
     shell:
         """
         scripts/layer_go.py --classification_file {input.classification_file} --output {output} --biomart_host {params.biomart_host} --biomart_dataset {params.biomart_dataset} --db {params.db} &> {log}
@@ -640,7 +642,7 @@ rule layer_interproscan:
     params:
         keep_version=config["transcript_versioned"]
     log:
-        os.path.join("logs", prefix, "{db}", "layer_interproscan.log")
+        os.path.join(path_output, "logs", prefix, "{db}", "layer_interproscan.log")
     shell:
         """
         (echo {input.t}
@@ -658,7 +660,7 @@ rule layer_exons:
     output:
         _output_layer_db("layer_exons", external_rule=select_gtf)
     log:
-        os.path.join("logs", prefix, "{db}", "layer_exons.log")
+        os.path.join(path_output, "logs", prefix, "{db}", "layer_exons.log")
     shell:
         """
         scripts/layer_exons.py --gtf_file {input.gtf_file} --chr_ref {input.chr_ref} --output {output} &> {log}
@@ -674,7 +676,7 @@ rule layer_junctions:
     output:
         _output_layer_db("layer_junctions", external_rule=lambda x: select_sqanti_output(x).junctions)
     log:
-        os.path.join("logs", prefix, "{db}", "layer_junctions.log")
+        os.path.join(path_output, "logs", prefix, "{db}", "layer_junctions.log")
     shell:
         """
         scripts/layer_junctions.py --junctions_file {input.junctions_file} --classification_file {input.classification_file} --output {output} &> {log}
@@ -689,7 +691,7 @@ rule layer_nmd:
     output:
         _output_layer_db("layer_nmd", external_rule=select_nmd_file)
     log:
-        os.path.join("logs", prefix, "{db}", "layer_nmd.log")
+        os.path.join(path_output, "logs", prefix, "{db}", "layer_nmd.log")
     shell:
         """
         scripts/layer_nmd.py --nmd_file {input.nmd_file} --classification_file {input.classification_file} --output {output} &> {log}
@@ -710,7 +712,7 @@ rule layer_reactome:
     output:
         _output_layer_db("layer_reactome", external_rule=rules.get_reactome.output)
     log:
-        os.path.join("logs", prefix, "{db}", "layer_reactome.log")
+        os.path.join(path_output, "logs", prefix, "{db}", "layer_reactome.log")
     shell:
         """
         scripts/layer_reactome.py --reactome_file {input.reactome_file} --classification_file {input.classification_file} --biomart_host {params.biomart_host} --biomart_dataset {params.biomart_dataset} --species {params.species:q} --db {params.db} --output {output} &> {log}
@@ -728,7 +730,7 @@ rule layer_repeatmasker:
     params:
         keep_version=config["transcript_versioned"]
     log:
-        os.path.join("logs", prefix, "{db}", "layer_repeatmasker.log")
+        os.path.join(path_output, "logs", prefix, "{db}", "layer_repeatmasker.log")
     shell:
         """
         scripts/layer_repeatmasker.py --keep_version {params.keep_version} --repeatmasker_file {input.repeatmasker_file} --classification_file {input.classification_file} --output {output} &> {log}
@@ -741,7 +743,7 @@ rule layer_uniprot:
     output:
         _output_layer_db("layer_uniprot", external_rule=rules.get_uniprot_phosphosite_annotation.output)
     log:
-        os.path.join("logs", prefix, "{db}", "layer_uniprot.log")
+        os.path.join(path_output, "logs", prefix, "{db}", "layer_uniprot.log")
     shell:
         """
         cat {input.uniprot_file} | sort -k1 -k3 -k4 -k5 | uniq | sort -k1 > {output} 2> {log}
@@ -759,7 +761,7 @@ rule layer_utrscan:
     params:
         keep_version=config.get("transcript_versioned", False)
     log:
-        os.path.join("logs", prefix, "{db}", "layer_utrscan.log")
+        os.path.join(path_output, "logs", prefix, "{db}", "layer_utrscan.log")
     shell:
         """
         scripts/layer_utrscan.py --keep_version {params.keep_version} --utrscan_file {input.utrscan_file} --classification_file {input.classification_file} --output {output} &> {log}
@@ -790,9 +792,9 @@ rule tappas_annotation:
         gene_desc=[],
         protein_assoc=select_prot_assoc
     output:
-        os.path.join("data", prefix, f"{species_name}_tappas_{{db}}_annotation_file.gff3")
+        os.path.join(path_output, "data", prefix, f"{species_name}_tappas_{{db}}_annotation_file.gff3")
     log:
-        os.path.join("logs", prefix, "{db}", "tappas_annotation.log")
+        os.path.join(path_output, "logs", prefix, "{db}", "tappas_annotation.log")
     shell:
         """
         scripts/t2goAnnotationFile.py --classification_file {input.classification_file}  \
@@ -807,9 +809,9 @@ rule renameFeatures:
     input:
         rules.tappas_annotation.output
     output:
-        os.path.join("data", prefix, f"{species_name}_tappas_{{db}}_annotation_file.gff3_mod") 
+        os.path.join(path_output, "data", prefix, f"{species_name}_tappas_{{db}}_annotation_file.gff3_mod") 
     log:
-        os.path.join("logs", prefix, "{db}", "renameFeatures.log")
+        os.path.join(path_output, "logs", prefix, "{db}", "renameFeatures.log")
     shell:
         """
         scripts/renameFeatures.py {input} &> {log}
