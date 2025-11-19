@@ -114,7 +114,7 @@ InterProScan is used for protein domain and functional annotation.
    ./InterproScan_install.sh
    ```
 
-2. Activate SignalP and TMHMM by following the installation script instructions. When prompted, include the link you see in the website once you have completed the verification, not the one sent to you.
+2. Activate SignalP and TMHMM by following the installation script instructions. When prompted, include the `.tar` link you see in the website once you have completed the verification, not the one sent to you.
 
 **Configuration:**
 - Default location: `IsoAnnot/software/interproscan/`
@@ -173,6 +173,7 @@ cd IsoAnnot
 - `--species`: Species code in lowercase (first letter of genus + species, e.g., `hsapiens` for *Homo sapiens*)
 
 **Optional parameter:**
+- `--outputdir`: Output directory to store the results (working directory by default)
 - `--config`: Additional configuration options (required for `mytranscripts`)
 
 **Supported databases:**
@@ -188,10 +189,10 @@ To generate *Homo sapiens* reference annotation from Ensembl:
 
 ```bash
 cd IsoAnnot
-./isoannot.sh --database ensembl --species hsapiens
+./isoannot.sh --database ensembl --species hsapiens --ouputdir isoannot_results
 ```
 
-**Output location**: `IsoAnnot/data/Hsapiens/human_tappas_ensembl_annotation_file.gff3`
+**Output location**: `isoannot_results/data/Hsapiens/human_tappas_ensembl_annotation_file.gff3`
 
 ### Example: Using Custom Transcripts
 
@@ -199,7 +200,7 @@ To annotate your own transcripts (e.g., from PacBio sequencing):
 
 ```bash
 cd IsoAnnot
-./isoannot.sh --database mytranscripts --species stuberosum --config fasta_cdna=/path/to/my/fasta/potato.fasta
+./isoannot.sh --database mytranscripts --species stuberosum --ouputdir isoannot_results --config fasta_cdna=/path/to/my/fasta/potato.fasta
 ```
 
 This example annotates potato (*Solanum tuberosum*) transcripts from a custom FASTA file.
@@ -210,6 +211,7 @@ This example annotates potato (*Solanum tuberosum*) transcripts from a custom FA
 |-----------|-------------|----------|--------|
 | `--database` | Database source | Yes | `ensembl`, `refseq`, `mytranscripts` |
 | `--species` | Species identifier | Yes | Lowercase species code (e.g., `hsapiens`, `mmusculus`) |
+| `--outputdir`| Output directory | No | Path to directory (working directory by default) |
 | `--config` | Override config values | Conditional* | `key=value` pairs |
 | `--configfile` | Custom config file path | No | Path to YAML file |
 | `--snakefile` | Custom snakefile path | No | Path to Snakefile |
@@ -459,10 +461,10 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
 
 ### Output Structure
 
-IsoAnnot generates its output in a structured directory hierarchy within the `IsoAnnot/data/` folder:
+IsoAnnot generates its output in a structured directory hierarchy within the directory supplied by the user. In case none is given, it will use the running directory by default. The structure of `<output_dir>/data/` folder is as follows:
 
 ```
-IsoAnnot/data/
+<output_dir>/data/
 └── <Prefix>/                                    # e.g., Hsapiens/
     ├── <species_name>_tappas_<db>_annotation_file.gff3     # Main output
     ├── <species_name>_tappas_<db>_annotation_file.gff3_mod # Modified GFF3
