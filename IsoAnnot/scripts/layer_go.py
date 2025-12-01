@@ -38,7 +38,7 @@ def main():
         parser.add_argument('--biomart_host', nargs="?", const="http://www.ensembl.org")
         parser.add_argument('--biomart_dataset', nargs=None, required=True)
         parser.add_argument('--output', nargs=None, required=True)
-
+        parser.add_argument('--db', nargs=None, required=True)
         args = parser.parse_args()
 
         if "plants" in args.biomart_host:
@@ -52,7 +52,15 @@ def main():
         # Open the connection to Biomart server and send query
         dataset = Dataset(name=args.biomart_dataset, host=args.biomart_host, 
                           virtual_schema=biomart_schema)
-        go_table = dataset.query(attributes=["external_gene_name",
+        # Select the appropriate gene identifier column based on the database choice
+        if args.db == "mytranscripts":
+            attribute = "ensembl_gene_id"
+            gene_column = "Gene stable ID"
+        else:
+            attribute = "external_gene_name"
+            gene_column = "Gene name"
+      
+        go_table = dataset.query(attributes=[attribute,
                                                 "go_id",
                                                 "name_1006", #go name
                                                 "namespace_1003"]) #go category
@@ -65,7 +73,7 @@ def main():
             logging.info(f"Starting GO conversion to GTF {args.output}")
             output_file_tsv = csv.writer(output_file, delimiter="\t")
             for transcript, info in transcript_info.items():
-                select_gene = go_table.loc[go_table["Gene name"] == info["ref_gene_name"]]
+                select_gene = go_table.loc[go_table[gene_column] == info["ref_gene_name"]]
                 if select_gene.empty:
                     continue
                 select_gene_dict = select_gene.to_dict(orient="records")
@@ -87,3 +95,4 @@ def main():
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     main()
+

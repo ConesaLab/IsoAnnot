@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # -*- coding: utf8 -*-
 
 '''
@@ -48,7 +48,7 @@ class myTranscripts:
 			v = []
 
 			for exon in self.exons_coord:
-				v = v + range(exon[0],exon[1]+1)
+				v.extend(range(exon[0], exon[1] + 1))
 
 			if self.strand == "+":
 				v = sorted(v)
@@ -163,7 +163,7 @@ def ReverseComplement(seq):
 	RCseq = ""
 	for base in seq:
 		if base not in basecomplement:
-			print "Error: NOT a DNA sequence"
+			print("Error: NOT a DNA sequence")
 			return None
 			break
 		RCseq = basecomplement[base]+RCseq
@@ -413,7 +413,7 @@ def main():
 				else:
 					site = site.upper()
 					if any([base not in ["A","T","C","G","N"] for base in site]):
-						print "Error: NOT a DNA sequence"
+						print("Error: NOT a DNA sequence")
 						return None
 						break
 

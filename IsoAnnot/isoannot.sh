@@ -26,6 +26,11 @@ case $key in
     shift # past argument
     shift # past value
     ;;
+    --outputdir)
+    OUTPUTDIR="$2"
+    shift # past argument
+    shift # past value
+    ;;
     --config)
     CONFIG="$2"
     shift # past argument
@@ -58,6 +63,11 @@ then
     exit 1
 fi
 
+if [ -z "$OUTPUTDIR" ]
+then
+    OUTPUTDIR="$DIR"
+fi
+
 if [ -z "$SNAKEFILE" ]
 then
     SNAKEFILE="$DIR/config/${DATABASE}/${SPECIES}/Snakefile.smk"
@@ -77,4 +87,6 @@ fi
 # TODO ASK the user the directory where they want to store the final annotation. Connect with isoannot.sh script
 
 
-exec snakemake -pr --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE $CONFIG --directory $DIR --cores 8 all --rerun-incomplete --nolock #-n
+exec snakemake -p --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE path_output=$OUTPUTDIR $CONFIG --directory $DIR --cores 8 all --rerun-incomplete --nolock #-n
+#exec snakemake -p --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE $CONFIG --directory $DIR --cores 8 all  --rerun-incomplete --nolock --summary
+#exec snakemake -p --nolock --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE $CONFIG --directory $DIR --cores 8 all --rerun-incomplete --dag | dot -Tsvg > dag.svg
