@@ -2,36 +2,7 @@
 
 IsoAnnot is a new tool for generating functional and structural annotation at isoform level, capable of collecting and integrating information from different databases to categorize and describe each isoform, including functional and structural information for both transcript and protein.
 
-## Table of Contents
-
-- [Requirements](#requirements)
-  - [Computational Requirements](#computational-requirements)
-  - [Software Prerequisites](#software-prerequisites)
-- [Installation Prerequisites](#installation-prerequisites)
-  - [Installing Conda](#installing-conda)
-  - [Installing Snakemake](#installing-snakemake)
-  - [External Software](#external-software)
-- [Installation](#installation)
-- [How to Run IsoAnnot](#how-to-run-isoannot)
-  - [Basic Usage](#basic-usage)
-  - [Example: Ensembl Reference Annotation](#example-ensembl-reference-annotation)
-  - [Example: Using Custom Transcripts](#example-using-custom-transcripts)
-  - [Command-line Parameters](#command-line-parameters)
-- [Configuration Files](#configuration-files)
-  - [Where to Find Config Files](#where-to-find-config-files)
-  - [How to Modify Config Files](#how-to-modify-config-files)
-  - [Generic Configuration](#generic-configuration)
-- [Creating a New Config File](#creating-a-new-config-file)
-  - [Step-by-Step Guide](#step-by-step-guide)
-  - [Config File Template](#config-file-template)
-  - [Configuration Parameters Explained](#configuration-parameters-explained)
-- [Output](#output)
-  - [Output Structure](#output-structure)
-  - [Main Output Files](#main-output-files)
-  - [Understanding the GFF3 Annotation File](#understanding-the-gff3-annotation-file)
-- [Working with Snakemake](#working-with-snakemake)
-
----
+⚠️⚠️ IsoAnnot is currenlty under beta-testing. Please see the latest release and download IsoAnnot from there, following the ReadMe you will find.
 
 ## Requirements
 

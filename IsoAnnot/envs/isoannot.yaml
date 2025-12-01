@@ -102,7 +102,7 @@ dependencies:
   - libwebp=1.2.4=h522a892_0
   - libwebp-base=1.2.4=h166bdaf_0
   - libxcb=1.13=h7f98852_1004
-  - libxml2=2.10.3=hca2bb57_1
+  - libxml2
   - libzlib=1.2.13=h166bdaf_4
   - matplotlib-base=3.6.2=py39hf9fd14e_0
   - mizani=0.8.1=pyhd8ed1ab_0
