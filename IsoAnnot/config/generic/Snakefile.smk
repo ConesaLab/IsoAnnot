@@ -407,7 +407,7 @@ rule run_sqanti:
     shell:
         """
         export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
-        scripts/sqanti3/sqanti3_qc.py --fasta --isoforms {input.user_fasta} --refGTF {input.reference_gtf} --refFasta {input.genome_fasta} -d {params.outdir} -x {input.genome_fasta_index} -o {params.out_name} &> {log}
+        scripts/sqanti3/sqanti3_qc.py --fasta --isoforms {input.user_fasta} --refGTF {input.reference_gtf} --refFasta {input.genome_fasta} -d {params.outdir} -x {input.genome_fasta_index} -o {params.out_name} --force_id_ignore &> {log}
         """
 
 rule clean_sqanti_proteins:
