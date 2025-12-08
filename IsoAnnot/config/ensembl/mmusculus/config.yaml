@@ -28,3 +28,12 @@ uniprot_dat:
 
 reactome: https://reactome.org/download/current/Ensembl2Reactome_All_Levels.txt
 layer_go: si
+
+5UTR: http://mirwalk.umm.uni-heidelberg.de/download/mmu_miRWalk_5UTR.zip
+CDS: http://mirwalk.umm.uni-heidelberg.de/download/mmu_miRWalk_CDS.zip
+3UTR: http://mirwalk.umm.uni-heidelberg.de/download/mmu_miRWalk_3UTR.zip
+mirna_regions_to_use: ["3UTR", "5UTR", "CDS"]
+mirna_db_evidence_score_threshold: 0.95
+
+rna_fasta_mirwalk: https://ftp.ncbi.nlm.nih.gov/genomes/all/annotation_releases/10090/109/GCF_000001635.27_GRCm39/GCF_000001635.27_GRCm39_rna.fna.gz
+gtf_mirwalk: https://ftp.ncbi.nlm.nih.gov/genomes/all/annotation_releases/10090/109/GCF_000001635.27_GRCm39/GCF_000001635.27_GRCm39_genomic.gtf.gz
