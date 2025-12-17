@@ -4,11 +4,10 @@ from Bio.SeqIO.FastaIO import SimpleFastaParser
 from collections import defaultdict
 from IsoAnnot import read_chr_ref_acc
 
-# --- CONFIGURACIÓN DE LOGGING ---
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 def get_exon_from_gtf(gtf_file, chrom_ref={}):
-    logging.info(f"Leyendo GTF: {gtf_file}...")
+    logging.info(f"Reading GTF: {gtf_file}...")
     transcript_coord = defaultdict(list)
     ids_loaded = 0
     
@@ -39,21 +38,15 @@ def get_exon_from_gtf(gtf_file, chrom_ref={}):
             transcript_coord[t_id_raw].append(seq_record)
             ids_loaded += 1
 
-    # Ordenar
     for t_id in transcript_coord:
         transcript_coord[t_id].sort(key=lambda x: x["start"])
         
-    logging.info(f"GTF cargado. {len(transcript_coord)} transcritos únicos indexados.")
-    
-    # DEBUG: Imprimir 5 ejemplos de IDs del GTF
-    if transcript_coord:
-        examples = list(transcript_coord.keys())[:5]
-        logging.info(f"EJEMPLOS DE IDs EN GTF: {examples}")
-        
+    logging.info(f"GTF loaded. {len(transcript_coord)} unique transcripts indexed.")
+            
     return transcript_coord
 
 def get_fasta_seq(refseq_fasta):
-    logging.info(f"Leyendo FASTA: {refseq_fasta}...")
+    logging.info(f"Reading FASTA: {refseq_fasta}...")
     output_results = dict()
     capture_regex = re.compile(r">?([\w\.]+)") 
     with open(refseq_fasta) as handle:
@@ -62,16 +55,10 @@ def get_fasta_seq(refseq_fasta):
             if match:
                 id_name = match.group(1).split(".")[0]
                 output_results[id_name] = record[1]
-    
-    # DEBUG: Imprimir 5 ejemplos de IDs del FASTA
-    if output_results:
-        examples = list(output_results.keys())[:5]
-        logging.info(f"EJEMPLOS DE IDs EN FASTA: {examples}")
         
     return output_results
 
 def map_transcript_to_genomic_blocks(transcript_exons, t_start, t_end):
-    # (Misma lógica de bloques que el script anterior)
     transcript_exons.sort(key=lambda x: x['start'])
     strand = transcript_exons[0]['strand']
     
@@ -126,16 +113,14 @@ def main():
         coord_dict = get_exon_from_gtf(args.refseq_gtf, chrom_ref=refseqChrom)
         fasta_dict = get_fasta_seq(args.refseq_fasta)
 
-        logging.info("Iniciando mapeo...")
-        
-        # CONTADORES DE ERROR
-        debug_limit = 10 # Solo imprimir los primeros 10 errores
-        errors_printed = 0
+        logging.info("Starting mapping...")
         
         count_mapped = 0
         count_total = 0
         count_no_gtf = 0
         count_no_fasta = 0
+        count_seq_mismatch = 0
+        count_pos_mismatch = 0
 
         with open(args.mirna_output, "w", newline='') as f_out, open(args.mirwalk_file, "r") as f_in:
             writer = csv.writer(f_out, delimiter="\t")
@@ -151,38 +136,47 @@ def main():
                 
                 count_total += 1
                 
-                # --- LECTURA DE COLUMNAS (Ajustar índices si es necesario) ---
                 mirna = cols[0]
-                t_id_full = cols[1]
-                t_id = t_id_full.split(".")[0] # Limpiar versión
+                t_id = cols[1]
                 
-                bs_raw_col = cols[3] 
-                
-                # DEBUG 1: Comprobar si el ID está en el GTF
                 if t_id not in coord_dict:
                     count_no_gtf += 1
-                    if errors_printed < debug_limit:
-                        logging.warning(f"FALLO GTF: El transcript '{t_id}' (de miRWalk) NO está en el GTF cargado.")
-                        errors_printed += 1
-                    continue # Saltamos si no hay mapa
+                    continue
 
-                # DEBUG 2: Comprobar FASTA
+                duplex_field = cols[4]
+                if "#" in duplex_field:
+                    expected_sequence = duplex_field.split("#")[1]
+                else:
+                    continue
                 motif = "."
+                sequence_match = False
                 if t_id in fasta_dict:
                     try:
+                        bs_raw_col = cols[3]
                         bs_raw = bs_raw_col.split(",")
                         bs_start, bs_end = int(bs_raw[0]), int(bs_raw[1])
                         motif = fasta_dict[t_id][bs_start-1:bs_end]
-                    except:
-                        pass # Error parseando coordenadas
+                        if motif.upper()[1:] == expected_sequence.upper(): #[1:] needed because nucleotide at start position not included in miRWalk
+                            sequence_match = True
+                        else:
+                            pass
+                    except Exception as e:
+                        logging.warning(f"Error extracting sequence: {e}")
+                        pass
                 else:
                     count_no_fasta += 1
-                    # No es fatal, pero es bueno saberlo
+                    continue
+
+                if not sequence_match:
+                    count_seq_mismatch += 1
+                    continue
                 
-                # CÁLCULO
                 try:
-                    bs_raw = bs_raw_col.split(",")
-                    bs_start, bs_end = int(bs_raw[0]), int(bs_raw[1])
+                    total_transcript_len = sum([(exon["end"] - exon["start"] + 1) for exon in coord_dict[t_id]])
+
+                    if bs_end > total_transcript_len:
+                        count_pos_mismatch += 1
+                        continue
                     
                     g_blocks = map_transcript_to_genomic_blocks(coord_dict[t_id], bs_start, bs_end)
                     
@@ -203,17 +197,21 @@ def main():
                             length, motif, "miRWalk"
                         ])
                         count_mapped += 1
+                    else:
+                            logging.warning(f"[DEBUG-FAIL] {mirna} on {t_id}: Mapping returned empty blocks. "
+                                            f"Request: {bs_start}-{bs_end}. Check exon structure.")
                 except Exception as e:
-                    if errors_printed < debug_limit:
-                        logging.error(f"Error calculando {t_id}: {e}")
-                        errors_printed += 1
+                    logging.warning(f"Failed to map binding site for transcript {t_id}: {e}")
+                    continue   
 
             logging.info("-" * 30)
-            logging.info(f"RESUMEN FINAL:")
-            logging.info(f"Total líneas leídas: {count_total}")
-            logging.info(f"Sitios mapeados OK: {count_mapped}")
-            logging.info(f"Fallos por falta en GTF: {count_no_gtf}")
-            logging.info(f"Fallos por falta en FASTA: {count_no_fasta}")
+            logging.info(f"FINAL RESULT:")
+            logging.info(f"Number of binding sites read: {count_total}")
+            logging.info(f"Number of binding sites correctly mapped: {count_mapped}")
+            logging.info(f"Transcript ID not present in GTF: {count_no_gtf}")
+            logging.info(f"Transcript ID not present in FASTA: {count_no_fasta}")
+            logging.info(f"Sequence in miRWalk and FASTA reference don't match: {count_seq_mismatch}")
+            logging.info(f"Index out of range in GTF transcript reference: {count_pos_mismatch}")
 
     except Exception as ex:
         traceback.print_exc()
