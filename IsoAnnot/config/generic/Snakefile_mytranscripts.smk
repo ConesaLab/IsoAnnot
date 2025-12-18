@@ -15,7 +15,7 @@ def select_gtf(wildcards):
     return rules.run_sqanti.output.gtf
 
 def select_reference_gtf(wildcards):
-    return rules.prepare_ensembl_gtf.output
+    return rules.prepare_refseq_gtf.output
 
 def select_sqanti_classification(wildcards):
     return rules.run_sqanti.output.classification

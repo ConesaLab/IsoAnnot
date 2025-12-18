@@ -190,13 +190,12 @@ def get_uniprot_associations(uniprot_file, proteins_associations, valid_features
     return(output_dict)
 
 
-def get_cds_from_gtf(gtf_file, chrom_ref={}, biomart_host = ""):
+def get_cds_from_gtf(gtf_file, biomart_host = ""):
     '''
     Gets CDS coordinates from GTF files 
 
     Args:
         gtf_file (str): Ensembl or Refseq.
-        match_file (str): chromosome accession file needed for Refseq database.
 
     Returns:
         feature_cds (dict): 
@@ -215,12 +214,11 @@ def get_cds_from_gtf(gtf_file, chrom_ref={}, biomart_host = ""):
                         protein_id = line.split("protein_id")[1].split(";")[0].replace('"', '').strip()
                     except IndexError:
                         continue
-                    if "." in protein_id and not len(chrom_ref) == 0 and "plants" not in biomart_host:
+                    if "." in protein_id:
                         protein_version = protein_id.split(".")[1]
                         protein_id = protein_id.split(".")[0]
 
-                    chr = line.split("\t")[0]
-                    chr_name = chrom_ref.get(chr, chr)
+                    chr_name = line.split("\t")[0]
                     strand = line.split("\t")[6]
                     biopython_strand = strand_conversion.get(strand, strand)
                     start=int(line.split("\t")[3])
@@ -309,7 +307,6 @@ def main():
         parser = argparse.ArgumentParser(description="UniprotPhosphosite GenomicCoordinates")
         parser.add_argument("--uniprot_fasta", nargs="+", required=True)
         parser.add_argument("--refseq_fasta", nargs="+", required=False, default=[])
-        parser.add_argument("--ensembl_fasta", nargs=1, required=True)
         parser.add_argument("--output_protein", required=True)
         parser.add_argument("--output_domain", required=True)
         parser.add_argument("--phosphosite_files", nargs="+", required=True)
@@ -320,18 +317,12 @@ def main():
                                      "REGION", "SITE", "TRANSMEM", "ZN_FING"])
                            
         parser.add_argument("--refseq_gtf", required=False, default=None)
-        parser.add_argument("--ensembl_gtf", required=True)
         parser.add_argument("--chr_ref", required=False, default=None)
         parser.add_argument('--biomart_host', nargs="?", const="http://www.ensembl.org")
 
         args = parser.parse_args()
 
-        if "plants" not in args.biomart_host:
-            keep_version_ensembl = "FALSE"
-            keep_version_refseq = "FALSE"
-        else:
-            keep_version_ensembl = "TRUE" #In EnsemblPlants version differenciates different transcripts
-            keep_version_refseq = "FALSE"
+        keep_version_refseq = "FALSE"
 
         # Refseq chromosomes
         if args.chr_ref:
@@ -350,12 +341,7 @@ def main():
                                                 keep_version=keep_version_refseq)
         logging.info(f"Len of refseq proteins: {len(refseq_proteins)}")
 
-        ensembl_proteins = get_fasta_sequences(fasta_files=args.ensembl_fasta,
-                                                 matching_regex="(.*?)\\.?\\s",
-                                                 keep_version=keep_version_ensembl) 
-        logging.info(f"Len of ensembl proteins: {len(ensembl_proteins)}")
-
-        proteins_dict = {**uniprot_proteins, **refseq_proteins, **ensembl_proteins}
+        proteins_dict = {**uniprot_proteins, **refseq_proteins}
 
         # Get links to other databases.
         uniprot_associations = get_uniprot_associations(uniprot_file=args.uniprot_parsed,
@@ -368,17 +354,12 @@ def main():
 
         # Get CDS information from databases
         # TODO: make this handler more general
-        cds_ensembl = get_cds_from_gtf(args.ensembl_gtf, biomart_host=args.biomart_host)
 
-        cds_refseq={}
-        if args.refseq_gtf:
-            cds_refseq = get_cds_from_gtf(args.refseq_gtf,
-                                        chrom_ref=refseqChrom)  
+        cds_refseq = get_cds_from_gtf(args.refseq_gtf)  
     
-        logging.info(f"Len of ensembl CDS: {len(cds_ensembl)}")
         logging.info(f"Len of refseq CDS: {len(cds_refseq)}")
         
-        gtf_cds = {**cds_ensembl, **cds_refseq}
+        gtf_cds = {**cds_refseq}
 
         uniprot_cds = defaultdict(list)
 
@@ -575,3 +556,4 @@ def main():
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     main()
+

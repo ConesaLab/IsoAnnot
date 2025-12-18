@@ -12,8 +12,6 @@ def main():
     try: 
         parser = argparse.ArgumentParser(description="Parse Databases")
         parser.add_argument("--uniprot_fasta", nargs="+", required=True)
-        parser.add_argument("--ensembl_fasta", nargs="+", required=True)
-        parser.add_argument("--ensembl_fasta_regex", default="(\w*)\.?", required=False)
         parser.add_argument("--refseq_fasta", nargs="+", default=[], required=False)
         parser.add_argument("--refseq_fasta_regex", default="(.*?)\s", required=False)
         parser.add_argument("--output", required=True)
@@ -33,18 +31,11 @@ def main():
         refseq_sequences = get_fasta_sequences(fasta_files=args.refseq_fasta,
                                                 matching_regex=args.refseq_fasta_regex,
                                                 reversed=True)
-        print('RefSeq finished. \n Getting ENSEMBL sequences...')
-        ensembl_proteins = get_fasta_sequences(fasta_files=args.ensembl_fasta,
-                                                matching_regex=args.ensembl_fasta_regex,
-                                                reversed=True)
-
-        
-        print('ENSEMBL finished. \n Merging...')
+        print('RefSeq finished.\n Merging...')
         all_proteins = dict(merge_fasta_dicts({
                 "swissprot": uniprot_swissprot,
                 "trembl": uniprot_trembl,
-                "refseq": refseq_sequences,
-                "ensembl": ensembl_proteins
+                "refseq": refseq_sequences
             }))
 
         with open(args.output, "w") as f :
@@ -59,3 +50,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
