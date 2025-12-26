@@ -3,6 +3,7 @@ import argparse, sys, csv, logging, traceback
 from Bio.SeqIO.FastaIO import SimpleFastaParser
 from collections import defaultdict
 from IsoAnnot import read_chr_ref_acc
+from bx.intervals.intersection import IntervalTree
 
 def load_fasta_seqs(fasta_file):
     """
@@ -40,7 +41,8 @@ def load_genepred(file_path, chr_ref=None):
     """
     logging.info(f"Loading structure (GenePred): {file_path}")
     data = defaultdict(dict)
-    
+    exons_by_chr = defaultdict(lambda: IntervalTree())
+
     if chr_ref is None:
         chr_ref = {}
 
@@ -54,40 +56,35 @@ def load_genepred(file_path, chr_ref=None):
             strand = cols[2]
             starts = [int(x) for x in cols[8].strip(",").split(",")]
             ends = [int(x) for x in cols[9].strip(",").split(",")]
-            exons = []
-            for s, e in zip(starts, ends):
-                exons.append((s, e, strand))
-            data[clean_chrom][t_id] = exons
-    return data
+            exons = list(zip(starts, ends))
+            if strand == "+":
+                biographical_exons = exons
+            else:
+                biographical_exons = exons[::-1]
 
-def get_transcript_length_at_genomic_pos(genepred_exons, genomic_pos):
+            data[clean_chrom][t_id] = {'exons': biographical_exons, 'strand': strand}
+            for s, e in exons:
+                exons_by_chr[clean_chrom].insert(s, e, t_id)
+    return data, exons_by_chr
+
+
+def get_transcript_length_at_genomic_pos(ordered_exons, genomic_pos, strand):
     """
     Calculates transcriptomic coordinates (1-based).
     """
-    strand = genepred_exons[0][2]
     transcript_pos = 0
     
-    if strand == "+":
-        exons_ordered = sorted(genepred_exons, key=lambda x: x[0])
-    else:
-        exons_ordered = sorted(genepred_exons, key=lambda x: x[0], reverse=True)
-
-    for exon_start, exon_end, _ in exons_ordered:
+    for exon_start, exon_end in ordered_exons:
         exon_len = exon_end - exon_start
-        
-        if (strand == "+" and exon_start <= (genomic_pos - 1) < exon_end) or \
-           (strand == "-" and exon_start <= (genomic_pos - 1) < exon_end):
-            
+        if exon_start <= (genomic_pos - 1) < exon_end:
             if strand == "+":
                 offset = genomic_pos - exon_start
             else:
                 offset = exon_end - genomic_pos + 1
-            
             return transcript_pos + offset
             
         transcript_pos += exon_len
     return -1
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -104,14 +101,16 @@ def main():
         if args.chr_ref and args.db.lower() == "refseq":
             refseqChrom = read_chr_ref_acc(args.chr_ref)
             logging.info("Using Refseq chromosome accessions mapping.")
-            isoforms_by_chr = load_genepred(args.genepred, refseqChrom)
+            isoforms_by_chr, exons_by_chr = load_genepred(args.genepred, refseqChrom)
         else:
             logging.info("Using original chromosome accessions.")
-            isoforms_by_chr = load_genepred(args.genepred)
+            isoforms_by_chr, exons_by_chr = load_genepred(args.genepred)
         
         isoform_seqs_exact, isoform_seqs_no_ver = load_fasta_seqs(args.isoform_fasta)
         
         logging.info("Starting validation of sequence...")
+
+
 
         with open(args.mirwalk_genomic, "r") as f_in, open(args.output, "w") as f_out:
             reader = csv.DictReader(f_in, delimiter="\t")
@@ -119,6 +118,7 @@ def main():
             count_valid = 0
             count_mismatch = 0
             for row in reader:
+                overlaps = set()
                 miRNA = row["miRNA"]
                 chrom = row["Chrom"]
                 g_start = int(row["G_Start"])
@@ -127,23 +127,19 @@ def main():
                 source = row["Source"]
                 expected_sequence = row["Sequence"] 
                 
-                if chrom not in isoforms_by_chr: continue
+                if chrom not in isoforms_by_chr or chrom not in exons_by_chr: continue
                 
-                for iso_id, exons in isoforms_by_chr[chrom].items():
-                    gene_min = min(x[0] for x in exons)
-                    gene_max = max(x[1] for x in exons)
-                    if g_end < gene_min or g_start > gene_max:
-                        continue
-
-                    is_overlapping = False
-                    for ex_start, ex_end, ex_strand in exons:
-                        if max(g_start, ex_start) < min(g_end, ex_end):
-                            is_overlapping = True
-                            break
-                    
-                    if is_overlapping and ex_strand == strand:
-                        t_start = get_transcript_length_at_genomic_pos(exons, g_start)
-                        t_end = get_transcript_length_at_genomic_pos(exons, g_end)
+                if len(exons_by_chr[chrom].find(g_start, g_end)) == 0:
+                    continue
+                for interval in exons_by_chr[chrom].find(g_start, g_end):
+                    overlaps.add(interval)
+                for iso_id in overlaps:
+                    iso_data = isoforms_by_chr[chrom][iso_id]
+                    if iso_data['strand'] == strand:
+                        ex_strand = iso_data['strand']
+                        exons = iso_data['exons']
+                        t_start = get_transcript_length_at_genomic_pos(exons, g_start, ex_strand)
+                        t_end = get_transcript_length_at_genomic_pos(exons, g_end, ex_strand)
                         
                         if t_start != -1 and t_end != -1:
                             final_t_start = min(t_start, t_end)

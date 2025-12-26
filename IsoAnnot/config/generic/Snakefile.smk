@@ -890,9 +890,8 @@ rule layer_mirna_bs:
         os.path.join(path_output, "logs", prefix, "{db}", "layer_mirna_bs.log")
     shell:
         """
-        cat {input.mirna_bs_file} | sort -k1 -k3 -k4 -k5 | uniq | sort -k1 > {output} 2> {log}
+        sort -u -k1,1 -k4,4n -k5,5n {input.mirna_bs_file} > {output} 2> {log}
         """
-
 
 rule layer_uniprot:
     input:
@@ -903,7 +902,7 @@ rule layer_uniprot:
         os.path.join(path_output, "logs", prefix, "{db}", "layer_uniprot.log")
     shell:
         """
-        cat {input.uniprot_file} | sort -k1 -k3 -k4 -k5 | uniq | sort -k1 > {output} 2> {log}
+        sort -u -k1,1 -k3,3 -k4,4n -k5,5n {input.uniprot_file} > {output} 2> {log}
         """
 
 
