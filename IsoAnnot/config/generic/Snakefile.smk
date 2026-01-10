@@ -5,6 +5,8 @@ prefix = config["prefix"]
 db = config["db"]
 species_name = config["species_name"]
 path_output = config["path_output"]
+nls_models = ["Model1", "Model2", "Model3", "Model4", "Model5", "Model6"]
+nls_chunks = 10
 
 def _output_layer_db(layer_name, external_rule=[], wildcards=None):
 
@@ -297,6 +299,8 @@ rule prepare_pfam_clan:
 
 
 rule get_uniprot_data: 
+    resources:
+        n_downloads=1
     output:
         [os.path.join(path_output, "data",prefix,"config","uniprot",os.path.basename(uniprot_url)) for uniprot_url in config["uniprot_dat"] + config["uniprot_fasta"]]
     log:
@@ -609,6 +613,82 @@ rule transcript_to_reference:
         --database {wildcards.db} --species_db {input.species_db} &> {log}    
         """
 
+rule nls_filter:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input: 
+        select_fasta_proteins
+    output: 
+        os.path.join(path_output,"data",prefix,"output","{db}","nls","nls_filtered_proteins.fa")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "nls_filter.log")
+    shell: 
+        """
+        scripts/nls_filter.py --input {input} --output {output} &> {log}
+        """
+
+rule split_proteins:
+    input: 
+        rules.nls_filter.output
+    output: 
+        expand(os.path.join(path_output,"data",prefix,"output","{{db}}","nls", "chunks_temp", "chunk_{n}.fa"), n=range(nls_chunks))
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "split_proteins.log")
+    shell:
+        """
+        mkdir -p $(dirname {output[0]})
+        awk 'BEGIN {{RS=">"; FS="\\n"}} \
+             NR>1 {{ \
+                out_file = "{path_output}/data/{prefix}/output/{wildcards.db}/nls/chunks_temp/chunk_" (i++ % {nls_chunks}) ".fa"; \
+                print ">"$0 > out_file; \
+             }}' {input} 2> {log}
+        """
+
+rule run_nucimport:
+    input: 
+        os.path.join(path_output, "data", prefix, "output", "{db}", "nls", "chunks_temp", "chunk_{n}.fa")
+    output: 
+        os.path.join(path_output,"data",prefix,"output","{db}","nls","tmp", "output_{model}_chunk_{n}.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "run_nucimport", "run_nucimport_{model}_chunk_{n}.log")
+    params:
+        jar_dir = "software/NucImport",
+        jar_name = "NucImportMay2012.jar"
+    shell:
+        """
+        cd {params.jar_dir}
+        java -jar {params.jar_name} {input} {wildcards.model} Mouse ID=F > {output} 2> {log}
+        """
+
+rule merge_nls_chunks:
+    input: 
+        expand(os.path.join(path_output,"data",prefix,"output","{{db}}","nls","tmp", "output_{{model}}_chunk_{n}.txt"), n=range(nls_chunks))
+    output: 
+        os.path.join(path_output,"data",prefix,"output","{db}","nls","output_{model}.txt")
+    log:
+        os.path.join(path_output,"logs",prefix,"{db}","nls_chunks_merged", "output_{model}.log")
+    shell:
+        "cat {input} > {output} 2> {log}"
+
+rule parse_nls:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        expand(os.path.join(path_output,"data",prefix,"output","{{db}}","nls","output_{model}.txt"), model=nls_models)
+    output:
+        os.path.join(path_output,"data",prefix,"output","{db}","nls","nls_parsed.tsv")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "parse_nls.log")
+    params:
+        t_imp = config.get("nls_threshold_import", 0.7),
+        t_cnls = config.get("nls_threshold_cnls", 0.5)
+    shell:
+        """
+        scripts/parse_nls.py --inputs {input} \
+            --threshold_imp {params.t_imp} --threshold_cnls {params.t_cnls} \
+            --output {output} &> {log}
+        """
+
 # LAYERS
 rule layer_go:
     conda:
@@ -767,6 +847,23 @@ rule layer_utrscan:
         scripts/layer_utrscan.py --keep_version {params.keep_version} --utrscan_file {input.utrscan_file} --classification_file {input.classification_file} --output {output} &> {log}
         """
 
+rule layer_nls:
+    input:
+        consensus = rules.parse_nls.output,
+        classification=select_sqanti_classification
+    output: 
+       _output_layer_db("layer_nls", external_rule=rules.parse_nls.output)
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "layer_nls.log")
+    shell:
+        """
+        scripts/layer_nls.py \
+            --consensus_file {input.consensus} \
+            --classification_file {input.classification} \
+            --output {output}.tmp &> {log}
+        sort -V -k1,1 -k4,4n {output}.tmp > {output}
+        rm {output}.tmp
+        """
 
 # GET EVERYTHING TOGETHER
 rule tappas_annotation:
@@ -775,7 +872,7 @@ rule tappas_annotation:
     input:
         transcript_block = [
             rules.layer_utrscan.output,
-            rules.layer_repeatmasker.output,
+           rules.layer_repeatmasker.output,
             rules.layer_nmd.output
         ] + config.get("transcript_gtf", []),
         genomic_block = [
@@ -786,7 +883,8 @@ rule tappas_annotation:
             rules.layer_go.output if config["layer_go"] == "si" else [],
             rules.layer_reactome.output if config["reactome"] else [],
             rules.layer_interproscan.output,
-            rules.layer_uniprot.output
+            rules.layer_uniprot.output,
+            rules.layer_nls.output
         ] + config.get("protein_gtf", []),
         classification_file=select_sqanti_classification,
         gene_desc=[],
