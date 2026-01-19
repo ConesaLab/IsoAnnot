@@ -668,7 +668,9 @@ rule merge_nls_chunks:
     log:
         os.path.join(path_output,"logs",prefix,"{db}","nls_chunks_merged", "output_{model}.log")
     shell:
-        "cat {input} > {output} 2> {log}"
+        """
+        awk "NR == FNR || (FNR > 3 && !/^Protein/ && !/^\*/)" {input} > {output} 2> {log}
+        """
 
 rule parse_nls:
     conda:
@@ -897,7 +899,9 @@ rule tappas_annotation:
         """
         scripts/t2goAnnotationFile.py --classification_file {input.classification_file}  \
          --gene_desc_file {input.gene_desc} --input_transcripts {input.transcript_block} --input_genomic {input.genomic_block} \
-         --input_protein  {input.protein_block} --output {output} --gene_desc_file {input.gene_desc} --protein_association {input.protein_assoc} &> {log}
+         --input_protein  {input.protein_block} --output {output}.tmp --gene_desc_file {input.gene_desc} --protein_association {input.protein_assoc} &> {log}
+        sort -V -k1,1 -k4,4n {output}.tmp > {output}
+        rm {output}.tmp
         """
 
 
