@@ -555,7 +555,7 @@ rule filter_interactions:
         mirwalk=rules.prepare_mirwalk.output
     params:
         species_name=config["species"],
-        mirbase="data/global/miRNA/miRNA_high_conf.dat",
+        mirbase="data/global/miRNA/miRNA.dat",
         score=config.get("mirna_db_evidence_score_threshold")
     output:
         os.path.join(path_output, "data", prefix, "config", "mirna", "filter_interactions.txt")
