@@ -6,6 +6,7 @@ db = config["db"]
 species_name = config["species_name"]
 path_output = config["path_output"]
 
+
 def _output_layer_db(layer_name, external_rule=[], wildcards=None):
 
     if callable(external_rule):
@@ -332,7 +333,100 @@ rule get_reactome:
         """
         wget -nv --no-check-certificate -P {path_output}/data/global/ {params.URL} &> {log}
         """
+
+rule get_mirwalk:
+    output:
+        os.path.join(path_output, "data", prefix, "config", "mirna", "{region}.zip")
+    log:
+        os.path.join(path_output, "logs", prefix, "get_mirwalk_{region}.log")
+    run:
+        target_url = config["mirwalk_urls"].get(wildcards.region)
+
+        if not target_url:
+            error_msg = (
+                f"FATAL ERROR: You are attempting to analyze region '{wildcards.region}', "
+                f"but a valid URL is not defined in config['mirwalk_urls']."
+            )
+            raise ValueError(error_msg)
+
+        shell("wget -O {output} {target_url} &> {log}")
+
+
+rule prepare_mirwalk:
+    input:
+        files = expand(
+            os.path.join(path_output, "data", prefix, "config", "mirna", "{region}.zip"),
+            region=config.get("mirna_regions_to_use", [])
+        )
+    output:
+        merged = os.path.join(path_output, "data", prefix, "config", "mirna", "mirwalk_merged.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "prepare_mirwalk.log")
+    shell:
+        """
+        > {output.merged}
+        if [ -z "{input.files}" ]; then
+            echo "WARNING: No regions defined. Output empty." > {log}
+        else
+            for file in {input.files}; do
+                echo "Procesando $file..." >> {log}
+                unzip -p "$file" >> {output.merged} 2>> {log}
+            done
+        fi
+        """
 	
+
+rule get_rna_fasta_mirwalk:
+    output:
+        os.path.join(path_output, "data", prefix, "config", "mirna", os.path.basename(config["rna_fasta_mirwalk"]))
+    params:
+        URL=config["rna_fasta_mirwalk"]
+    log:
+        os.path.join(path_output, "logs", prefix, "get_rna_fasta_mirwalk.log")
+    shell:
+        """
+        wget -nv -O {output} {params.URL} &> {log}
+        """
+
+rule prepare_rna_fasta_mirwalk:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        rules.get_rna_fasta_mirwalk.output
+    output:
+         os.path.join(path_output, "data", prefix, "config", "mirna", _remove_extension(config["rna_fasta_mirwalk"]))
+    log:
+         os.path.join(path_output, "logs", prefix, "prepare_rna_fasta_mirwalk.log")
+    shell:
+        """
+        gunzip -k {input} &> {log}
+        """
+
+rule get_gtf_mirwalk:
+    output:
+        os.path.join(path_output, "data", prefix, "config", "mirna", os.path.basename(config["gtf_mirwalk"]))
+    params:
+        URL=config["gtf_mirwalk"]
+    log:
+        os.path.join(path_output, "logs", prefix, "get_gtf_mirwalk.log")
+    shell:
+        """
+        wget -nv -O {output} {params.URL} &> {log}
+        """
+
+rule prepare_gtf_mirwalk:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        rules.get_gtf_mirwalk.output
+    output:
+        os.path.join(path_output, "data", prefix, "config", "mirna", _remove_extension(config["gtf_mirwalk"]))
+    log:
+        os.path.join(path_output, "logs", prefix, "prepare_gtf_mirwalk.log")
+    shell:
+        """
+        gunzip -k {input} &> {log}
+        """
 
 # RUN
 
@@ -456,7 +550,40 @@ rule run_repeatmasker:
         RepeatMasker {input} -species {params.species_name} -dir {params.outdir} &> {log}
         """
 
+rule filter_interactions:
+    input:
+        mirwalk=rules.prepare_mirwalk.output
+    params:
+        species_name=config["species"],
+        mirbase="data/global/miRNA/miRNA.dat",
+        score=config.get("mirna_db_evidence_score_threshold")
+    output:
+        os.path.join(path_output, "data", prefix, "config", "mirna", "filter_interactions.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "filter_interactions.log")
+    shell:
+        """
+        scripts/filter_mirna_bs.py --mirbase_file {params.mirbase} --mirwalk_file {input.mirwalk} --species {params.species_name:q} --score {params.score} --mirwalk_output {output} &> {log}
+        """
  
+rule run_mirwalk2gen:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        mirwalk=rules.filter_interactions.output,
+        fasta=rules.prepare_rna_fasta_mirwalk.output,
+        gtf=rules.prepare_gtf_mirwalk.output,
+        chr_ref=rules.get_refseq_acc.output
+    output:
+        os.path.join(path_output, "data", prefix, "output", "{db}", "interactions_gc.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "run_mirwalk2gen.log")
+    shell:
+        """
+        scripts/mirna_bs_genomic_coord.py --mirwalk_file {input.mirwalk} --refseq_fasta {input.fasta} --refseq_gtf {input.gtf} --mirna_output {output} --chr_ref {input.chr_ref} &> {log}
+        """
+
+
 checkpoint run_interproscan:
     conda:
         "../../envs/interpro_java.yaml"
@@ -508,6 +635,24 @@ rule run_gtftogenepred:
         gtfToGenePred {input} {output} -genePredExt -allErrors -ignoreGroupsWithoutExons &> {log}
         """
 
+rule get_mirna_bs_annotation:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        fasta=select_fasta_cdna,
+        gene_prediction=rules.run_gtftogenepred.output,
+        mirna_bs=rules.run_mirwalk2gen.output,
+        chr_ref=rules.get_refseq_acc.output
+    params:
+        db=config.get("db")
+    output:
+        os.path.join(path_output, "data", prefix, "output", "{db}", "mirna_bs_annotation.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "get_mirna_bs_annotation.log")
+    shell:
+        """
+        scripts/get_mirna_bs_annotation.py --chr_ref {input.chr_ref} --genepred {input.gene_prediction} --isoform_fasta {input.fasta} --mirwalk_genomic {input.mirna_bs} --output {output} --db {params.db} &> {log}
+        """
 
 rule get_genomic_coordinates:
     conda:
@@ -736,6 +881,17 @@ rule layer_repeatmasker:
         scripts/layer_repeatmasker.py --keep_version {params.keep_version} --repeatmasker_file {input.repeatmasker_file} --classification_file {input.classification_file} --output {output} &> {log}
         """
 
+rule layer_mirna_bs:
+    input:
+        mirna_bs_file=rules.get_mirna_bs_annotation.output
+    output:
+        _output_layer_db("layer_mirna_bs", external_rule=rules.get_mirna_bs_annotation.output)
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "layer_mirna_bs.log")
+    shell:
+        """
+        sort -u -V -k1,1 -k4,4n -k5,5n {input.mirna_bs_file} > {output} 2> {log}
+        """
 
 rule layer_uniprot:
     input:
@@ -746,7 +902,7 @@ rule layer_uniprot:
         os.path.join(path_output, "logs", prefix, "{db}", "layer_uniprot.log")
     shell:
         """
-        cat {input.uniprot_file} | sort -k1 -k3 -k4 -k5 | uniq | sort -k1 > {output} 2> {log}
+        sort -u -V -k1,1 -k3,3 -k4,4n -k5,5n {input.uniprot_file} > {output} 2> {log}
         """
 
 
@@ -776,7 +932,8 @@ rule tappas_annotation:
         transcript_block = [
             rules.layer_utrscan.output,
             rules.layer_repeatmasker.output,
-            rules.layer_nmd.output
+            rules.layer_nmd.output,
+            rules.layer_mirna_bs.output if config.get("mirna_regions_to_use") else []
         ] + config.get("transcript_gtf", []),
         genomic_block = [
             rules.layer_exons.output,
