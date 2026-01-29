@@ -29,9 +29,12 @@ uniprot_dat:
 reactome: https://reactome.org/download/current/Ensembl2Reactome_All_Levels.txt
 layer_go: si
 
+nls_model: Model4
+nls_threshold_import: 0.7
+nls_threshold_cnls: 0.3
 mirwalk_urls:
   5UTR: http://mirwalk.umm.uni-heidelberg.de/download/mmu_miRWalk_5UTR.zip
-  CDS: http://mirwalk.umm.uni-heidelberg.de/download/mmu_miRWalk_CDS.zip
+  CDS:  http://mirwalk.umm.uni-heidelberg.de/download/mmu_miRWalk_CDS.zip
   3UTR: http://mirwalk.umm.uni-heidelberg.de/download/mmu_miRWalk_3UTR.zip
 mirna_regions_to_use: ["3UTR", "5UTR", "CDS"]
 mirna_db_evidence_score_threshold: 0.95

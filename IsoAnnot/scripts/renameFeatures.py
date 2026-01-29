@@ -179,8 +179,8 @@ def updateGTF(filepath):
                                 print(line)
                                 break
 
-                        elif fields[1] in ("cNLS_mapper", "NLS_mapper"): 
-                            if fields[2] == 'MOTIF': 
+                        elif fields[1] in ("NucImport"): 
+                            if fields[2] == 'NLS': 
                                 addPosType(res, line, "P")
                             else:
                                 print(line)

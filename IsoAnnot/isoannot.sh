@@ -87,6 +87,6 @@ fi
 # TODO ASK the user the directory where they want to store the final annotation. Connect with isoannot.sh script
 
 
-exec snakemake -p --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE path_output=$OUTPUTDIR $CONFIG --directory $DIR --cores 8 all --rerun-incomplete --nolock #-n
+exec snakemake -p --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE path_output=$OUTPUTDIR $CONFIG --directory $DIR --cores ${SLURM_CPUS_PER_TASK:-8} all --rerun-incomplete --nolock --resources n_downloads=1 #-n
 #exec snakemake -p --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE $CONFIG --directory $DIR --cores 8 all  --rerun-incomplete --nolock --summary
 #exec snakemake -p --nolock --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE $CONFIG --directory $DIR --cores 8 all --rerun-incomplete --dag | dot -Tsvg > dag.svg
