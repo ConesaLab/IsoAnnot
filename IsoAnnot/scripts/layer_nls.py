@@ -23,10 +23,10 @@ def get_structural_classification_prot(classification_filename):
 
 def main():
     """
-    Maps consensus NLS predictions back to transcript/isoform IDs.
+    Maps NLS predictions back to transcript/isoform IDs.
     """
     parser = argparse.ArgumentParser(description='IsoAnnot NLS Structural Layer')
-    parser.add_argument('--consensus_file', required=True, help="Output from parse_nls.py")
+    parser.add_argument('--nls_file', required=True, help="Output from parse_nls.py")
     parser.add_argument('--classification_file', required=True, help="sqanti_classification.txt")
     parser.add_argument('--output', required=True, help="Output GTF file")
     args = parser.parse_args()
@@ -34,7 +34,7 @@ def main():
     # Load ID mapping from SQANTI
     transcript_info = get_structural_classification_prot(args.classification_file)
 
-    with open(args.consensus_file, "r") as f_in, open(args.output, "w") as f_out:
+    with open(args.nls_file, "r") as f_in, open(args.output, "w") as f_out:
         logging.info(f"Starting NLS conversion to GTF {args.output}")
         reader = csv.DictReader(f_in, delimiter="\t")
         writer = csv.writer(f_out, delimiter="\t")

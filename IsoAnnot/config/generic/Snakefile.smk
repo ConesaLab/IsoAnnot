@@ -5,7 +5,7 @@ prefix = config["prefix"]
 db = config["db"]
 species_name = config["species_name"]
 path_output = config["path_output"]
-nls_models = ["Model1", "Model2", "Model3", "Model4", "Model5", "Model6"]
+nls_model = config["nls_model"]
 nls_chunks = 10
 
 def _output_layer_db(layer_name, external_rule=[], wildcards=None):
@@ -648,25 +648,25 @@ rule run_nucimport:
     input: 
         os.path.join(path_output, "data", prefix, "output", "{db}", "nls", "chunks_temp", "chunk_{n}.fa")
     output: 
-        os.path.join(path_output,"data",prefix,"output","{db}","nls","tmp", "output_{model}_chunk_{n}.txt")
+        os.path.join(path_output,"data",prefix,"output","{db}","nls","tmp", "output_chunk_{n}.txt")
     log:
-        os.path.join(path_output, "logs", prefix, "{db}", "run_nucimport", "run_nucimport_{model}_chunk_{n}.log")
+        os.path.join(path_output, "logs", prefix, "{db}", "run_nucimport", "run_nucimport_chunk_{n}.log")
     params:
         jar_dir = "software/NucImport",
         jar_name = "NucImportMay2012.jar"
     shell:
         """
         cd {params.jar_dir}
-        java -jar {params.jar_name} {input} {wildcards.model} Mouse ID=F > {output} 2> {log}
+        java -jar {params.jar_name} {input} {nls_model} Mouse ID=F > {output} 2> {log}
         """
 
 rule merge_nls_chunks:
     input: 
-        expand(os.path.join(path_output,"data",prefix,"output","{{db}}","nls","tmp", "output_{{model}}_chunk_{n}.txt"), n=range(nls_chunks))
+        expand(os.path.join(path_output,"data",prefix,"output","{{db}}","nls","tmp", "output_chunk_{n}.txt"), n=range(nls_chunks))
     output: 
-        os.path.join(path_output,"data",prefix,"output","{db}","nls","output_{model}.txt")
+        os.path.join(path_output,"data",prefix,"output","{db}","nls","output_merged.txt")
     log:
-        os.path.join(path_output,"logs",prefix,"{db}","nls_chunks_merged", "output_{model}.log")
+        os.path.join(path_output,"logs",prefix,"{db}","nls_chunks_merged.log")
     shell:
         """
         awk "NR == FNR || (FNR > 3 && !/^Protein/ && !/^\*/)" {input} > {output} 2> {log}
@@ -676,17 +676,17 @@ rule parse_nls:
     conda:
         "../../envs/isoannotpy.yaml"
     input:
-        expand(os.path.join(path_output,"data",prefix,"output","{{db}}","nls","output_{model}.txt"), model=nls_models)
+        rules.merge_nls_chunks.output
     output:
         os.path.join(path_output,"data",prefix,"output","{db}","nls","nls_parsed.tsv")
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "parse_nls.log")
     params:
         t_imp = config.get("nls_threshold_import", 0.7),
-        t_cnls = config.get("nls_threshold_cnls", 0.5)
+        t_cnls = config.get("nls_threshold_cnls", 0.3)
     shell:
         """
-        scripts/parse_nls.py --inputs {input} \
+        scripts/parse_nls.py --input {input} \
             --threshold_imp {params.t_imp} --threshold_cnls {params.t_cnls} \
             --output {output} &> {log}
         """
@@ -851,7 +851,7 @@ rule layer_utrscan:
 
 rule layer_nls:
     input:
-        consensus = rules.parse_nls.output,
+        nls = rules.parse_nls.output,
         classification=select_sqanti_classification
     output: 
        _output_layer_db("layer_nls", external_rule=rules.parse_nls.output)
@@ -860,7 +860,7 @@ rule layer_nls:
     shell:
         """
         scripts/layer_nls.py \
-            --consensus_file {input.consensus} \
+            --nls_file {input.nls} \
             --classification_file {input.classification} \
             --output {output}.tmp &> {log}
         sort -V -k1,1 -k4,4n {output}.tmp > {output}

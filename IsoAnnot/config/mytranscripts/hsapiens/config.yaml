@@ -30,5 +30,6 @@ uniprot_dat:
 reactome: https://reactome.org/download/current/Ensembl2Reactome_All_Levels.txt
 layer_go: si
 
+nls_model: Model4
 nls_threshold_import: 0.7
-nls_threshold_cnls: 0.5
+nls_threshold_cnls: 0.3
