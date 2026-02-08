@@ -25,3 +25,5 @@ IsoAnnot/temp/
 # Ignorar configuraciones de carpetas de Windows
 IsoAnnot/scripts/desktop.ini
 
+#Ignorar archivos config.yaml
+IsoAnnot/config/mytranscripts/
