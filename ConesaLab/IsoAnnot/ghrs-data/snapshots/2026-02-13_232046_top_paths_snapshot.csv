@@ -1,0 +1,11 @@
+url_path,views_total,views_unique
+/ConesaLab/IsoAnnot,32,12
+/ConesaLab/IsoAnnot/releases/tag/v0.9.0b1,5,5
+/ConesaLab/IsoAnnot/blob/main/README.md,4,1
+/ConesaLab/IsoAnnot/issues,3,1
+/ConesaLab/IsoAnnot/releases,2,2
+/ConesaLab/IsoAnnot/blob/dev/README.md,2,1
+/ConesaLab/IsoAnnot/blob/dev/IsoAnnot/config/generic/Snakefile.smk,1,1
+/ConesaLab/IsoAnnot/blob/dev/IsoAnnot/config/mytranscripts/hsapiens/Snakefile.smk,1,1
+/ConesaLab/IsoAnnot/blob/dev/IsoAnnot/config/mytranscripts/hsapiens/config.yaml,1,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/InterproScan_install.sh,1,1
