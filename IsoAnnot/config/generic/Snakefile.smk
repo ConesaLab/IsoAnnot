@@ -453,7 +453,7 @@ rule run_utrscan:
         software/bin/UtrScan -SIGNALLIST -COMMAND=software/bin/UtrSite.Command -INPUT={input} -OUTPUT={output} &> {log}
         """
 
-rule run_repeatmasker: 
+rule run_repeatmasker:
     conda:
         "../../envs/repeats.yaml"
     input:
@@ -462,17 +462,62 @@ rule run_repeatmasker:
         os.path.join(path_output, "data", prefix, "output", "{db}", "repeat_masker", f"{os.path.basename(select_fasta_cdna(config))}.out")
     params:
         species_name=config["species_name"],
-        outdir=os.path.join(path_output, "data", prefix, "output", "{db}", "repeat_masker/")
+        outdir=os.path.join(path_output, "data", prefix, "output", "{db}", "repeat_masker/"),
+        local_scratch = "/scr_local/rlopez/" + prefix + "_{db}_rm"
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "run_repeatmasker.log")
     shell:
         r"""
+        # 1. Prepare libreries
         LIBDIR="$CONDA_PREFIX/lib"
         if [ ! -e "$LIBDIR/libnsl.so.1" ]; then
-            ln -sf "$LIBDIR/libnsl.so.3" "$LIBDIR/libnsl.so.1"  #se crea un enlace simbólico, no hay ninguna versión que instale la dependencia requerida
+            ln -sf "$LIBDIR/libnsl.so.3" "$LIBDIR/libnsl.so.1"  #A symbolic link is created; there is no version that installs the required dependency
         fi
         export LD_LIBRARY_PATH="$LIBDIR:$LD_LIBRARY_PATH"
-        RepeatMasker {input} -species "Trichechus" -dir {params.outdir} &> {log}
+        mkdir -p {params.outdir}
+
+        rm -rf {params.local_scratch}
+        mkdir -p {params.local_scratch}
+        cd {params.local_scratch}
+
+        # 2. Create a mapping file and a FASTA with short IDs (MD5 Hashes)
+        # We only apply hashing if the ID length is > 50 characters to avoid RepeatMasker errors
+        tmp_fasta="tmp_hashed.fasta"
+        mapping_file="id_mapping.tsv"
+
+        python3 -c "
+import sys, hashlib
+with open('{input}', 'r') as f, open('$tmp_fasta', 'w') as out, open('$mapping_file', 'w') as m:
+    for line in f:
+        if line.startswith('>'):
+            original_id = line[1:].strip().split()[0]
+            if len(original_id) > 50:
+                new_id = hashlib.md5(original_id.encode()).hexdigest()
+                m.write(f'{{new_id}}\\t{{original_id}}\\n')
+                out.write(f'>{{new_id}}\\n')
+            else:
+                out.write(line)
+        else:
+            out.write(line)
+"
+
+        # 3. Run RepeatMasker
+        RepeatMasker $tmp_fasta -species "teleostei" -dir . &> {log}
+
+        # 4. Restore original IDs in the .out file
+        # Use a small Python script to replace the temporary hashes with the original long names
+        python3 -c "
+mapping = dict(line.strip().split('\\t') for line in open('$mapping_file'))
+with open('$tmp_fasta.out', 'r') as f_in, open('final_corrected.out', 'w') as f_out:
+    for line in f_in:
+        for short_id, long_id in mapping.items():
+            line = line.replace(short_id, long_id)
+        f_out.write(line)
+"
+        # 5. Cleanup
+        mv final_corrected.out {output}
+        cd -
+        rm -rf {params.local_scratch}
         """
 
  
@@ -533,7 +578,7 @@ rule get_genomic_coordinates:
         "../../envs/isoannotpy.yaml"
     input:
         uniprot_fasta = [file for file in rules.get_uniprot_data.output if file.endswith(".fasta.gz")],
-        refseq_fasta = rules.prepare_refseq_proteins.output if config["refseq_protein_fasta"] else [],
+        refseq_fasta = rules.prepare_refseq_proteins.output if config["refseq_proteins"] else [],
         ensembl_fasta = rules.get_ensembl_proteins.output.fa if config.get("ensembl_proteins") else [],
         phosphosite_files = [
             "data/global/PSP_data/Acetylation_site_dataset",

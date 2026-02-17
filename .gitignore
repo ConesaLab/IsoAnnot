@@ -21,3 +21,6 @@ IsoAnnot/scripts/sqanti3/
 
 #Ignorar archivos temporales
 IsoAnnot/temp/
+
+#Ignorar archivos config.yaml
+IsoAnnot/config/mytranscripts/
