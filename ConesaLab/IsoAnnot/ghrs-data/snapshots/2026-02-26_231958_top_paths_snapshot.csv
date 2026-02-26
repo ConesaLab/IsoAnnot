@@ -1,0 +1,11 @@
+url_path,views_total,views_unique
+/ConesaLab/IsoAnnot,20,14
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/config/generic/Snakefile_mytranscripts.smk,8,2
+/ConesaLab/IsoAnnot/releases/tag/v0.9.0b1,3,2
+/ConesaLab/IsoAnnot/tree/main,3,2
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot,3,2
+/ConesaLab/IsoAnnot/blob/main/.github/workflows/github-repo-stats.yml,2,2
+/ConesaLab/IsoAnnot/tree/main/.github/workflows,2,2
+/ConesaLab/IsoAnnot/branches,2,1
+/ConesaLab/IsoAnnot/blob/dev/IsoAnnot/config/generic/Snakefile_mytranscripts.smk,1,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/InterproScan_install.sh,1,1
