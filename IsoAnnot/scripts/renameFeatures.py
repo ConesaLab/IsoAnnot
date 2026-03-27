@@ -179,15 +179,15 @@ def updateGTF(filepath):
                                 print(line)
                                 break
 
-                        elif fields[1] in ("cNLS_mapper", "NLS_mapper"): 
-                            if fields[2] == 'MOTIF': 
+                        elif fields[1] in ("NucImport"): 
+                            if fields[2] == 'NLS': 
                                 addPosType(res, line, "P")
                             else:
                                 print(line)
                                 break
 
-                        elif fields[1] in ("miRWalk", "mirWalk"): 
-                            if fields[2] in('miRNA', 'miRNA_Binding'):
+                        elif fields[1] == "miRWalk":
+                            if fields[2] == "miRNA_binding_site":
                                 addPosType(res, line, "T")
                             else:
                                 print(line)

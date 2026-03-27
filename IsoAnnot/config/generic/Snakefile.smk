@@ -5,6 +5,9 @@ prefix = config["prefix"]
 db = config["db"]
 species_name = config["species_name"]
 path_output = config["path_output"]
+nls_model = config["nls_model"]
+nls_chunks = 50
+
 
 def _output_layer_db(layer_name, external_rule=[], wildcards=None):
 
@@ -317,6 +320,8 @@ rule prepare_pfam_clan:
 
 
 rule get_uniprot_data: 
+    resources:
+        n_downloads=1
     output:
         [os.path.join(path_output, "data",prefix,"config","uniprot",os.path.basename(uniprot_url)) for uniprot_url in config["uniprot_dat"] + config["uniprot_fasta"]]
     log:
@@ -342,6 +347,8 @@ rule prepare_uniprot_data:
 
 
 rule get_reactome:
+    conda:
+        "../../envs/isoannotpy.yaml"
     output:
         os.path.join(path_output, "data", "global", get_config_basename("reactome"))
     params:
@@ -350,9 +357,102 @@ rule get_reactome:
         os.path.join(path_output, "logs", prefix, "get_reactome.log")
     shell:
         """
-        wget -nv --no-check-certificate -P {path_output}/data/global/ {params.URL} &> {log}
+        curl -L -k -o {output} {params.URL} &> {log}
+        """
+
+rule get_mirwalk:
+    output:
+        os.path.join(path_output, "data", prefix, "config", "mirna", "{region}.zip")
+    log:
+        os.path.join(path_output, "logs", prefix, "get_mirwalk_{region}.log")
+    run:
+        target_url = config["mirwalk_urls"].get(wildcards.region)
+
+        if not target_url:
+            error_msg = (
+                f"FATAL ERROR: You are attempting to analyze region '{wildcards.region}', "
+                f"but a valid URL is not defined in config['mirwalk_urls']."
+            )
+            raise ValueError(error_msg)
+
+        shell("wget -O {output} {target_url} &> {log}")
+
+
+rule prepare_mirwalk:
+    input:
+        files = expand(
+            os.path.join(path_output, "data", prefix, "config", "mirna", "{region}.zip"),
+            region=config.get("mirna_regions_to_use", [])
+        )
+    output:
+        merged = os.path.join(path_output, "data", prefix, "config", "mirna", "mirwalk_merged.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "prepare_mirwalk.log")
+    shell:
+        """
+        > {output.merged}
+        if [ -z "{input.files}" ]; then
+            echo "WARNING: No regions defined. Output empty." > {log}
+        else
+            for file in {input.files}; do
+                echo "Procesando $file..." >> {log}
+                unzip -p "$file" >> {output.merged} 2>> {log}
+            done
+        fi
         """
 	
+
+rule get_rna_fasta_mirwalk:
+    output:
+        os.path.join(path_output, "data", prefix, "config", "mirna", "mirwalk_rna_reference.fna.gz")
+    params:
+        URL = config.get("rna_fasta_mirwalk", "")
+    log:
+        os.path.join(path_output, "logs", prefix, "get_rna_fasta_mirwalk.log")
+    shell:
+        """
+        wget -nv -O {output} {params.URL} &> {log}
+        """
+
+rule prepare_rna_fasta_mirwalk:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        rules.get_rna_fasta_mirwalk.output
+    output:
+         os.path.join(path_output, "data", prefix, "config", "mirna", "mirwalk_rna_reference.fna")
+    log:
+         os.path.join(path_output, "logs", prefix, "prepare_rna_fasta_mirwalk.log")
+    shell:
+        """
+        gunzip -k {input} &> {log}
+        """
+
+rule get_gtf_mirwalk:
+    output:
+        os.path.join(path_output, "data", prefix, "config", "mirna", "mirwalk_genomic_reference.gtf.gz")
+    params:
+        URL = config.get("gtf_mirwalk", "")
+    log:
+        os.path.join(path_output, "logs", prefix, "get_gtf_mirwalk.log")
+    shell:
+        """
+        wget -nv -O {output} {params.URL} &> {log}
+        """
+
+rule prepare_gtf_mirwalk:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        rules.get_gtf_mirwalk.output
+    output:
+        os.path.join(path_output, "data", prefix, "config", "mirna", "mirwalk_genomic_reference.gtf")
+    log:
+        os.path.join(path_output, "logs", prefix, "prepare_gtf_mirwalk.log")
+    shell:
+        """
+        gunzip -k {input} &> {log}
+        """
 
 # RUN
 
@@ -520,7 +620,40 @@ with open('$tmp_fasta.out', 'r') as f_in, open('final_corrected.out', 'w') as f_
         rm -rf {params.local_scratch}
         """
 
+rule filter_interactions:
+    input:
+        mirwalk=rules.prepare_mirwalk.output
+    params:
+        species_name=config["species"],
+        mirbase="data/global/miRNA/miRNA.dat",
+        score=config.get("mirna_db_evidence_score_threshold")
+    output:
+        os.path.join(path_output, "data", prefix, "config", "mirna", "filter_interactions.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "filter_interactions.log")
+    shell:
+        """
+        scripts/filter_mirna_bs.py --mirbase_file {params.mirbase} --mirwalk_file {input.mirwalk} --species {params.species_name:q} --score {params.score} --mirwalk_output {output} &> {log}
+        """
  
+rule run_mirwalk2gen:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        mirwalk=rules.filter_interactions.output,
+        fasta=rules.prepare_rna_fasta_mirwalk.output,
+        gtf=rules.prepare_gtf_mirwalk.output,
+        chr_ref=rules.get_refseq_acc.output
+    output:
+        os.path.join(path_output, "data", prefix, "output", "{db}", "interactions_gc.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "run_mirwalk2gen.log")
+    shell:
+        """
+        scripts/mirna_bs_genomic_coord.py --mirwalk_file {input.mirwalk} --refseq_fasta {input.fasta} --refseq_gtf {input.gtf} --mirna_output {output} --chr_ref {input.chr_ref} &> {log}
+        """
+
+
 checkpoint run_interproscan:
     conda:
         "../../envs/interpro_java.yaml"
@@ -572,6 +705,24 @@ rule run_gtftogenepred:
         gtfToGenePred {input} {output} -genePredExt -allErrors -ignoreGroupsWithoutExons &> {log}
         """
 
+rule get_mirna_bs_annotation:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        fasta=select_fasta_cdna,
+        gene_prediction=rules.run_gtftogenepred.output,
+        mirna_bs=rules.run_mirwalk2gen.output,
+        chr_ref=rules.get_refseq_acc.output
+    params:
+        db=config.get("db")
+    output:
+        os.path.join(path_output, "data", prefix, "output", "{db}", "mirna_bs_annotation.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "get_mirna_bs_annotation.log")
+    shell:
+        """
+        scripts/get_mirna_bs_annotation.py --chr_ref {input.chr_ref} --genepred {input.gene_prediction} --isoform_fasta {input.fasta} --mirwalk_genomic {input.mirna_bs} --output {output} --db {params.db} &> {log}
+        """
 
 rule get_genomic_coordinates:
     conda:
@@ -703,6 +854,116 @@ rule transcript_to_reference:
         --species_db {input.species_db} &> {log}
         """
 
+rule filter_nls:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input: 
+        select_fasta_proteins
+    output: 
+        os.path.join(path_output,"data",prefix,"output","{db}","nls","nls_filtered_proteins.fa")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "filter_nls.log")
+    shell: 
+        """
+        scripts/nls_filter.py --input {input} --output {output} &> {log}
+        """
+
+rule nls_deduplicate:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        rules.filter_nls.output
+    output:
+        fasta = os.path.join(path_output,"data",prefix,"output","{db}","nls","unique_proteins.fa"),
+        mapping = os.path.join(path_output,"data",prefix,"output","{db}","nls","protein_mapping.tsv")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "nls_deduplicate.log")
+    shell:
+        """
+        scripts/deduplicate_proteins.py --input {input} \
+            --output_fasta {output.fasta} --output_mapping {output.mapping} &> {log}
+        """
+
+rule split_proteins:
+    input: 
+        rules.nls_deduplicate.output.fasta
+    output: 
+        expand(os.path.join(path_output,"data",prefix,"output","{{db}}","nls", "chunks_temp", "chunk_{n}.fa"), n=range(nls_chunks))
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "split_proteins.log")
+    shell:
+        """
+        mkdir -p $(dirname {output[0]})
+        awk 'BEGIN {{RS=">"; FS="\\n"}} \
+             NR>1 {{ \
+                out_file = "{path_output}/data/{prefix}/output/{wildcards.db}/nls/chunks_temp/chunk_" (i++ % {nls_chunks}) ".fa"; \
+                print ">"$0 > out_file; \
+             }}' {input} 2> {log}
+        """
+
+rule run_nucimport:
+    input: 
+        os.path.join(path_output, "data", prefix, "output", "{db}", "nls", "chunks_temp", "chunk_{n}.fa")
+    output: 
+        os.path.join(path_output,"data",prefix,"output","{db}","nls","tmp", "output_chunk_{n}.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "run_nucimport", "run_nucimport_chunk_{n}.log")
+    params:
+        jar_dir = "software/NucImport",
+        jar_name = "NucImportMay2012.jar"
+    shell:
+        """
+        cd {params.jar_dir}
+        java -jar {params.jar_name} {input} {nls_model} Mouse ID=F > {output} 2> {log}
+        """
+
+rule merge_nls_chunks:
+    input: 
+        expand(os.path.join(path_output,"data",prefix,"output","{{db}}","nls","tmp", "output_chunk_{n}.txt"), n=range(nls_chunks))
+    output: 
+        os.path.join(path_output,"data",prefix,"output","{db}","nls","output_merged.txt")
+    log:
+        os.path.join(path_output,"logs",prefix,"{db}","nls_chunks_merged.log")
+    shell:
+        """
+        awk "NR == FNR || (FNR > 3 && !/^Protein/ && !/^\*/)" {input} > {output} 2> {log}
+        """
+
+rule parse_nls:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        rules.merge_nls_chunks.output
+    output:
+        os.path.join(path_output,"data",prefix,"output","{db}","nls","nls_parsed.tsv")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "parse_nls.log")
+    params:
+        t_imp = config.get("nls_threshold_import", 0.7),
+        t_cnls = config.get("nls_threshold_cnls", 0.3)
+    shell:
+        """
+        scripts/parse_nls.py --input {input} \
+            --threshold_imp {params.t_imp} --threshold_cnls {params.t_cnls} \
+            --output {output} &> {log}
+        """
+
+rule expand_nls:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        parsed_tsv = rules.parse_nls.output,
+        mapping = rules.nls_deduplicate.output.mapping
+    output:
+        os.path.join(path_output,"data",prefix,"output","{db}","nls","nls_final_expanded.tsv")
+    log:
+       os.path.join(path_output, "logs", prefix, "{db}", "expand_nls.log")
+    shell:
+        """
+        scripts/expand_nls_annotation.py --parsed {input.parsed_tsv} \
+            --mapping {input.mapping} --output {output}
+        """
+
 # LAYERS
 rule layer_go:
     conda:
@@ -830,6 +1091,17 @@ rule layer_repeatmasker:
         scripts/layer_repeatmasker.py --keep_version {params.keep_version} --repeatmasker_file {input.repeatmasker_file} --classification_file {input.classification_file} --output {output} &> {log}
         """
 
+rule layer_mirna_bs:
+    input:
+        mirna_bs_file=rules.get_mirna_bs_annotation.output
+    output:
+        _output_layer_db("layer_mirna_bs", external_rule=rules.get_mirna_bs_annotation.output)
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "layer_mirna_bs.log")
+    shell:
+        """
+        sort -u -V -k1,1 -k4,4n -k5,5n {input.mirna_bs_file} > {output} 2> {log}
+        """
 
 rule layer_uniprot:
     input:
@@ -840,7 +1112,7 @@ rule layer_uniprot:
         os.path.join(path_output, "logs", prefix, "{db}", "layer_uniprot.log")
     shell:
         """
-        cat {input.uniprot_file} | sort -k1 -k3 -k4 -k5 | uniq | sort -k1 > {output} 2> {log}
+        sort -u -V -k1,1 -k3,3 -k4,4n -k5,5n {input.uniprot_file} > {output} 2> {log}
         """
 
 
@@ -861,6 +1133,23 @@ rule layer_utrscan:
         scripts/layer_utrscan.py --keep_version {params.keep_version} --utrscan_file {input.utrscan_file} --classification_file {input.classification_file} --output {output} &> {log}
         """
 
+rule layer_nls:
+    input:
+        nls = rules.expand_nls.output,
+        classification=select_sqanti_classification
+    output: 
+        _output_layer_db("layer_nls", external_rule=rules.parse_nls.output)
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "layer_nls.log")
+    shell:
+        """
+        scripts/layer_nls.py \
+            --nls_file {input.nls} \
+            --classification_file {input.classification} \
+            --output {output}.tmp &> {log}
+        sort -V -k1,1 -k4,4n {output}.tmp > {output}
+        rm {output}.tmp
+        """
 
 # GET EVERYTHING TOGETHER
 rule tappas_annotation:
@@ -870,7 +1159,8 @@ rule tappas_annotation:
         transcript_block = [
             rules.layer_utrscan.output,
             rules.layer_repeatmasker.output,
-            rules.layer_nmd.output
+            rules.layer_nmd.output,
+            rules.layer_mirna_bs.output if config.get("mirna_regions_to_use") else []
         ] + config.get("transcript_gtf", []),
         genomic_block = [
             rules.layer_exons.output,
@@ -880,7 +1170,8 @@ rule tappas_annotation:
             rules.layer_go.output if config["layer_go"] == "si" else [],
             rules.layer_reactome.output if config["reactome"] else [],
             rules.layer_interproscan.output,
-            rules.layer_uniprot.output
+            rules.layer_uniprot.output,
+            rules.layer_nls.output
         ] + config.get("protein_gtf", []),
         classification_file=select_sqanti_classification,
         gene_desc=[],
@@ -893,7 +1184,9 @@ rule tappas_annotation:
         """
         scripts/t2goAnnotationFile.py --classification_file {input.classification_file}  \
          --gene_desc_file {input.gene_desc} --input_transcripts {input.transcript_block} --input_genomic {input.genomic_block} \
-         --input_protein  {input.protein_block} --output {output} --gene_desc_file {input.gene_desc} --protein_association {input.protein_assoc} &> {log}
+         --input_protein  {input.protein_block} --output {output}.tmp --gene_desc_file {input.gene_desc} --protein_association {input.protein_assoc} &> {log}
+        sort -V -k1,1 -k4,4n {output}.tmp > {output}
+        rm {output}.tmp
         """
 
 
