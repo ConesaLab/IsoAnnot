@@ -1,7 +1,7 @@
 def select_fasta_proteins(wildcards):
     return rules.prepare_refseq_proteins.output
 
-def select_user_fasta_cdna(wildcards):
+def select_user_cdna(wildcards):
     return []
     
 def select_fasta_cdna(wildcards):

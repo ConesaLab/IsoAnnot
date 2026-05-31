@@ -3,6 +3,7 @@
 Author: Lorena de la Fuente Lorente
 Refactored: Carlos Martínez
 Modified by: Alessandra Martínez
+Modified by: Raúl López
 
 Script that retrieves Reactome information at gene resolution
 (all the transcripts coming from the same gene will have the same

@@ -3,6 +3,7 @@
 Author: Lorena de la Fuente Lorente
 Refactored: Carlos Martínez
 Modified by: Alessandra Martinez
+Modified by: Raúl López
 
 Script that gets the genomic coordinates of uniprot proteins and their features.
 """

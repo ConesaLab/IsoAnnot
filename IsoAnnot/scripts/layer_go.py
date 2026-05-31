@@ -3,6 +3,7 @@
 """
 Author: Carlos Martínez
 Modified by: Alessandra Martinez
+Modified by: Raúl López
 
 Script to retrieve Gene Ontology information at gene resolution
 (all the transcripts coming from the same gene will have the same

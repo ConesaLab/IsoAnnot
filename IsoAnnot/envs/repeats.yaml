@@ -1,22 +1,20 @@
 name: repeats
 channels:
-  - rmg
   - conda-forge
   - bioconda
-  - defaults
-  - anaconda
+  - nodefaults
 dependencies:
-  - blast=2.16.0=h66d330f_5
-  - curl=8.16.0=h4e3cde8_0
-  - entrez-direct=22.4=he881be0_0
-  - gsl=2.7=he838d99_0
-  - hmmer=3.4=hb6cb901_4
-  - numpy=2.3.4=py313hf6604e3_0
-  - openmpi=4.1.6=hc5af2df_101
-  - pandas=2.3.3=py313h08cd8bf_1
-  - perl=5.26.2=h36c2ea0_1008
-  - pip=25.2=pyh145f28c_0
-  - python=3.13.9=hc97d973_101_cp313
-  - repeatmasker=4.0.9_p2=pl526_2
-  - rmblast=2.14.1=hdb21ba3_2
-  - trf=4.10.0rc2=h7b50bb2_0
+  - python=3.10    
+  - perl=5.32      
+  - blast=2.16.0
+  - repeatmasker=4.1.5 
+  - rmblast=2.14.1
+  - trf=4.09.1     
+  - hmmer=3.4
+  - pandas
+  - numpy
+  - gsl=2.7
+  - openmpi
+  - curl
+  - entrez-direct
+  - pip
