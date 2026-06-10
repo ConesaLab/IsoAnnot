@@ -3,6 +3,7 @@
 Author: Lorena de la Fuente Lorente
 Refactored: Carlos Martínez 
 Modified by: Alessandra Martinez
+Modified by: Raúl López
 
 Script that projects protein features genomic coordinates into query isoforms and returns their protein coordinates.
 """ 
@@ -387,7 +388,7 @@ def main():
 
                                     # TODO check if conditional could be restricted to issubset() only, since it should include all the other conditions
                                     # if motif.strand == transcript_exons_loc.strand and cds_positions[0] < motif.location.end and cds_positions[-1] > motif.location.start and motif_set.issubset(cds_positions):
-                                    if motif.strand == transcript_exons_loc.strand and transcript_exons_loc.start < motif.location.end and transcript_exons_loc.end > motif.location.start and motif_set.issubset(set(cds_loc_position)): # linea antigua
+                                    if motif.location.strand == transcript_exons_loc.strand and transcript_exons_loc.start < motif.location.end and transcript_exons_loc.end > motif.location.start and motif_set.issubset(set(cds_loc_position)): # linea antigua
                                         # Until now all motif positions could be included inside the CDS, but the later could
                                         # contain a in-between fragment between them, so we perform a reverse search.
                                         filtered_cds = set(filter(lambda x: motif.location.start <= x < motif.location.end, sorted(cds_loc_position)))
@@ -431,7 +432,7 @@ def main():
 
                                 # TODO check if conditional could be restricted to issubset() only, since it should include all the other conditions
                                 # if motif.strand == transcript_exons_loc.strand and cds_positions[0] < motif.location.end and cds_positions[-1] > motif.location.start and motif_set.issubset(cds_positions):
-                                if motif.strand == transcript_exons_loc.strand and transcript_exons_loc.start < motif.location.end and transcript_exons_loc.end > motif.location.start and motif_set.issubset(set(cds_loc_position)): # linea antigua
+                                if motif.location.strand == transcript_exons_loc.strand and transcript_exons_loc.start < motif.location.end and transcript_exons_loc.end > motif.location.start and motif_set.issubset(set(cds_loc_position)): # linea antigua
                                     # Until now all motif positions could be included inside the CDS, but the later could
                                     # contain a in-between fragment between them, so we perform a reverse search.
                                     filtered_cds = set(filter(lambda x: motif.location.start <= x < motif.location.end, sorted(cds_loc_position)))

@@ -3,6 +3,7 @@
 """
 Author: Carlos Martínez
 Modified by: Alessandra Martinez
+Modified by: Raúl López
 
 Script to retrieve Gene Ontology information at gene resolution
 (all the transcripts coming from the same gene will have the same
@@ -25,7 +26,7 @@ def write_output(transcript_id, go_feature, go_accession, go_name, output_filena
         ".",  # score
         ".",  # strand
         ".",  # frame
-        f"ID={go_accession}; Name={go_name};"  # attribute
+        f"ID={go_accession}; Name={go_name}"  # attribute
     ])
 
 

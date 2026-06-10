@@ -1,7 +1,7 @@
-def select_fasta_proteins(wildcards):
+def select_fasta_proteins(wildcards): 
     return rules.get_ensembl_proteins.output.fa
 
-def select_user_fasta_cdna(wildcards):
+def select_user_cdna(wildcards):
     return []
 
 def select_fasta_cdna(wildcards):

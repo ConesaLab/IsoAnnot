@@ -13,8 +13,8 @@ prefix: Mmusculus
 db: refseq
 transcript_versioned: False
 
-refseq_protein_dir: ftp://ftp.ncbi.nlm.nih.gov/refseq/M_musculus/mRNA_Prot/
-refseq_protein_fasta: ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Mus_musculus/all_assembly_versions/GCF_000001635.27_GRCm39/GCF_000001635.27_GRCm39_protein.faa.gz
+refseq_proteins: ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Mus_musculus/all_assembly_versions/GCF_000001635.27_GRCm39/GCF_000001635.27_GRCm39_protein.faa.gz
+refseq_cdna: ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Mus_musculus/all_assembly_versions/GCF_000001635.27_GRCm39/GCF_000001635.27_GRCm39_rna.fna.gz
 refseq_gtf: ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Mus_musculus/all_assembly_versions/GCF_000001635.27_GRCm39/GCF_000001635.27_GRCm39_genomic.gtf.gz
 refseq_chr_accessions: ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Mus_musculus/all_assembly_versions/GCF_000001635.27_GRCm39/GCF_000001635.27_GRCm39_assembly_structure/Primary_Assembly/assembled_chromosomes/chr2acc
 
@@ -28,3 +28,16 @@ uniprot_dat:
 
 reactome: https://reactome.org/download/current/Ensembl2Reactome_All_Levels.txt
 layer_go: si
+
+nls_model: Model4
+nls_threshold_import: 0.7
+nls_threshold_cnls: 0.3
+mirwalk_urls:
+  5UTR: http://mirwalk.umm.uni-heidelberg.de/download/mmu_miRWalk_5UTR.zip
+  CDS:  http://mirwalk.umm.uni-heidelberg.de/download/mmu_miRWalk_CDS.zip
+  3UTR: http://mirwalk.umm.uni-heidelberg.de/download/mmu_miRWalk_3UTR.zip
+mirna_regions_to_use: ["3UTR", "5UTR", "CDS"]
+mirna_db_evidence_score_threshold: 0.95
+
+rna_fasta_mirwalk: https://ftp.ncbi.nlm.nih.gov/genomes/all/annotation_releases/10090/109/GCF_000001635.27_GRCm39/GCF_000001635.27_GRCm39_rna.fna.gz
+gtf_mirwalk: https://ftp.ncbi.nlm.nih.gov/genomes/all/annotation_releases/10090/109/GCF_000001635.27_GRCm39/GCF_000001635.27_GRCm39_genomic.gtf.gz
