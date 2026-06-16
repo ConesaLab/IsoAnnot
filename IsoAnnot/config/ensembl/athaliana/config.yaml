@@ -4,10 +4,10 @@ species_name: arabidopsis
 biomart_host: plants.ensembl.org
 biomart_dataset: athaliana_eg_gene
 
-ensembl_cdna: ftp://ftp.ensemblgenomes.org/pub/release-45/plants/fasta/arabidopsis_thaliana/cdna/Arabidopsis_thaliana.TAIR10.cdna.all.fa.gz
-ensembl_proteins: ftp://ftp.ensemblgenomes.org/pub/release-45/plants/fasta/arabidopsis_thaliana/pep/Arabidopsis_thaliana.TAIR10.pep.all.fa.gz
-ensembl_gtf: ftp://ftp.ensemblgenomes.org/pub/release-45/plants/gtf/arabidopsis_thaliana/Arabidopsis_thaliana.TAIR10.45.gtf.gz
-ensembl_reference: ftp://ftp.ensemblgenomes.org/pub/release-45/plants/fasta/arabidopsis_thaliana/dna/Arabidopsis_thaliana.TAIR10.dna.toplevel.fa.gz
+ensembl_cdna: ftp://ftp.ensemblgenomes.org/pub/release-62/plants/fasta/arabidopsis_thaliana/cdna/Arabidopsis_thaliana.TAIR10.cdna.all.fa.gz
+ensembl_proteins: ftp://ftp.ensemblgenomes.org/pub/release-62/plants/fasta/arabidopsis_thaliana/pep/Arabidopsis_thaliana.TAIR10.pep.all.fa.gz
+ensembl_gtf: ftp://ftp.ensemblgenomes.org/pub/release-62/plants/gtf/arabidopsis_thaliana/Arabidopsis_thaliana.TAIR10.62.gtf.gz
+ensembl_reference: ftp://ftp.ensemblgenomes.org/pub/release-62/plants/fasta/arabidopsis_thaliana/dna/Arabidopsis_thaliana.TAIR10.dna.toplevel.fa.gz
 
 prefix: Athaliana
 db: ensembl
@@ -27,3 +27,4 @@ uniprot_dat:
   - ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/Eukaryota/UP000006548/UP000006548_3702_additional.dat.gz
 
 reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReactome_All_Levels.txt
+layer_go: si

@@ -37,7 +37,7 @@ def _get_transcript_exons_location(gtf_data, transcript):
             transcript_exon_start=int(line.split("\t")[3])
             transcript_exon_end=int(line.split("\t")[4])
             transcript_exon_strand = line.split("\t")[6]
-            isoform_exons.append({"start" :transcript_exon_start, "end": transcript_exon_end, "strand": transcript_exon_strand})
+            isoform_exons.append({"start" :transcript_exon_start, "end": transcript_exon_end + 1, "strand": transcript_exon_strand})
 
     isoforms_exon_locs = [
         FeatureLocation(exon_block['start'], exon_block['end'], strand_table.get(exon_block['strand'], None)) for exon_block
@@ -96,7 +96,7 @@ def _retrieve_pacbio_info(gtf_data, fasta_data):
     '''
     Gets header information from predicted ORFs (isoform ID and CDS)
     '''
-    capture_regex = re.compile(r"(.+)\s.*?\|.*?\|.*?\|.*?\|([0-9]+)")
+    capture_regex = re.compile(r"^(\S+)\s.*?\|.*?\|.*?\|([0-9]+)\|[0-9]+$")
     isoforms_cds = {}
 
     for fasta_id, fasta_seq in fasta_data.items():
@@ -145,8 +145,8 @@ def read_genomic_cds_from_gtf_group_chr(gtf_file, chr_ref={}):
                         continue
                     chr = line.split("\t")[0]
                     chr_name = chr_ref.get(chr, chr)
-                    start = line.split("\t")[3]
-                    end = line.split("\t")[4]
+                    start = int(line.split("\t")[3])
+                    end = int(line.split("\t")[4])
                     aux_dict["Chromosome"].append(chr_name)
                     aux_dict["protein_id"].append(protein_id)
                     aux_dict["Start"].append(start)
@@ -168,7 +168,6 @@ def main():
 
     # Inputs
     parser = argparse.ArgumentParser(description="PacbioToReference")
-    parser.add_argument("--ensembl_gtf", required=True)
     parser.add_argument("--refseq_gtf", required=False, default=None)
     parser.add_argument("--chr_ref", required=False, default=None)
 
@@ -191,16 +190,8 @@ def main():
         with open(args.species_db, "rb") as fp:
             all_proteins = json.load(fp)
 
-        # Get chromosome Ensembl-RefSeq IDs equivalence if we
-        # are using GTF data
-        if args.refseq_gtf:
-            chrom_ref = read_chr_ref_acc(args.chr_ref)
-
-        # Get Ensembl and RefSeq CDS info
-        cds_ensembl = read_genomic_cds_from_gtf_group_chr(args.ensembl_gtf)
-        if args.refseq_gtf:
-            cds_refseq = read_genomic_cds_from_gtf_group_chr(args.refseq_gtf,
-                                      chrom_ref)
+    
+        cds_refseq = read_genomic_cds_from_gtf_group_chr(args.refseq_gtf)
             
         # Get isoforms exon locations and predicted proteins of sequenced transcriptome
         # using SQANTI outputs
@@ -249,10 +240,10 @@ def main():
                     #         output_assoc_tsv.writerow([isoform_id, cds_ref, "ensembl", "coord"])
 
                     # if cds_refseq:
-                    #     chr_refseq = cds_refseq.get(transcript_chr, {})
-                    #     for cds_ref, cds_props in chr_refseq.items():
-                    #         if cds_props.get("start") == transcript_starts and cds_props.get("end") == transcript_ends:
-                    #             output_assoc_tsv.writerow([isoform_id, cds_ref, "refseq", "coord"])
+                    #    chr_refseq = cds_refseq.get(transcript_chr, {})
+                    #    for cds_ref, cds_props in chr_refseq.items():
+                    #        if cds_props.get("start") == transcript_starts and cds_props.get("end") == transcript_ends:
+                    #            output_assoc_tsv.writerow([isoform_id, cds_ref, "refseq", "coord"])
 
     except Exception as ex:
         logging.error(str(ex), exc_info=True)
@@ -263,3 +254,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

@@ -1,0 +1,29 @@
+# Ignorar archivos .pyc generados por Python
+*.pyc
+
+# Ignorar base de datos SQLite local
+IsoAnnot/.pybiomart.sqlite
+
+# Ignorar directorios y archivos específicos de Snakemake
+IsoAnnot/.snakemake/
+
+# Ignorar directorios de datos generados
+IsoAnnot/data/
+
+# Ignorar directorio de logs
+IsoAnnot/logs/
+
+# Ignorar archivos Interproscan
+IsoAnnot/software/interproscan/
+
+#Ignorar directorio SQANTI
+IsoAnnot/scripts/sqanti3/
+
+#Ignorar archivos temporales
+IsoAnnot/temp/
+
+# Ignorar configuraciones de carpetas de Windows
+IsoAnnot/scripts/desktop.ini
+
+#Ignorar archivos config.yaml
+IsoAnnot/config/mytranscripts/

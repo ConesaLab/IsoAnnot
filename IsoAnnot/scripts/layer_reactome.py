@@ -55,6 +55,7 @@ def main():
         parser.add_argument('--biomart_host', nargs="?", const="http://www.ensembl.org")
         parser.add_argument('--biomart_dataset', nargs=None, required=True)
         parser.add_argument('--species', nargs=None, required=True)
+        parser.add_argument('--db', nargs=None, required=True)
 
         args = parser.parse_args()
 
@@ -76,13 +77,19 @@ def main():
         gene_name_table.rename(columns={'Gene stable ID': 'ensembl_gene_id', 'Gene name': 'gene_name'}, inplace=True)
         gene_name_table = gene_name_table.dropna()
         reactome_info = pd.merge(reactome_info, gene_name_table, how='inner', on='ensembl_gene_id')
+        
+        # Select the appropriate gene identifier column based on the database choice
+        if args.db == "mytranscripts":
+            gene_column = "ensembl_gene_id"
+        else:
+            gene_column = "gene_name"
 
         # For each transcript, annotate Reactome entries linked to its associated gene 
         with open(args.output, "w") as output_file:
             logging.info(f"Starting Reactome conversion to GTF {args.output}")
             output_file_tsv = csv.writer(output_file, delimiter="\t")
             for transcript, info in transcript_info.items():
-                select_gene = reactome_info.loc[reactome_info["gene_name"] == info["ref_gene_name"]]
+                select_gene = reactome_info.loc[reactome_info[gene_column] == info["ref_gene_name"]]
                 if select_gene.empty:
                     continue
                 select_gene_dict = select_gene.to_dict(orient="records")
@@ -101,3 +108,4 @@ def main():
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     main()
+

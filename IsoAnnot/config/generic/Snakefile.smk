@@ -1,13 +1,20 @@
 import os
 
 configfile: "config/generic/config.yaml"
+prefix = config["prefix"]
+db = config["db"]
+species_name = config["species_name"]
+path_output = config["path_output"]
+nls_model = config["nls_model"]
+nls_chunks = 50
+
+
 def _output_layer_db(layer_name, external_rule=[], wildcards=None):
 
     if callable(external_rule):
-        external_rule = external_rule({"prefix": config['prefix'], "db": config['db'] })
-
+        external_rule = external_rule({"prefix": prefix, "db": db })
     if len(config.get(layer_name, [])) or len(external_rule):
-        return f"data/{{prefix}}/output/{{db}}/layers/{layer_name}.gtf"
+        return os.path.join(path_output, "data", prefix, "output", "{db}", "layers", f"{layer_name}.gtf")
     else:
         return []
 
@@ -21,21 +28,38 @@ def _optional_param(param_name, param_option):
 
     return output_param
 
+def get_config_val(key, default="DUMMY_VALUE"):
+    val = config.get(key)
+    return val if val else default
+
+def get_config_basename(key):
+    val = config.get(key)
+    if val:
+        return os.path.basename(val)
+    return f"MISSING_CONFIG_{key}"
+
 def _remove_extension(config_value, all=False):
+    if not config_value:
+        return "DUMMY_FILENAME"
+        
     filename = os.path.basename(config_value)
 
     if config_value.endswith("gz"):
         output_name = filename[:-7] if all else filename[:-3]
     elif all:
-        ouput_name = filename[:-4]
+        output_name = filename[:-4]
+    else:
+        output_name = filename 
 
     return output_name
 
-
 rule all:
     input:
-        expand("data/{prefix}/{species_name}_tappas_{db}_annotation_file.gff3_mod", prefix = config["prefix"], species_name=config["species_name"], db=config["db"])[0]
-
+        expand("{path_output}/data/{prefix}/{species_name}_tappas_{db}_annotation_file.gff3_mod",
+               path_output=path_output,
+               prefix=prefix,
+               species_name=species_name,
+               db=db)
 
 # GET AND PREPARE
 
@@ -64,78 +88,98 @@ rule all:
 
 rule get_refseq_acc:
     output:
-        expand("data/{{prefix}}/config/refseq/{filename}", filename = os.path.basename(config["refseq_chr_accessions"]))[0]
+        os.path.join(path_output, "data", prefix, "config", "refseq", get_config_basename("refseq_chr_accessions"))
     params:
-        URL=config["refseq_chr_accessions"]
+        URL=get_config_val("refseq_chr_accessions", "")
+    log:
+        os.path.join(path_output, "logs", prefix, "get_refseq_acc.log")
     shell:
         """
-        wget -nv -P data/{wildcards.prefix}/config/refseq/ {params.URL}
+        wget -nv -P {path_output}/data/{prefix}/config/refseq/ {params.URL} &> {log}
         """
 
-
-checkpoint get_refseq_proteins:
+rule get_refseq_proteins:
     output:
-        directory("data/{prefix}/config/refseq/faa/")
+        os.path.join(path_output, "data", prefix, "config", "refseq", os.path.basename(config["refseq_proteins"]))
     params:
-        URL=config["refseq_protein_dir"]
+        URL=config["refseq_proteins"]
+    log:
+        os.path.join(path_output, "logs", prefix, "get_refseq_proteins.log")
     shell:
         """
-        wget -nv -P data/{wildcards.prefix}/config/refseq/faa/ -nd -np -r -nH -l1 -A *protein.faa.gz {params.URL} 
+        wget -nv -P {path_output}/data/{prefix}/config/refseq/ {params.URL} &> {log}
         """
-
-
-def gather_refseq_proteins(wildcards):
-    checkpoint_output = checkpoints.get_refseq_proteins.get(**wildcards).output[0]
-    fname_vals = glob_wildcards(os.path.join(checkpoint_output, "{filename}.faa.gz")).filename
-    return expand(os.path.join(checkpoint_output, "{filename}.faa.gz"), dir=checkpoint_output, filename=fname_vals)[0]
-
 
 rule prepare_refseq_proteins:
     input:
-       gather_refseq_proteins
+       rules.get_refseq_proteins.output
     output:
-       "data/{prefix}/config/refseq/all_refseq_proteins.faa"
+        os.path.join(path_output, "data", prefix, "config", "refseq", "all_refseq_proteins.faa")
+    log:
+        os.path.join(path_output, "logs", prefix, "prepare_refseq_proteins.log")
     shell:
        """
-       zcat data/{wildcards.prefix}/config/refseq/faa/*.faa.gz > {output}
+       zcat {input} > {output} 2> {log}
        """
 
-
-checkpoint get_refseq_cdna:
+rule get_refseq_cdna:
     output:
-        directory("data/{prefix}/config/refseq/fna/")
+        os.path.join(path_output, "data", prefix, "config", "refseq", os.path.basename(config["refseq_cdna"]))
     params:
-        URL=config["refseq_protein_dir"]
+        URL=config["refseq_cdna"]
+    log:
+        os.path.join(path_output, "logs", prefix, "get_refseq_cdna.log")
     shell:
         """
-        wget -nv -P data/{wildcards.prefix}/config/refseq/fna/ -nd -np -r -nH -l1 -A *rna.fna.gz {params.URL}
+        wget -nv -P {path_output}/data/{prefix}/config/refseq/ {params.URL} &> {log}
         """
-
-
-def gather_refseq_cdna(wildcards):
-    checkpoint_output = checkpoints.get_refseq_cdna.get(**wildcards).output[0]
-    fname_vals = glob_wildcards(os.path.join(checkpoint_output, "{filename}.fna.gz")).filename
-    return expand(os.path.join(checkpoint_output, "{filename}.fna.gz"), dir=checkpoint_output, filename=fname_vals)[0]
-
 
 rule prepare_refseq_cdna:
     input:
-        gather_refseq_cdna
+        rules.get_refseq_cdna.output
     output:
-        "data/{prefix}/config/refseq/all_refseq_cdna.fna"
+        fa=os.path.join(path_output, "data", prefix, "config", "refseq", "all_refseq_cdna.fna")
+    log:
+        os.path.join(path_output, "logs", prefix, "prepare_refseq_cdna.log")
     shell:
         """
-        zcat data/{wildcards.prefix}/config/refseq/fna/*.fna.gz > {output}
+        zcat {input} > {output} 2> {log}
+        """
+
+rule get_refseq_reference:
+    output:
+        os.path.join(path_output, "data", prefix, "config", "refseq", os.path.basename(config["refseq_reference"]))
+    params:
+        URL=config["refseq_reference"]
+    log:
+        os.path.join(path_output, "logs", prefix, "get_refseq_reference.log")
+    shell:
+        """
+        wget -nv -P {path_output}/data/{prefix}/config/refseq/ {params.URL} &> {log}
+        """
+
+rule prepare_refseq_reference:
+    input:
+        rules.get_refseq_reference.output
+    output:
+        os.path.join(path_output, "data", prefix, "config", "refseq", _remove_extension(config["refseq_reference"]))
+    log:
+        os.path.join(path_output, "logs", prefix, "prepare_refseq_reference.log")
+    shell:
+        """
+        gunzip -k {input} &> {log}
         """
 
 rule get_refseq_gtf:
     output:
-        expand("data/{{prefix}}/config/refseq/{filename}", filename = os.path.basename(config["refseq_gtf"]))[0]
+        os.path.join(path_output, "data", prefix, "config", "refseq", os.path.basename(config["refseq_gtf"]))
     params:
         URL=config["refseq_gtf"]
+    log:
+        os.path.join(path_output, "logs", prefix, "get_refseq_gtf.log")
     shell:
         """
-        wget -nv -P data/{wildcards.prefix}/config/refseq/ {params.URL}
+        wget -nv -P {path_output}/data/{prefix}/config/refseq/ {params.URL} &> {log}
         """
 
 
@@ -143,41 +187,44 @@ rule prepare_refseq_gtf:
     input:
         rules.get_refseq_gtf.output
     output:
-        gtf=expand("data/{{prefix}}/config/refseq/{filename}_nopartial_nc.gtf", filename = _remove_extension(config["refseq_gtf"], all=True))[0],
+        os.path.join(path_output, "data", prefix, "config", "refseq", f"{_remove_extension(config['refseq_gtf'], all=True)}_nopartial_nc.gtf")
+    log:
+        os.path.join(path_output, "logs", prefix, "prepare_refseq_gtf.log")
     shell:
         """
-        zcat {input}|grep -v -F 'partial=true' | grep NC_0  > {output.gtf}
+        zcat {input}|grep -v -F 'partial=true' > {output} 2> {log}
         """
-
 
 rule get_ensembl_proteins:
     conda:
-        "../../envs/isoannotpy.yaml"   
+        "../../envs/isoannotpy.yaml"
     output:
-        gz=expand("data/{{prefix}}/config/ensembl/{filename}", filename = os.path.basename(config["ensembl_proteins"]))[0],
-        fa=expand("data/{{prefix}}/config/ensembl/{filename}", filename = _remove_extension(config["ensembl_proteins"]))[0]
-
+        gz=os.path.join(path_output, "data", prefix, "config", "ensembl", get_config_basename("ensembl_proteins")),
+        fa=os.path.join(path_output, "data", prefix, "config", "ensembl", _remove_extension(config.get("ensembl_proteins")))
     params:
-        URL=config["ensembl_proteins"]
+        URL=get_config_val("ensembl_proteins", "")
+    log:
+        os.path.join(path_output, "logs", prefix, "get_ensembl_proteins.log")
     shell:
         """
-        wget -nv -P data/{wildcards.prefix}/config/ensembl/ {params.URL}
-        gunzip {output.gz}
-        sed -i s/\*//g {output.fa}
-        gzip -k {output.fa}
+        (wget -nv -P {path_output}/data/{prefix}/config/ensembl/ {params.URL}
+        gunzip -c {output.gz} > {output.fa}.tmp
+        sed s/\*//g {output.fa}.tmp > {output.fa}
+        rm {output.fa}.tmp) 2> {log}
         """
-
+     
 
 rule get_ensembl_cdna:
     output:
-        expand("data/{{prefix}}/config/ensembl/{filename}", filename = os.path.basename(config["ensembl_cdna"]))[0]
+        os.path.join(path_output, "data", prefix, "config", "ensembl", get_config_basename("ensembl_cdna"))
     params:
-        URL=config["ensembl_cdna"]
+        URL=get_config_val("ensembl_cdna", "")
+    log:
+        os.path.join(path_output, "logs", prefix, "get_ensembl_cdna.log")
     shell:
         """
-        wget -nv -P data/{wildcards.prefix}/config/ensembl/ {params.URL}
+        wget -nv -P {path_output}/data/{prefix}/config/ensembl/ {params.URL} &> {log}
         """
-
 
 rule prepare_ensembl_cdna:
     conda:
@@ -185,43 +232,49 @@ rule prepare_ensembl_cdna:
     input:
         rules.get_ensembl_cdna.output
     output:
-        expand("data/{{prefix}}/config/ensembl/{filename}", filename = _remove_extension(config["ensembl_cdna"]))[0]
+        fa=os.path.join(path_output, "data", prefix, "config", "ensembl", _remove_extension(config.get("ensembl_cdna")))
+    log:
+        os.path.join(path_output, "logs", prefix, "prepare_ensembl_cdna.log")
     shell:
         """
-        gunzip -k {input}
+        gunzip -k {input} &> {log}
         """
-
 
 rule get_ensembl_reference:
     output:
-        expand("data/{{prefix}}/config/ensembl/{filename}", filename = os.path.basename(config["ensembl_reference"]))[0]
+        os.path.join(path_output, "data", prefix, "config", "ensembl", get_config_basename("ensembl_reference"))
     params:
-        URL=config["ensembl_reference"]
+        URL=get_config_val("ensembl_reference", "")
+    log:
+        os.path.join(path_output, "logs", prefix, "get_ensembl_reference.log")
     shell:
         """
-        wget -nv -P data/{wildcards.prefix}/config/ensembl/ {params.URL}
+        wget -nv -P {path_output}/data/{prefix}/config/ensembl/ {params.URL} &> {log}
         """
 
 rule prepare_ensembl_reference:
     input:
         rules.get_ensembl_reference.output
     output:
-        expand("data/{{prefix}}/config/ensembl/{filename}", filename = _remove_extension(config["ensembl_reference"]))[0]
+        os.path.join(path_output, "data", prefix, "config", "ensembl", _remove_extension(config.get("ensembl_reference")))
+    log:
+        os.path.join(path_output, "logs", prefix, "prepare_ensembl_reference.log")
     shell:
         """
-        gunzip -k {input}
+        gunzip -k {input} &> {log}
         """
 
 rule get_ensembl_gtf:
     output:
-        expand("data/{{prefix}}/config/ensembl/{filename}", filename = os.path.basename(config["ensembl_gtf"]))[0]
+        os.path.join(path_output, "data", prefix, "config", "ensembl", get_config_basename("ensembl_gtf"))
     params:
-        URL=config["ensembl_gtf"]
+        URL=get_config_val("ensembl_gtf", "")
+    log:
+        os.path.join(path_output, "logs", prefix, "get_ensembl_gtf.log")
     shell:
         """
-        wget -nv -P data/{wildcards.prefix}/config/ensembl/ {params.URL}
+        wget -nv -P {path_output}/data/{prefix}/config/ensembl/ {params.URL} &> {log}
         """
-
 
 rule prepare_ensembl_gtf:
     conda:
@@ -229,21 +282,25 @@ rule prepare_ensembl_gtf:
     input:
         rules.get_ensembl_gtf.output
     output:
-        expand("data/{{prefix}}/config/ensembl/{filename}", filename = _remove_extension(config["ensembl_gtf"]))[0]
+        os.path.join(path_output, "data", prefix, "config", "ensembl", _remove_extension(config.get("ensembl_gtf")))
+    log:
+        os.path.join(path_output, "logs", prefix, "prepare_ensembl_gtf.log")
     shell:
         """
-        gunzip -k {input}
+        gunzip -k {input} &> {log}
         """
 
 
 rule get_pfam_clan:
     output:
-        expand("data/global/pfam/{filename}", filename = os.path.basename(config["pfam_clan_url"]))[0]
+        os.path.join(path_output, "data", "global", "pfam", os.path.basename(config["pfam_clan_url"]))
     params:
         URL=config["pfam_clan_url"]
+    log:
+        os.path.join(path_output, "logs", prefix, "get_pfam_clan.log")
     shell:
         """
-        wget -nv -P data/global/pfam/ {params.URL}
+        wget -nv -P {path_output}/data/global/pfam/ {params.URL} &> {log}
         """
 
 
@@ -253,19 +310,25 @@ rule prepare_pfam_clan:
     input:
         rules.get_pfam_clan.output
     output:
-        expand("data/global/pfam/{filename}", filename = _remove_extension(config["pfam_clan_url"]))[0]
+        os.path.join(path_output, "data", "global", "pfam", _remove_extension(config["pfam_clan_url"]))
+    log:
+        os.path.join(path_output, "logs", prefix, "prepare_pfam_clan.log")
     shell:
         """
-        gunzip -k {input}
+        gunzip -k {input} &> {log}
         """
 
 
 rule get_uniprot_data: 
+    resources:
+        n_downloads=1
     output:
-        expand("data/{{prefix}}/config/uniprot/{uniprot_file}", uniprot_file = [os.path.basename(uniprot_url) for uniprot_url in config["uniprot_dat"] + config["uniprot_fasta"]])
+        [os.path.join(path_output, "data",prefix,"config","uniprot",os.path.basename(uniprot_url)) for uniprot_url in config["uniprot_dat"] + config["uniprot_fasta"]]
+    log:
+        [os.path.join(path_output, "logs", prefix, "get_uniprot_data", f"{_remove_extension(uniprot_url)}.log") for uniprot_url in config["uniprot_dat"] + config["uniprot_fasta"]]
     run:
-        for uniprot_url in config["uniprot_dat"] + config["uniprot_fasta"]:
-            shell(f"wget -nv -P data/{wildcards.prefix}/config/uniprot/ {uniprot_url}")
+        for uniprot_url, log_file in zip(config["uniprot_dat"] + config["uniprot_fasta"], log):
+            shell(f"wget -nv -P {path_output}/data/{prefix}/config/uniprot/ {uniprot_url} &> {log_file}")
 
 
 rule prepare_uniprot_data:
@@ -274,122 +337,337 @@ rule prepare_uniprot_data:
     input:
         [file for file in rules.get_uniprot_data.output if file.endswith(".dat.gz")]
     output:
-        "data/{prefix}/config/uniprot/uniprot_parsed.txt"
+        os.path.join(path_output, "data", prefix, "config", "uniprot", "uniprot_parsed.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "prepare_uniprot_data.log")
     shell:
         """
-        scripts/uniprot_parse.py --uniprot_files {input} --output {output}
+        scripts/uniprot_parse.py --uniprot_files {input} --output {output} &> {log}
         """
 
 
 rule get_reactome:
+    conda:
+        "../../envs/isoannotpy.yaml"
     output:
-        expand("data/global/{filename}", filename = os.path.basename(config["reactome"]))[0]
+        os.path.join(path_output, "data", "global", get_config_basename("reactome"))
     params:
-        URL=config["reactome"]
+        URL=get_config_val("reactome", "")
+    log:
+        os.path.join(path_output, "logs", prefix, "get_reactome.log")
     shell:
         """
-        wget -nv --no-check-certificate -P data/global/ {params.URL}
+        curl -L -k -o {output} {params.URL} &> {log}
+        """
+
+rule get_mirwalk:
+    output:
+        os.path.join(path_output, "data", prefix, "config", "mirna", "{region}.zip")
+    log:
+        os.path.join(path_output, "logs", prefix, "get_mirwalk_{region}.log")
+    run:
+        target_url = config["mirwalk_urls"].get(wildcards.region)
+
+        if not target_url:
+            error_msg = (
+                f"FATAL ERROR: You are attempting to analyze region '{wildcards.region}', "
+                f"but a valid URL is not defined in config['mirwalk_urls']."
+            )
+            raise ValueError(error_msg)
+
+        shell("wget -O {output} {target_url} &> {log}")
+
+
+rule prepare_mirwalk:
+    input:
+        files = expand(
+            os.path.join(path_output, "data", prefix, "config", "mirna", "{region}.zip"),
+            region=config.get("mirna_regions_to_use", [])
+        )
+    output:
+        merged = os.path.join(path_output, "data", prefix, "config", "mirna", "mirwalk_merged.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "prepare_mirwalk.log")
+    shell:
+        """
+        > {output.merged}
+        if [ -z "{input.files}" ]; then
+            echo "WARNING: No regions defined. Output empty." > {log}
+        else
+            for file in {input.files}; do
+                echo "Procesando $file..." >> {log}
+                unzip -p "$file" >> {output.merged} 2>> {log}
+            done
+        fi
         """
 	
+
+rule get_rna_fasta_mirwalk:
+    output:
+        os.path.join(path_output, "data", prefix, "config", "mirna", "mirwalk_rna_reference.fna.gz")
+    params:
+        URL = config.get("rna_fasta_mirwalk", "")
+    log:
+        os.path.join(path_output, "logs", prefix, "get_rna_fasta_mirwalk.log")
+    shell:
+        """
+        wget -nv -O {output} {params.URL} &> {log}
+        """
+
+rule prepare_rna_fasta_mirwalk:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        rules.get_rna_fasta_mirwalk.output
+    output:
+         os.path.join(path_output, "data", prefix, "config", "mirna", "mirwalk_rna_reference.fna")
+    log:
+         os.path.join(path_output, "logs", prefix, "prepare_rna_fasta_mirwalk.log")
+    shell:
+        """
+        gunzip -k {input} &> {log}
+        """
+
+rule get_gtf_mirwalk:
+    output:
+        os.path.join(path_output, "data", prefix, "config", "mirna", "mirwalk_genomic_reference.gtf.gz")
+    params:
+        URL = config.get("gtf_mirwalk", "")
+    log:
+        os.path.join(path_output, "logs", prefix, "get_gtf_mirwalk.log")
+    shell:
+        """
+        wget -nv -O {output} {params.URL} &> {log}
+        """
+
+rule prepare_gtf_mirwalk:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        rules.get_gtf_mirwalk.output
+    output:
+        os.path.join(path_output, "data", prefix, "config", "mirna", "mirwalk_genomic_reference.gtf")
+    log:
+        os.path.join(path_output, "logs", prefix, "prepare_gtf_mirwalk.log")
+    shell:
+        """
+        gunzip -k {input} &> {log}
+        """
 
 # RUN
 
 rule run_refsqanti:
     conda:
-        "../../envs/sqanti.yaml"
+        "../../envs/sqanti3.yaml"
     input:
         gtf=select_reference_gtf,
         reference=rules.prepare_ensembl_reference.output,
         chr_ref=rules.get_refseq_acc.output  # we use this even in ensembl mode to filter only chromosome sequences (avoid MT)
     output:
-        classification=expand("data/{{prefix}}/config/{{db}}/sqanti_classification.txt", prefix=config["prefix"])[0],
-        junctions=expand("data/{{prefix}}/config/{{db}}/sqanti_junctions.txt", prefix=config["prefix"])[0], 
-        NMD=expand("data/{{prefix}}/config/{{db}}/sqanti_NMD.txt", prefix=config["prefix"])[0]
+        classification=os.path.join(path_output, "data", prefix, "config", "{db}", "sqanti_classification.txt"),
+        junctions=os.path.join(path_output, "data", prefix, "config", "{db}", "sqanti_junctions.txt"),
+        NMD=os.path.join(path_output, "data", prefix, "config", "{db}", "sqanti_NMD.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "run_refsqanti.log")
     shell:
         """
-        scripts/referenceSQANTI.py --gtf_file {input.gtf} --reference_file {input.reference} --chr_ref {input.chr_ref} --database {wildcards.db} --output_classification {output.classification} --output_junctions {output.junctions} --output_nmd {output.NMD}
+        scripts/referenceSQANTI.py --gtf_file {input.gtf} --reference_file {input.reference} --chr_ref {input.chr_ref} --database {wildcards.db} --output_classification {output.classification} --output_junctions {output.junctions} --output_nmd {output.NMD} &> {log}
         """
 
 rule run_gmap_index:
     conda:
-        "../../envs/sqanti.yaml"
+        "../../envs/sqanti3.yaml"
     input:
         ref_genome=rules.prepare_ensembl_reference.output
     output:
-        directory("data/{prefix}/config/ensembl/gmap_index")
+        directory(os.path.join(path_output, "data", prefix, "config", "ensembl", "gmap_index"))
     params:
-        outdir="data/{prefix}/config/ensembl/",
+        outdir=os.path.join(path_output, "data",prefix,"config","ensembl"),
         index_name="gmap_index"
+    log:
+        os.path.join(path_output, "logs", prefix, "run_gmap_index.log")
     shell:
         """
-        gmap_build --dir {params.outdir} --genomedb {params.index_name} {input.ref_genome}
+        gmap_build -D {params.outdir} -d {params.index_name} {input.ref_genome} &> {log}
         """
-
+rule install_sqanti:
+    conda:
+        "../../envs/git.yaml"
+    output:
+        touch(os.path.join(config["dir_sqanti"],"sqanti_installed.done"))
+    params:
+        dir_sqanti=config["dir_sqanti"]
+    log:
+        os.path.join(path_output, "logs", prefix, "install_sqanti.log")
+    shell:
+        """
+        git clone https://github.com/ConesaLab/SQANTI3.git {params.dir_sqanti} &> {log}
+        """
 
 rule run_sqanti:
     conda:
-        "../../envs/sqanti.yaml"
+        "../../envs/sqanti3.yaml"
     input:
         user_fasta=select_user_fasta_cdna,
         reference_gtf=select_reference_gtf,
-        genome_fasta=rules.prepare_ensembl_reference.output,
-        genome_fasta_index=rules.run_gmap_index.output
+        genome_fasta=rules.prepare_refseq_reference.output,
+        sqanti_installed=os.path.join(config["dir_sqanti"], "sqanti_installed.done")
     output:
-        corrected_cdna="data/{prefix}/output/{db}/sqanti_corrected.fasta",
-        fasta_proteins="data/{prefix}/output/{db}/sqanti_fasta_proteins.fasta",
-        gtf="data/{prefix}/output/{db}/sqanti_gtf.gtf",
-        classification="data/{prefix}/output/{db}/sqanti_classification.txt",
-        junctions="data/{prefix}/output/{db}/sqanti_junctions.txt",
+        corrected_cdna=os.path.join(path_output, "data", prefix, "output", "{db}", "sqanti_corrected.fasta"),
+        fasta_proteins=os.path.join(path_output, "data", prefix, "output", "{db}", "sqanti_corrected.faa"),
+        gtf=os.path.join(path_output, "data", prefix, "output", "{db}", "sqanti_corrected.gtf"),
+        classification=os.path.join(path_output, "data", prefix, "output", "{db}", "sqanti_classification.txt"),
+        junctions=os.path.join(path_output, "data", prefix, "output", "{db}", "sqanti_junctions.txt"),
     params:
-        outdir="data/{prefix}/output/{db}/",
+        outdir=os.path.join(path_output, "data",prefix,"output","{db}"),
         out_name="sqanti"
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "run_sqanti.log")
     shell:
         """
-        scripts/sqanti/sqanti_qc.py {input.user_fasta} {input.reference_gtf} {input.genome_fasta} -d {params.outdir} -x {input.genome_fasta_index}/gmap_index -o {params.out_name} -n
+        export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+        scripts/sqanti3/sqanti3_qc.py --isoforms {input.user_fasta} --refGTF {input.reference_gtf} --refFasta {input.genome_fasta} -d {params.outdir} -o {params.out_name} --force_id_ignore &> {log}
         """
 
+rule clean_sqanti_proteins:
+    input:
+        rules.run_sqanti.output.fasta_proteins
+    output:
+        os.path.join(path_output, "data", prefix, "output", "{db}", "final_sqanti_corrected.faa")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "clean_sqanti_proteins.log")
+    shell:
+        """
+        sed s/\*//g {input} > {output} 2> {log}
+        """
 
 rule run_utrscan:
     input:
         select_fasta_cdna
     output:
-        "data/{prefix}/output/{db}/utrscan.txt"
+        os.path.join(path_output, "data", prefix, "output", "{db}", "utrscan.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "run_utrscan.log")
     shell:
         """
-        software/bin/UtrScan -SIGNALLIST -COMMAND=software/bin/UtrSite.Command -INPUT={input} -OUTPUT={output}
+        software/bin/UtrScan -SIGNALLIST -COMMAND=software/bin/UtrSite.Command -INPUT={input} -OUTPUT={output} &> {log}
         """
 
-rule run_repeatmasker: 
+rule run_repeatmasker:
     conda:
         "../../envs/repeats.yaml"
     input:
         select_fasta_cdna
     output:
-        expand("data/{{prefix}}/output/{{db}}/repeat_masker/{filename}.out", filename = os.path.basename(select_fasta_cdna(config)))[0]
+        os.path.join(path_output, "data", prefix, "output", "{db}", "repeat_masker", f"{os.path.basename(select_fasta_cdna(config))}.out")
     params:
         species_name=config["species_name"],
-        outdir="data/{prefix}/output/{db}/repeat_masker/"
+        outdir=os.path.join(path_output, "data", prefix, "output", "{db}", "repeat_masker/"),
+        local_scratch = "/scr_local/rlopez/" + prefix + "_{db}_rm"
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "run_repeatmasker.log")
     shell:
-        """
-        RepeatMasker {input} -species {params.species_name} -dir {params.outdir}
+        r"""
+        # 1. Prepare libreries
+        LIBDIR="$CONDA_PREFIX/lib"
+        if [ ! -e "$LIBDIR/libnsl.so.1" ]; then
+            ln -sf "$LIBDIR/libnsl.so.3" "$LIBDIR/libnsl.so.1"  #A symbolic link is created; there is no version that installs the required dependency
+        fi
+        export LD_LIBRARY_PATH="$LIBDIR:$LD_LIBRARY_PATH"
+        mkdir -p {params.outdir}
+
+        rm -rf {params.local_scratch}
+        mkdir -p {params.local_scratch}
+        cd {params.local_scratch}
+
+        # 2. Create a mapping file and a FASTA with short IDs (MD5 Hashes)
+        # We only apply hashing if the ID length is > 50 characters to avoid RepeatMasker errors
+        tmp_fasta="tmp_hashed.fasta"
+        mapping_file="id_mapping.tsv"
+
+        python3 -c "
+import sys, hashlib
+with open('{input}', 'r') as f, open('$tmp_fasta', 'w') as out, open('$mapping_file', 'w') as m:
+    for line in f:
+        if line.startswith('>'):
+            original_id = line[1:].strip().split()[0]
+            if len(original_id) > 50:
+                new_id = hashlib.md5(original_id.encode()).hexdigest()
+                m.write(f'{{new_id}}\\t{{original_id}}\\n')
+                out.write(f'>{{new_id}}\\n')
+            else:
+                out.write(line)
+        else:
+            out.write(line)
+"
+
+        # 3. Run RepeatMasker
+        RepeatMasker $tmp_fasta -species "teleostei" -dir . &> {log}
+
+        # 4. Restore original IDs in the .out file
+        # Use a small Python script to replace the temporary hashes with the original long names
+        python3 -c "
+mapping = dict(line.strip().split('\\t') for line in open('$mapping_file'))
+with open('$tmp_fasta.out', 'r') as f_in, open('final_corrected.out', 'w') as f_out:
+    for line in f_in:
+        for short_id, long_id in mapping.items():
+            line = line.replace(short_id, long_id)
+        f_out.write(line)
+"
+        # 5. Cleanup
+        mv final_corrected.out {output}
+        cd -
+        rm -rf {params.local_scratch}
         """
 
+rule filter_interactions:
+    input:
+        mirwalk=rules.prepare_mirwalk.output
+    params:
+        species_name=config["species"],
+        mirbase="data/global/miRNA/miRNA.dat",
+        score=config.get("mirna_db_evidence_score_threshold")
+    output:
+        os.path.join(path_output, "data", prefix, "config", "mirna", "filter_interactions.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "filter_interactions.log")
+    shell:
+        """
+        scripts/filter_mirna_bs.py --mirbase_file {params.mirbase} --mirwalk_file {input.mirwalk} --species {params.species_name:q} --score {params.score} --mirwalk_output {output} &> {log}
+        """
  
+rule run_mirwalk2gen:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        mirwalk=rules.filter_interactions.output,
+        fasta=rules.prepare_rna_fasta_mirwalk.output,
+        gtf=rules.prepare_gtf_mirwalk.output,
+        chr_ref=rules.get_refseq_acc.output
+    output:
+        os.path.join(path_output, "data", prefix, "output", "{db}", "interactions_gc.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "run_mirwalk2gen.log")
+    shell:
+        """
+        scripts/mirna_bs_genomic_coord.py --mirwalk_file {input.mirwalk} --refseq_fasta {input.fasta} --refseq_gtf {input.gtf} --mirna_output {output} --chr_ref {input.chr_ref} &> {log}
+        """
+
+
 checkpoint run_interproscan:
     conda:
         "../../envs/interpro_java.yaml"
     input:
         select_fasta_proteins
     output:
-        directory("data/{prefix}/output/{db}/interproscan/splitProteins/")
+        directory(os.path.join(path_output, "data", prefix, "output", "{db}", "interproscan", "splitProteins"))  
     params:
         interproscan_path=config["interproscan_path"]
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "run_interproscan.log")
     shell:
         """
-        for i in {input}
-        do
-        mkdir -p {output} && {params.interproscan_path} -i {input} -d {output} --disable-precalc  -appl Coils,Pfam,MobiDBLite,SignalP_EUK,TMHMM  -f XML -iprlookup
-        done
+        mkdir -p {output} && {params.interproscan_path} -i {input} -d {output} --disable-precalc  -appl Coils,Pfam,MobiDBLite,SignalP_EUK,TMHMM  -f XML -iprlookup &> {log}
         """
 
 def gather_interproscan(wildcards):
@@ -400,14 +678,16 @@ def gather_interproscan(wildcards):
 
 rule parse_interproscan:
     conda:
-        "../../envs/sqanti.yaml"
+        "../../envs/sqanti3.yaml"
     input:
         gather_interproscan
     output:
-        "data/{prefix}/output/{db}/interproscan/interproResultsPfam.tsv"
+        os.path.join(path_output, "data", prefix, "output", "{db}", "interproscan", "interproResultsPfam.tsv")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "parse_interproscan.log")
     shell:
         """
-        scripts/parseInterproscanXml.py --interproscan_files {input} --output {output}
+        scripts/parseInterproscanXml.py --interproscan_files {input} --output {output} &> {log}
         """
 
 
@@ -417,20 +697,40 @@ rule run_gtftogenepred:
     input:
         select_gtf
     output:
-        "data/{prefix}/config/{db}/genePrediction.txt",
+        os.path.join(path_output, "data", prefix, "config", "{db}", "genePrediction.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "run_gtftogenepred.log")
     shell:
         """
-        gtfToGenePred {input} {output} -genePredExt -allErrors -ignoreGroupsWithoutExons
+        gtfToGenePred {input} {output} -genePredExt -allErrors -ignoreGroupsWithoutExons &> {log}
         """
 
+rule get_mirna_bs_annotation:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        fasta=select_fasta_cdna,
+        gene_prediction=rules.run_gtftogenepred.output,
+        mirna_bs=rules.run_mirwalk2gen.output,
+        chr_ref=rules.get_refseq_acc.output
+    params:
+        db=config.get("db")
+    output:
+        os.path.join(path_output, "data", prefix, "output", "{db}", "mirna_bs_annotation.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "get_mirna_bs_annotation.log")
+    shell:
+        """
+        scripts/get_mirna_bs_annotation.py --chr_ref {input.chr_ref} --genepred {input.gene_prediction} --isoform_fasta {input.fasta} --mirwalk_genomic {input.mirna_bs} --output {output} --db {params.db} &> {log}
+        """
 
 rule get_genomic_coordinates:
     conda:
         "../../envs/isoannotpy.yaml"
     input:
         uniprot_fasta = [file for file in rules.get_uniprot_data.output if file.endswith(".fasta.gz")],
-        refseq_fasta = rules.prepare_refseq_proteins.output if config["refseq_protein_fasta"] else [],
-        ensembl_fasta = rules.get_ensembl_proteins.output.fa,
+        refseq_fasta = rules.prepare_refseq_proteins.output if config["refseq_proteins"] else [],
+        ensembl_fasta = rules.get_ensembl_proteins.output.fa if config.get("ensembl_proteins") else [],
         phosphosite_files = [
             "data/global/PSP_data/Acetylation_site_dataset",
             "data/global/PSP_data/Methylation_site_dataset",
@@ -439,18 +739,34 @@ rule get_genomic_coordinates:
             "data/global/PSP_data/Phosphorylation_site_dataset",
             "data/global/PSP_data/Sumoylation_site_dataset",
             "data/global/PSP_data/Ubiquitination_site_dataset"],
-        refseq_gtf = rules.prepare_refseq_gtf.output.gtf if config["refseq_gtf"] else [],
-        ensembl_gtf = rules.prepare_ensembl_gtf.output,
+        refseq_gtf = rules.prepare_refseq_gtf.output if config["refseq_gtf"] else [],
+        ensembl_gtf = rules.prepare_ensembl_gtf.output if config.get("ensembl_gtf") else [],
         uniprot_parsed = rules.prepare_uniprot_data.output,
-        chr_ref = rules.get_refseq_acc.output
-    params:
-        biomart_host = config.get("biomart_host", [])
+        chr_ref = rules.get_refseq_acc.output if config.get("refseq_chr_accessions") else []
     output:
-        protein = "data/{prefix}/config/uniprot/uniprot_gcord_proteinGenomic.txt",
-        domain = "data/{prefix}/config/uniprot/uniprot_gcord_domainGenomic.txt",
+        protein=os.path.join(path_output, "data", prefix, "config", "uniprot", "uniprot_gcord_proteinGenomic.txt"),
+        domain=os.path.join(path_output, "data", prefix, "config", "uniprot", "uniprot_gcord_domainGenomic.txt")
+    params:
+        biomart_host = config.get("biomart_host", []),
+        ensembl_fasta_flag = "--ensembl_fasta" if config.get("ensembl_proteins") else "",
+        ensembl_gtf_flag   = "--ensembl_gtf"   if config.get("ensembl_gtf") else "",
+        chr_ref_flag = "--chr_ref" if config.get("refseq_chr_accessions") else ""
+    log:
+        os.path.join(path_output, "logs", prefix, "get_genomic_coordinates.log")
     shell:
         """
-        scripts/uniprotPhosphosite_genomicCoordinates.py --uniprot_fasta {input.uniprot_fasta} --refseq_fasta {input.refseq_fasta} --ensembl_fasta {input.ensembl_fasta} --uniprot_parsed {input.uniprot_parsed} --phosphosite_files {input.phosphosite_files} --refseq_gtf {input.refseq_gtf} --ensembl_gtf {input.ensembl_gtf}  --output_protein {output.protein} --output_domain {output.domain} --chr_ref {input.chr_ref} --biomart_host {params.biomart_host}
+        scripts/uniprotPhosphosite_genomicCoordinates.py \
+        --uniprot_fasta {input.uniprot_fasta} \
+        --refseq_fasta {input.refseq_fasta} \
+        {params.ensembl_fasta_flag} {input.ensembl_fasta} \
+        --uniprot_parsed {input.uniprot_parsed} \
+        --phosphosite_files {input.phosphosite_files} \
+        --refseq_gtf {input.refseq_gtf} \
+        {params.ensembl_gtf_flag} {input.ensembl_gtf} \
+        {params.chr_ref_flag} {input.chr_ref} \
+        --output_protein {output.protein} \
+        --output_domain {output.domain} \
+        --biomart_host {params.biomart_host} &> {log}
         """
         
 
@@ -462,16 +778,17 @@ rule get_uniprot_phosphosite_annotation:
         classification=select_sqanti_classification,
         gene_prediction=rules.run_gtftogenepred.output,
         motif_info=rules.get_genomic_coordinates.output.domain,
-        chr_ref = rules.get_refseq_acc.output,
         protein_assoc=select_prot_assoc
     params:
         keep_version = config["transcript_versioned"],
         biomart_host = config.get("biomart_host", [])        
     output:
-        expand("data/{{prefix}}/output/{{db}}/uniprot_Phosphosite_info.txt")[0]
+        os.path.join(path_output, "data", prefix, "output", "{db}", "uniprot_Phosphosite_info.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "get_uniprot_phosphosite_annotation.log")
     shell:           
         """
-        scripts/uniprotPhosphosite_annotation.py --orf_fasta {input.fasta_orf} --classification_file {input.classification} --genepred_file {input.gene_prediction} --uniprotmotif_file {input.motif_info} --chr_ref {input.chr_ref} --protein_association {input.protein_assoc} --keep_version {params.keep_version} --db {wildcards.db} --biomart_host {params.biomart_host} --output {output}
+        scripts/uniprotPhosphosite_annotation.py --orf_fasta {input.fasta_orf} --classification_file {input.classification} --genepred_file {input.gene_prediction} --uniprotmotif_file {input.motif_info} --protein_association {input.protein_assoc} --keep_version {params.keep_version} --db {wildcards.db} --biomart_host {params.biomart_host} --output {output} &> {log}
         """
 
 
@@ -481,15 +798,24 @@ rule parse_protein_databases:
     input:
         uniprot_fasta = [file for file in rules.get_uniprot_data.output if file.endswith(".fasta.gz")],
         refseq_fasta=rules.prepare_refseq_proteins.output,
-        ensembl_fasta=rules.get_ensembl_proteins.output.fa,
+        ensembl_fasta = rules.get_ensembl_proteins.output.fa if config.get("ensembl_proteins") else []
     output:
-        "data/{prefix}/config/parsed_databases.json"
+        os.path.join(path_output, "data", prefix, "config", "parsed_databases.json")
     params:
         ensembl_fasta_regex=_optional_param("ensembl_fasta_regex", "--ensembl_fasta_regex"),
         refseq_fasta_regex=_optional_param("refseq_fasta_regex", "--refseq_fasta_regex"),
+        ensembl_flag = "--ensembl_fasta" if config.get("ensembl_proteins") else ""
+    log:
+        os.path.join(path_output, "logs", prefix, "parse_protein_databases.log")
     shell:
         """
-        scripts/parse_protein_databases.py --uniprot_fasta {input.uniprot_fasta} {params.ensembl_fasta_regex} {params.refseq_fasta_regex} --ensembl_fasta {input.ensembl_fasta} --refseq_fasta {input.refseq_fasta} --output {output}
+        scripts/parse_protein_databases.py \
+        --uniprot_fasta {input.uniprot_fasta} \
+        {params.ensembl_fasta_regex} \
+        {params.refseq_fasta_regex} \
+        {params.ensembl_flag} {input.ensembl_fasta} \
+        --refseq_fasta {input.refseq_fasta} \
+        --output {output} &> {log}
         """
 
 
@@ -497,23 +823,145 @@ rule transcript_to_reference:
     conda:
         "../../envs/isoannotpy.yaml"
     input:
-        refseq_gtf=rules.prepare_refseq_gtf.output.gtf if config["refseq_gtf"] else [],
-        ensembl_gtf=rules.prepare_ensembl_gtf.output,
-        chr_ref=rules.get_refseq_acc.output if config["refseq_chr_accessions"] else [],
+        refseq_gtf = rules.prepare_refseq_gtf.output if config.get("refseq_gtf") else [],
+        ensembl_gtf = rules.prepare_ensembl_gtf.output if config.get("ensembl_gtf") else [],
+        chr_ref = rules.get_refseq_acc.output if config.get("refseq_chr_accessions") else [],
         classification_file=select_sqanti_classification,
-        corrected_gtf=rules.run_sqanti.output.gtf, 
+        corrected_gtf=rules.run_sqanti.output.gtf,
         fasta_proteins=rules.run_sqanti.output.fasta_proteins,
         species_db=rules.parse_protein_databases.output
     output:
-        protein_assoc="data/{prefix}/output/{db}/protein_assoc_data.txt",
-        nmd="data/{prefix}/output/{db}/nmd_data.txt"
+        protein_assoc=os.path.join(path_output, "data", prefix, "output", "{db}", "protein_assoc_data.txt"),
+        nmd=os.path.join(path_output, "data", prefix, "output", "{db}", "nmd_data.txt")
+    params:
+        ensembl_flag = "--ensembl_gtf" if config.get("ensembl_gtf") else "",
+        refseq_flag = "--refseq_gtf" if config.get("refseq_gtf") else "",
+        chr_ref_flag = "--chr_ref" if config.get("refseq_chr_accessions") else ""
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "transcript_to_reference.log")
     shell:
         """
-        scripts/transcript2reference.py --ensembl_gtf {input.ensembl_gtf} \
-        --refseq_gtf {input.refseq_gtf} \
-        --chr_ref {input.chr_ref} --classification_file {input.classification_file} --corrected_gtf {input.corrected_gtf} \
-        --corrected_fasta_proteins {input.fasta_proteins} --output_assoc {output.protein_assoc} --output_nmd {output.nmd} \
-        --database {wildcards.db} --species_db {input.species_db}
+        scripts/transcript2reference.py \
+        {params.ensembl_flag} {input.ensembl_gtf} \
+        {params.refseq_flag} {input.refseq_gtf} \
+        {params.chr_ref_flag} {input.chr_ref} \
+        --classification_file {input.classification_file} \
+        --corrected_gtf {input.corrected_gtf} \
+        --corrected_fasta_proteins {input.fasta_proteins} \
+        --output_assoc {output.protein_assoc} \
+        --output_nmd {output.nmd} \
+        --database {wildcards.db} \
+        --species_db {input.species_db} &> {log}
+        """
+
+rule filter_nls:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input: 
+        select_fasta_proteins
+    output: 
+        os.path.join(path_output,"data",prefix,"output","{db}","nls","nls_filtered_proteins.fa")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "filter_nls.log")
+    shell: 
+        """
+        scripts/nls_filter.py --input {input} --output {output} &> {log}
+        """
+
+rule nls_deduplicate:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        rules.filter_nls.output
+    output:
+        fasta = os.path.join(path_output,"data",prefix,"output","{db}","nls","unique_proteins.fa"),
+        mapping = os.path.join(path_output,"data",prefix,"output","{db}","nls","protein_mapping.tsv")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "nls_deduplicate.log")
+    shell:
+        """
+        scripts/deduplicate_proteins.py --input {input} \
+            --output_fasta {output.fasta} --output_mapping {output.mapping} &> {log}
+        """
+
+rule split_proteins:
+    input: 
+        rules.nls_deduplicate.output.fasta
+    output: 
+        expand(os.path.join(path_output,"data",prefix,"output","{{db}}","nls", "chunks_temp", "chunk_{n}.fa"), n=range(nls_chunks))
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "split_proteins.log")
+    shell:
+        """
+        mkdir -p $(dirname {output[0]})
+        awk 'BEGIN {{RS=">"; FS="\\n"}} \
+             NR>1 {{ \
+                out_file = "{path_output}/data/{prefix}/output/{wildcards.db}/nls/chunks_temp/chunk_" (i++ % {nls_chunks}) ".fa"; \
+                print ">"$0 > out_file; \
+             }}' {input} 2> {log}
+        """
+
+rule run_nucimport:
+    input: 
+        os.path.join(path_output, "data", prefix, "output", "{db}", "nls", "chunks_temp", "chunk_{n}.fa")
+    output: 
+        os.path.join(path_output,"data",prefix,"output","{db}","nls","tmp", "output_chunk_{n}.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "run_nucimport", "run_nucimport_chunk_{n}.log")
+    params:
+        jar_dir = "software/NucImport",
+        jar_name = "NucImportMay2012.jar"
+    shell:
+        """
+        cd {params.jar_dir}
+        java -jar {params.jar_name} {input} {nls_model} Mouse ID=F > {output} 2> {log}
+        """
+
+rule merge_nls_chunks:
+    input: 
+        expand(os.path.join(path_output,"data",prefix,"output","{{db}}","nls","tmp", "output_chunk_{n}.txt"), n=range(nls_chunks))
+    output: 
+        os.path.join(path_output,"data",prefix,"output","{db}","nls","output_merged.txt")
+    log:
+        os.path.join(path_output,"logs",prefix,"{db}","nls_chunks_merged.log")
+    shell:
+        """
+        awk "NR == FNR || (FNR > 3 && !/^Protein/ && !/^\*/)" {input} > {output} 2> {log}
+        """
+
+rule parse_nls:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        rules.merge_nls_chunks.output
+    output:
+        os.path.join(path_output,"data",prefix,"output","{db}","nls","nls_parsed.tsv")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "parse_nls.log")
+    params:
+        t_imp = config.get("nls_threshold_import", 0.7),
+        t_cnls = config.get("nls_threshold_cnls", 0.3)
+    shell:
+        """
+        scripts/parse_nls.py --input {input} \
+            --threshold_imp {params.t_imp} --threshold_cnls {params.t_cnls} \
+            --output {output} &> {log}
+        """
+
+rule expand_nls:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        parsed_tsv = rules.parse_nls.output,
+        mapping = rules.nls_deduplicate.output.mapping
+    output:
+        os.path.join(path_output,"data",prefix,"output","{db}","nls","nls_final_expanded.tsv")
+    log:
+       os.path.join(path_output, "logs", prefix, "{db}", "expand_nls.log")
+    shell:
+        """
+        scripts/expand_nls_annotation.py --parsed {input.parsed_tsv} \
+            --mapping {input.mapping} --output {output}
         """
 
 # LAYERS
@@ -527,9 +975,13 @@ rule layer_go:
     params:
         biomart_host=config.get("biomart_host", []),
         biomart_dataset=config.get("biomart_dataset", []),
+        db=config.get("db")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "layer_go.log")
     shell:
         """
-        scripts/layer_go.py --classification_file {input.classification_file} --output {output} --biomart_host {params.biomart_host} --biomart_dataset {params.biomart_dataset} """
+        scripts/layer_go.py --classification_file {input.classification_file} --output {output} --biomart_host {params.biomart_host} --biomart_dataset {params.biomart_dataset} --db {params.db} &> {log}
+        """
 
 
 rule layer_interproscan:
@@ -544,11 +996,13 @@ rule layer_interproscan:
        _output_layer_db("layer_interproscan", external_rule=rules.parse_interproscan.output)
     params:
         keep_version=config["transcript_versioned"]
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "layer_interproscan.log")
     shell:
         """
-        echo {input.t}
+        (echo {input.t}
         echo {input.pfam}
-        scripts/layer_interproscan.py --interproscan_file {input.interproscan_file} --pfam_file {input.pfam} --classification_file {input.classification_file} --keep_version {params.keep_version} --output {output}
+        scripts/layer_interproscan.py --interproscan_file {input.interproscan_file} --pfam_file {input.pfam} --classification_file {input.classification_file} --keep_version {params.keep_version} --output {output}) &> {log}
         """
 
 
@@ -560,9 +1014,11 @@ rule layer_exons:
         chr_ref=rules.get_refseq_acc.output if (config["db"]=="refseq") else []
     output:
         _output_layer_db("layer_exons", external_rule=select_gtf)
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "layer_exons.log")
     shell:
         """
-        scripts/layer_exons.py --gtf_file {input.gtf_file} --chr_ref {input.chr_ref} --output {output}
+        scripts/layer_exons.py --gtf_file {input.gtf_file} --chr_ref {input.chr_ref} --output {output} &> {log}
         """
 
 
@@ -574,9 +1030,11 @@ rule layer_junctions:
         classification_file=select_sqanti_classification 
     output:
         _output_layer_db("layer_junctions", external_rule=lambda x: select_sqanti_output(x).junctions)
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "layer_junctions.log")
     shell:
         """
-        scripts/layer_junctions.py --junctions_file {input.junctions_file} --classification_file {input.classification_file} --output {output}
+        scripts/layer_junctions.py --junctions_file {input.junctions_file} --classification_file {input.classification_file} --output {output} &> {log}
         """
 
 rule layer_nmd:
@@ -587,9 +1045,11 @@ rule layer_nmd:
         classification_file=select_sqanti_classification
     output:
         _output_layer_db("layer_nmd", external_rule=select_nmd_file)
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "layer_nmd.log")
     shell:
         """
-        scripts/layer_nmd.py --nmd_file {input.nmd_file} --classification_file {input.classification_file} --output {output}
+        scripts/layer_nmd.py --nmd_file {input.nmd_file} --classification_file {input.classification_file} --output {output} &> {log}
         """
 
 
@@ -602,12 +1062,15 @@ rule layer_reactome:
     params:
         biomart_host=config.get("biomart_host", []),
         biomart_dataset=config.get("biomart_dataset", []),
-        species=config["species"]
+        species=config["species"],
+        db=config.get("db")
     output:
         _output_layer_db("layer_reactome", external_rule=rules.get_reactome.output)
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "layer_reactome.log")
     shell:
         """
-        scripts/layer_reactome.py --reactome_file {input.reactome_file} --classification_file {input.classification_file} --biomart_host {params.biomart_host} --biomart_dataset {params.biomart_dataset} --species {params.species:q} --output {output}
+        scripts/layer_reactome.py --reactome_file {input.reactome_file} --classification_file {input.classification_file} --biomart_host {params.biomart_host} --biomart_dataset {params.biomart_dataset} --species {params.species:q} --db {params.db} --output {output} &> {log}
         """
 
 
@@ -621,20 +1084,35 @@ rule layer_repeatmasker:
         _output_layer_db("layer_repeatmasker", external_rule=rules.run_repeatmasker.output)
     params:
         keep_version=config["transcript_versioned"]
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "layer_repeatmasker.log")
     shell:
         """
-        scripts/layer_repeatmasker.py --keep_version {params.keep_version} --repeatmasker_file {input.repeatmasker_file} --classification_file {input.classification_file} --output {output}
+        scripts/layer_repeatmasker.py --keep_version {params.keep_version} --repeatmasker_file {input.repeatmasker_file} --classification_file {input.classification_file} --output {output} &> {log}
         """
 
+rule layer_mirna_bs:
+    input:
+        mirna_bs_file=rules.get_mirna_bs_annotation.output
+    output:
+        _output_layer_db("layer_mirna_bs", external_rule=rules.get_mirna_bs_annotation.output)
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "layer_mirna_bs.log")
+    shell:
+        """
+        sort -u -V -k1,1 -k4,4n -k5,5n {input.mirna_bs_file} > {output} 2> {log}
+        """
 
 rule layer_uniprot:
     input:
         uniprot_file=rules.get_uniprot_phosphosite_annotation.output,
     output:
         _output_layer_db("layer_uniprot", external_rule=rules.get_uniprot_phosphosite_annotation.output)
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "layer_uniprot.log")
     shell:
         """
-        cat {input.uniprot_file} | sort -k1 -k3 -k4 -k5 | uniq | sort -k1 > {output}
+        sort -u -V -k1,1 -k3,3 -k4,4n -k5,5n {input.uniprot_file} > {output} 2> {log}
         """
 
 
@@ -648,11 +1126,30 @@ rule layer_utrscan:
         _output_layer_db("layer_utrscan", external_rule=rules.run_utrscan.output)
     params:
         keep_version=config.get("transcript_versioned", False)
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "layer_utrscan.log")
     shell:
         """
-        scripts/layer_utrscan.py --keep_version {params.keep_version} --utrscan_file {input.utrscan_file} --classification_file {input.classification_file} --output {output}
+        scripts/layer_utrscan.py --keep_version {params.keep_version} --utrscan_file {input.utrscan_file} --classification_file {input.classification_file} --output {output} &> {log}
         """
 
+rule layer_nls:
+    input:
+        nls = rules.expand_nls.output,
+        classification=select_sqanti_classification
+    output: 
+        _output_layer_db("layer_nls", external_rule=rules.parse_nls.output)
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "layer_nls.log")
+    shell:
+        """
+        scripts/layer_nls.py \
+            --nls_file {input.nls} \
+            --classification_file {input.classification} \
+            --output {output}.tmp &> {log}
+        sort -V -k1,1 -k4,4n {output}.tmp > {output}
+        rm {output}.tmp
+        """
 
 # GET EVERYTHING TOGETHER
 rule tappas_annotation:
@@ -660,30 +1157,36 @@ rule tappas_annotation:
         "../../envs/isoannotpy.yaml"
     input:
         transcript_block = [
-            # rules.layer_utrscan.output,
-            # rules.layer_repeatmasker.output,   # "data/{prefix}/output/{db}/layers/layer_repeatmasker.gtf",
-            # rules.layer_nmd.output
+            rules.layer_utrscan.output,
+            rules.layer_repeatmasker.output,
+            rules.layer_nmd.output,
+            rules.layer_mirna_bs.output if config.get("mirna_regions_to_use") else []
         ] + config.get("transcript_gtf", []),
         genomic_block = [
-            # rules.layer_exons.output,
-            # rules.layer_junctions.output,
+            rules.layer_exons.output,
+            rules.layer_junctions.output,
         ] + config.get("genomic_gtf", []),
         protein_block = [
             rules.layer_go.output if config["layer_go"] == "si" else [],
-            # rules.layer_reactome.output if config["reactome"] else [],
-            # rules.layer_interproscan.output,
-            # "data/{prefix}/output/{db}/layers/layer_uniprot.gtf"
+            rules.layer_reactome.output if config["reactome"] else [],
+            rules.layer_interproscan.output,
+            rules.layer_uniprot.output,
+            rules.layer_nls.output
         ] + config.get("protein_gtf", []),
         classification_file=select_sqanti_classification,
         gene_desc=[],
         protein_assoc=select_prot_assoc
     output:
-        expand("data/{{prefix}}/{species_name}_tappas_{{db}}_annotation_file.gff3", species_name = config["species_name"])[0] 
+        os.path.join(path_output, "data", prefix, f"{species_name}_tappas_{{db}}_annotation_file.gff3")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "tappas_annotation.log")
     shell:
         """
         scripts/t2goAnnotationFile.py --classification_file {input.classification_file}  \
          --gene_desc_file {input.gene_desc} --input_transcripts {input.transcript_block} --input_genomic {input.genomic_block} \
-         --input_protein  {input.protein_block} --output {output} --gene_desc_file {input.gene_desc} --protein_association {input.protein_assoc}
+         --input_protein  {input.protein_block} --output {output}.tmp --gene_desc_file {input.gene_desc} --protein_association {input.protein_assoc} &> {log}
+        sort -V -k1,1 -k4,4n {output}.tmp > {output}
+        rm {output}.tmp
         """
 
 
@@ -693,10 +1196,12 @@ rule renameFeatures:
     input:
         rules.tappas_annotation.output
     output:
-        expand("data/{{prefix}}/{species}_tappas_{{db}}_annotation_file.gff3_mod", species = config["species_name"])[0] 
+        os.path.join(path_output, "data", prefix, f"{species_name}_tappas_{{db}}_annotation_file.gff3_mod") 
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "renameFeatures.log")
     shell:
         """
-        scripts/renameFeatures.py {input}
+        scripts/renameFeatures.py {input} &> {log}
         """
 
 # TODO ASK the user the directory where they want to store the final annotation. Connect with isoannot.sh script
