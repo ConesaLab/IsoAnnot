@@ -1,0 +1,11 @@
+url_path,views_total,views_unique
+/ConesaLab/IsoAnnot,19,13
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot,4,3
+/ConesaLab/IsoAnnot/tree/dev-refseq_based,3,2
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/isoannot.sh,2,2
+/ConesaLab/IsoAnnot/branches,2,2
+/ConesaLab/IsoAnnot/issues,2,2
+/ConesaLab/IsoAnnot/pulls,2,2
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot/config,2,2
+/ConesaLab/IsoAnnot/releases/tag/v0.9.0b1,2,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/config/ensembl/mmusculus/config.yaml,1,1
