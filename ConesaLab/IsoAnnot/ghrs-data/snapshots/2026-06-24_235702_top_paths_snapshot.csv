@@ -1,0 +1,11 @@
+url_path,views_total,views_unique
+/ConesaLab/IsoAnnot,11,11
+/ConesaLab/IsoAnnot/tree/dev-refseq_based,3,2
+/ConesaLab/IsoAnnot/branches,2,2
+/ConesaLab/IsoAnnot/pulls,2,2
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot,2,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/config/ensembl/mmusculus/config.yaml,1,1
+/ConesaLab/IsoAnnot/commits,1,1
+/ConesaLab/IsoAnnot/compare/dev-refseq_based...raul-lopez44:IsoAnnot:feature/genome_refseq,1,1
+/ConesaLab/IsoAnnot/issues,1,1
+/ConesaLab/IsoAnnot/pull/12,1,1
