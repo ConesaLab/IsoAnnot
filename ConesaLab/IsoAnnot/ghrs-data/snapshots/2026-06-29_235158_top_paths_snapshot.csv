@@ -1,0 +1,11 @@
+url_path,views_total,views_unique
+/ConesaLab/IsoAnnot,10,9
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot,3,2
+/ConesaLab/IsoAnnot/releases/tag/v0.9.0b1,2,2
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/config/mytranscripts/hsapiens/config.yaml,2,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/config/refseq/mmusculus/config.yaml,2,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/config/ensembl/mmusculus/config.yaml,1,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/config/mytranscripts/hsapiens/Snakefile.smk,1,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/isoannot.sh,1,1
+/ConesaLab/IsoAnnot/blob/main/README.md,1,1
+/ConesaLab/IsoAnnot/blob/main/uniprot_evaluation.py,1,1
