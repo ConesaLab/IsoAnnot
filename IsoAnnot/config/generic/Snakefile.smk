@@ -1,6 +1,18 @@
 import os
 
 configfile: "config/generic/config.yaml"
+
+def is_fasta_input():
+    db = config.get("db", "ensembl")
+    if db in ["ensembl", "refseq"]:
+        return True
+    return config.get("fasta_cdna", None) is not None
+
+def select_gmap_index(wildcards):
+    if not is_fasta_input():
+        return []
+    return rules.run_gmap_index.output
+
 prefix = config["prefix"]
 db = config["db"]
 species_name = config["species_name"]
@@ -495,9 +507,10 @@ rule run_sqanti:
     conda:
         "../../envs/sqanti3.yaml"
     input:
-        user_cdna=select_user_cdna,
+        user_cdna=select_cdna_with_warnings if "select_cdna_with_warnings" in globals() else select_user_cdna,
         reference_gtf=select_reference_gtf,
         genome_fasta=rules.prepare_ensembl_reference.output,
+        genome_fasta_index=select_gmap_index,
         sqanti_installed=os.path.join(config["dir_sqanti"], "sqanti_installed.done"),
         check = rules.check_chromosome_consistency.output
     output:
@@ -509,13 +522,14 @@ rule run_sqanti:
     params:
         outdir=os.path.join(path_output, "data",prefix,"output","{db}"),
         out_name="sqanti",
-        extra_flag = get_sqanti_extra_params
+        extra_flag = get_sqanti_extra_params,
+        gmap_option=lambda wildcards: f"-x {os.path.join(path_output, 'data', prefix, 'config', 'ensembl', 'gmap_index', 'gmap_index')}" if is_fasta_input() else ""
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "run_sqanti.log")
     shell:
         """
         export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
-        scripts/sqanti3/sqanti3_qc.py --isoforms {input.user_cdna} --refGTF {input.reference_gtf} --refFasta {input.genome_fasta} -d {params.outdir} -o {params.out_name} --force_id_ignore {params.extra_flag} &> {log}
+        scripts/sqanti3/sqanti3_qc.py --isoforms {input.user_cdna} --refGTF {input.reference_gtf} --refFasta {input.genome_fasta} -d {params.outdir} -o {params.out_name} {params.gmap_option} --force_id_ignore {params.extra_flag} &> {log}
         """
 
 rule clean_sqanti_proteins:
@@ -725,7 +739,7 @@ rule get_genomic_coordinates:
             "data/global/PSP_data/Phosphorylation_site_dataset",
             "data/global/PSP_data/Sumoylation_site_dataset",
             "data/global/PSP_data/Ubiquitination_site_dataset"],
-        refseq_gtf = rules.prepare_refseq_gtf.output if config["refseq_gtf"] else [],
+        refseq_gtf = rules.prepare_refseq_gtf.output if config.get("refseq_gtf") else [],
         ensembl_gtf = rules.prepare_ensembl_gtf.output,
         uniprot_parsed = rules.prepare_uniprot_data.output,
         chr_ref = rules.get_refseq_acc.output
@@ -789,9 +803,9 @@ rule transcript_to_reference:
     conda:
         "../../envs/isoannotpy.yaml"
     input:
-        refseq_gtf=rules.prepare_refseq_gtf.output if config["refseq_gtf"] else [],
+        refseq_gtf=rules.prepare_refseq_gtf.output if config.get("refseq_gtf") else [],
         ensembl_gtf=rules.prepare_ensembl_gtf.output,
-        chr_ref=rules.get_refseq_acc.output if config["refseq_chr_accessions"] else [],
+        chr_ref=rules.get_refseq_acc.output if config.get("refseq_chr_accessions") else [],
         classification_file=select_sqanti_classification,
         corrected_gtf=rules.run_sqanti.output.gtf, 
         fasta_proteins=rules.run_sqanti.output.fasta_proteins,
@@ -1123,8 +1137,8 @@ rule tappas_annotation:
             rules.layer_junctions.output,
         ] + config.get("genomic_gtf", []),
         protein_block = [
-            rules.layer_go.output if config["layer_go"] == "si" else [],
-            rules.layer_reactome.output if config["reactome"] else [],
+            rules.layer_go.output if config.get("layer_go", "no") == "si" else [],
+            rules.layer_reactome.output if config.get("reactome") else [],
             rules.layer_interproscan.output,
             rules.layer_uniprot.output,
             rules.layer_nls.output if config.get("nls_model") else []
