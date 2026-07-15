@@ -13,9 +13,9 @@ def main():
         parser = argparse.ArgumentParser(description="Parse Databases")
         parser.add_argument("--uniprot_fasta", nargs="+", required=True)
         parser.add_argument("--ensembl_fasta", nargs="+", required=True)
-        parser.add_argument("--ensembl_fasta_regex", default="(\w*)\.?", required=False)
+        parser.add_argument("--ensembl_fasta_regex", default=r"(\w*)\.?", required=False)
         parser.add_argument("--refseq_fasta", nargs="+", default=[], required=False)
-        parser.add_argument("--refseq_fasta_regex", default="(.*?)\s", required=False)
+        parser.add_argument("--refseq_fasta_regex", default=r"(.*?)\s", required=False)
         parser.add_argument("--output", required=True)
         args = parser.parse_args()
 

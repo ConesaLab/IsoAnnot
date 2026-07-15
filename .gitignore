@@ -28,3 +28,8 @@ IsoAnnot/scripts/desktop.ini
 # Ignore config.yaml files
 IsoAnnot/config/mytranscripts/
 
+# Ignore Gemini-related files
+GEMINI.md
+LEARNINGS.gemini.md
+docs/
+

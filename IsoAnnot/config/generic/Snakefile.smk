@@ -174,7 +174,7 @@ rule get_ensembl_proteins:
         """
         (wget -nv -P {path_output}/data/{prefix}/config/ensembl/ {params.URL}
         gunzip -c {output.gz} > {output.fa}.tmp
-        sed s/\*//g {output.fa}.tmp > {output.fa}
+        sed s/\\*//g {output.fa}.tmp > {output.fa}
         rm {output.fa}.tmp) 2> {log}
         """
      
@@ -527,7 +527,7 @@ rule clean_sqanti_proteins:
         os.path.join(path_output, "logs", prefix, "{db}", "clean_sqanti_proteins.log")
     shell:
         """
-        sed s/\*//g {input} > {output} 2> {log}
+        sed s/\\*//g {input} > {output} 2> {log}
         """
 
 rule run_utrscan:
@@ -882,7 +882,7 @@ rule merge_nls_chunks:
         os.path.join(path_output,"logs",prefix,"{db}","nls_chunks_merged.log")
     shell:
         """
-        awk "NR == FNR || (FNR > 3 && !/^Protein/ && !/^\*/)" {input} > {output} 2> {log}
+        awk "NR == FNR || (FNR > 3 && !/^Protein/ && !/^\\*/)" {input} > {output} 2> {log}
         """
 
 rule parse_nls:

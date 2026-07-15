@@ -126,7 +126,7 @@ def get_uniprot_domains(domaingenomic_filename):
     logging.info(f"Reading uniprot data file {domaingenomic_filename}")
     output_dict = defaultdict(list)
 
-    motif_regex = re.compile("^([^;\.{]+)") 
+    motif_regex = re.compile(r"^([^;\.{]+)") 
 
     allowed_features = ["ACT_SITE", "BINDING", "CA_BIND", "DNA_BIND", "MOD_RES", "CARBOHYD", "LIPID",
                         "DISULFID", "METAL", "NONT_STD", "COILED", "INTRAMEM", "MOTIF", "REGION", "SITE",

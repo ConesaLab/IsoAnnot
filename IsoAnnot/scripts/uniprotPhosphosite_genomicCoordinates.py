@@ -257,7 +257,7 @@ def get_phosphosite_modifications(filename):
         modifications_dict (dict)
     '''
     modifications_dict = defaultdict(list)
-    capture_regex = re.compile("(\D+)(\d+)\-(.+)")
+    capture_regex = re.compile(r"(\D+)(\d+)\-(.+)")
 
     mod_to_feature = {
         "ga": "CARBOHYD",
