@@ -5,27 +5,27 @@ biomart_host: plants.ensembl.org
 biomart_dataset: athaliana_eg_gene
 biomart_schema: plants_mart
 
-ensembl_cdna: ftp://ftp.ensemblgenomes.org/pub/release-62/plants/fasta/arabidopsis_thaliana/cdna/Arabidopsis_thaliana.TAIR10.cdna.all.fa.gz
-ensembl_proteins: ftp://ftp.ensemblgenomes.org/pub/release-62/plants/fasta/arabidopsis_thaliana/pep/Arabidopsis_thaliana.TAIR10.pep.all.fa.gz
-ensembl_gtf: ftp://ftp.ensemblgenomes.org/pub/release-62/plants/gtf/arabidopsis_thaliana/Arabidopsis_thaliana.TAIR10.62.gtf.gz
-ensembl_reference: ftp://ftp.ensemblgenomes.org/pub/release-62/plants/fasta/arabidopsis_thaliana/dna/Arabidopsis_thaliana.TAIR10.dna.toplevel.fa.gz
+ensembl_cdna: https://ftp.ensemblgenomes.org/pub/release-62/plants/fasta/arabidopsis_thaliana/cdna/Arabidopsis_thaliana.TAIR10.cdna.all.fa.gz
+ensembl_proteins: https://ftp.ensemblgenomes.org/pub/release-62/plants/fasta/arabidopsis_thaliana/pep/Arabidopsis_thaliana.TAIR10.pep.all.fa.gz
+ensembl_gtf: https://ftp.ensemblgenomes.org/pub/release-62/plants/gtf/arabidopsis_thaliana/Arabidopsis_thaliana.TAIR10.62.gtf.gz
+ensembl_reference: https://ftp.ensemblgenomes.org/pub/release-62/plants/fasta/arabidopsis_thaliana/dna/Arabidopsis_thaliana.TAIR10.dna.toplevel.fa.gz
 
 prefix: Athaliana
 db: refseq
 transcript_versioned: True
 
-refseq_proteins: ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/plant/Arabidopsis_thaliana/all_assembly_versions/GCF_000001735.4_TAIR10.1/GCF_000001735.4_TAIR10.1_protein.faa.gz
-refseq_cdna: ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/plant/Arabidopsis_thaliana/all_assembly_versions/GCF_000001735.4_TAIR10.1/GCF_000001735.4_TAIR10.1_rna.fna.gz
-refseq_chr_accessions: ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/plant/Arabidopsis_thaliana/all_assembly_versions/GCF_000001735.4_TAIR10.1/GCF_000001735.4_TAIR10.1_assembly_structure/Primary_Assembly/assembled_chromosomes/chr2acc
-refseq_gtf: ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/plant/Arabidopsis_thaliana/all_assembly_versions/GCF_000001735.4_TAIR10.1/GCF_000001735.4_TAIR10.1_genomic.gtf.gz
+refseq_proteins: https://ftp.ncbi.nlm.nih.gov/genomes/refseq/plant/Arabidopsis_thaliana/all_assembly_versions/GCF_000001735.4_TAIR10.1/GCF_000001735.4_TAIR10.1_protein.faa.gz
+refseq_cdna: https://ftp.ncbi.nlm.nih.gov/genomes/refseq/plant/Arabidopsis_thaliana/all_assembly_versions/GCF_000001735.4_TAIR10.1/GCF_000001735.4_TAIR10.1_rna.fna.gz
+refseq_chr_accessions: https://ftp.ncbi.nlm.nih.gov/genomes/refseq/plant/Arabidopsis_thaliana/all_assembly_versions/GCF_000001735.4_TAIR10.1/GCF_000001735.4_TAIR10.1_assembly_structure/Primary_Assembly/assembled_chromosomes/chr2acc
+refseq_gtf: https://ftp.ncbi.nlm.nih.gov/genomes/refseq/plant/Arabidopsis_thaliana/all_assembly_versions/GCF_000001735.4_TAIR10.1/GCF_000001735.4_TAIR10.1_genomic.gtf.gz
 
 uniprot_fasta:
-  - ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/Eukaryota/UP000006548/UP000006548_3702.fasta.gz
-  - ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/Eukaryota/UP000006548/UP000006548_3702_additional.fasta.gz
+  - https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/Eukaryota/UP000006548/UP000006548_3702.fasta.gz
+  - https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/Eukaryota/UP000006548/UP000006548_3702_additional.fasta.gz
 
 uniprot_dat:
-  - ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/Eukaryota/UP000006548/UP000006548_3702.dat.gz
-  - ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/Eukaryota/UP000006548/UP000006548_3702_additional.dat.gz
+  - https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/Eukaryota/UP000006548/UP000006548_3702.dat.gz
+  - https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/Eukaryota/UP000006548/UP000006548_3702_additional.dat.gz
 
 reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReactome_All_Levels.txt
 layer_go: si

@@ -321,7 +321,7 @@ def main():
         parser.add_argument('--keep_version', nargs=None, default="False")
         parser.add_argument('--db', nargs=None, required=True)
         parser.add_argument('--protein_association', nargs='?', default=False, required=False, type=argparse_nullable)
-        parser.add_argument('--biomart_host', nargs="?", const="http://www.ensembl.org")
+        parser.add_argument('--biomart_host', nargs="?", const="https://www.ensembl.org")
 
 
         args = parser.parse_args()

@@ -36,7 +36,7 @@ def main():
     try:
         parser = argparse.ArgumentParser(description='LayerGO')
         parser.add_argument('--classification_file', required=True)
-        parser.add_argument('--biomart_host', nargs="?", const="http://www.ensembl.org")
+        parser.add_argument('--biomart_host', nargs="?", const="https://www.ensembl.org")
         parser.add_argument('--biomart_dataset', nargs=None, required=True)
         parser.add_argument('--output', nargs=None, required=True)
         parser.add_argument('--db', nargs=None, required=True)

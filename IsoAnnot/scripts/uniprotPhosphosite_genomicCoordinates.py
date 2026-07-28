@@ -323,7 +323,7 @@ def main():
         parser.add_argument("--refseq_gtf", required=False, default=None)
         parser.add_argument("--ensembl_gtf", required=True)
         parser.add_argument("--chr_ref", required=False, default=None)
-        parser.add_argument('--biomart_host', nargs="?", const="http://www.ensembl.org")
+        parser.add_argument('--biomart_host', nargs="?", const="https://www.ensembl.org")
 
         args = parser.parse_args()
 
