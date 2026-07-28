@@ -483,26 +483,6 @@ rule run_gmap_index:
         """
         gmap_build -D {params.outdir} -d {params.index_name} {input.ref_genome} &> {log}
         """
-rule install_sqanti:
-    conda:
-        "../../envs/git.yaml"
-    output:
-        touch(os.path.join(config["dir_sqanti"],"sqanti_installed.done"))
-    params:
-        dir_sqanti=config["dir_sqanti"],
-        commit_hash = "d37e59d929b16839eca107db190ebe76e7a5abb6"
-    log:
-        os.path.join(path_output, "logs", prefix, "install_sqanti.log")
-    shell:
-        """
-        if [ ! -d "{params.dir_sqanti}/.git" ]; then
-            git clone https://github.com/ConesaLab/SQANTI3.git {params.dir_sqanti}
-        fi
-        cd {params.dir_sqanti}
-        git fetch --all
-        git checkout {params.commit_hash}
-        """
-
 rule run_sqanti:
     conda:
         "../../envs/sqanti3.yaml"
@@ -511,7 +491,6 @@ rule run_sqanti:
         reference_gtf=select_reference_gtf,
         genome_fasta=rules.prepare_ensembl_reference.output,
         genome_fasta_index=select_gmap_index,
-        sqanti_installed=os.path.join(config["dir_sqanti"], "sqanti_installed.done"),
         check = rules.check_chromosome_consistency.output
     output:
         corrected_cdna=os.path.join(path_output, "data", prefix, "output", "{db}", "sqanti_corrected.fasta"),
@@ -529,7 +508,7 @@ rule run_sqanti:
     shell:
         """
         export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
-        scripts/sqanti3/sqanti3_qc.py --isoforms {input.user_cdna} --refGTF {input.reference_gtf} --refFasta {input.genome_fasta} -d {params.outdir} -o {params.out_name} {params.gmap_option} --force_id_ignore {params.extra_flag} &> {log}
+        sqanti3_qc.py --isoforms {input.user_cdna} --refGTF {input.reference_gtf} --refFasta {input.genome_fasta} -d {params.outdir} -o {params.out_name} {params.gmap_option} --force_id_ignore {params.extra_flag} &> {log}
         """
 
 rule clean_sqanti_proteins:
