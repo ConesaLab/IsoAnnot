@@ -12,7 +12,7 @@ Reactome entries).
 
 import argparse, sys, os, logging, csv
 import pandas as pd
-from IsoAnnot import openfile
+from IsoAnnot import openfile, query_biomart_with_retry
 from t2goAnnotationFile import get_structural_classification_df
 from pybiomart import Dataset
 
@@ -74,7 +74,11 @@ def main():
         # Get ENSG-Gene_name conversion with Biomart and connect it with
         # the reactome dataframe
         dataset = Dataset(name=args.biomart_dataset, host=args.biomart_host, virtual_schema=biomart_schema)
-        gene_name_table = dataset.query(attributes=['ensembl_gene_id', 'external_gene_name'])
+        gene_name_table = query_biomart_with_retry(
+            dataset=dataset,
+            attributes=['ensembl_gene_id', 'external_gene_name'],
+            layer_name="layer_reactome"
+        )
         gene_name_table.rename(columns={'Gene stable ID': 'ensembl_gene_id', 'Gene name': 'gene_name'}, inplace=True)
         gene_name_table = gene_name_table.dropna()
         reactome_info = pd.merge(reactome_info, gene_name_table, how='inner', on='ensembl_gene_id')

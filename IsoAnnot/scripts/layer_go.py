@@ -13,6 +13,7 @@ GO terms).
 import argparse, sys, os, logging, csv, traceback
 import pandas as pd
 from pybiomart import Dataset
+from IsoAnnot import query_biomart_with_retry
 from t2goAnnotationFile import get_structural_classification_df
 
 
@@ -61,10 +62,11 @@ def main():
             attribute = "external_gene_name"
             gene_column = "Gene name"
       
-        go_table = dataset.query(attributes=[attribute,
-                                                "go_id",
-                                                "name_1006", #go name
-                                                "namespace_1003"]) #go category
+        go_table = query_biomart_with_retry(
+            dataset=dataset,
+            attributes=[attribute, "go_id", "name_1006", "namespace_1003"],
+            layer_name="layer_go"
+        )
         # Remove NAs and allow only specific go categories 
         go_table = go_table.dropna()
         go_table = go_table[go_table['GO domain'].isin(allowed_features)] 

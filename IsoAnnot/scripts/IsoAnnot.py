@@ -146,6 +146,30 @@ def read_chr_ref_acc(filename, leading_db="ensembl"):
     return ChromosomeMap(mapping_file=filename, leading_db=leading_db)
 
 
+def query_biomart_with_retry(dataset, attributes, layer_name="biomart", max_retries=5, initial_delay=5):
+    """
+    Queries pybiomart Dataset with up to max_retries attempts using exponential backoff.
+    If all attempts fail, raises RuntimeError with explicit instructions on how to disable the layer.
+    """
+    import time
+    import logging
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            logging.info(f"[{layer_name}] Querying BioMart (Attempt {attempt}/{max_retries})...")
+            return dataset.query(attributes=attributes)
+        except Exception as err:
+            if attempt == max_retries:
+                raise RuntimeError(
+                    f"Fatal Error in '{layer_name}': BioMart query failed after {max_retries} attempts due to server/network error ({err}). "
+                    f"To run IsoAnnot without BioMart, deactivate this layer by passing '--config {layer_name}=no' to isoannot.sh, "
+                    f"or set '{layer_name}: no' in your species config.yaml."
+                )
+            delay = initial_delay * (2 ** (attempt - 1))
+            logging.warning(f"[{layer_name}] BioMart attempt {attempt}/{max_retries} failed ({err}). Retrying in {delay}s...")
+            time.sleep(delay)
+
+
 def merge_fasta_dicts(fasta_files):
     """
     Merges several fasta containing dictionaries.
