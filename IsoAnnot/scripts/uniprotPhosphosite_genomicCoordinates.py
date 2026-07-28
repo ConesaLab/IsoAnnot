@@ -337,8 +337,8 @@ def main():
         # Refseq chromosomes
         if args.chr_ref:
             logging.info(f"Reading chr accession table {args.chr_ref}")
-            refseqChrom = read_chr_ref_acc(args.chr_ref)
-            logging.info(f"chr_conversion {refseqChrom}")
+            refseqChrom = read_chr_ref_acc(args.chr_ref, leading_db="ensembl")
+            logging.info(f"chr_conversion loaded with {len(getattr(refseqChrom, 'norm_map', {}))} entries")
 
         # Compile 3 databases in one dictionary containing protein identifiers and the sequence.
         uniprot_proteins = get_fasta_sequences(fasta_files=args.uniprot_fasta,

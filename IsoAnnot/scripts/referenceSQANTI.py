@@ -367,9 +367,17 @@ def main():
 	output_NMD_file = args.output_nmd
 
 	genome_dicc = fasta_parser(genome)
-	refseqChrom = read_chr_ref_acc(args.chr_ref)
+	refseqChrom = read_chr_ref_acc(args.chr_ref, leading_db=ref_type)
 
 	transcript_dicc = gtf_parsing(gtf_file, ref_type, refseqChrom)
+
+	if hasattr(refseqChrom, 'total_queries') and refseqChrom.total_queries > 0:
+		failure_rate = len(refseqChrom.unmapped_log) / refseqChrom.total_queries
+		if failure_rate > 0.50:
+			raise RuntimeError(
+				f"Critical Error in referenceSQANTI.py: {len(refseqChrom.unmapped_log)}/{refseqChrom.total_queries} "
+				f"chromosome lookups failed using mapping file '{args.chr_ref}'. Halting execution to prevent silent data loss."
+			)
 
 
 	output_NMD = open(output_NMD_file, "w")

@@ -50,7 +50,14 @@ def main():
         # Get chromosome Ensembl-Refseq IDs
         chrom_ref = {}
         if args.chr_ref:
-            chrom_ref=read_chr_ref_acc(args.chr_ref)
+            chrom_ref = read_chr_ref_acc(args.chr_ref, leading_db="ensembl")
+            if hasattr(chrom_ref, 'total_queries') and chrom_ref.total_queries > 0:
+                failure_rate = len(chrom_ref.unmapped_log) / chrom_ref.total_queries
+                if failure_rate > 0.50:
+                    raise RuntimeError(
+                        f"Critical Error in layer_exons.py: {len(chrom_ref.unmapped_log)}/{chrom_ref.total_queries} "
+                        f"chromosome lookups failed using mapping file '{args.chr_ref}'. Halting execution to prevent silent data loss."
+                    )
 
         with open(args.output, "w") as output_file:
             logging.info(f"Starting exons conversion to GTF {args.output}")

@@ -44,24 +44,106 @@ def openfile(filename, mode='r'):
         return open(filename, mode)
 
 
-def read_chr_ref_acc(filename):
+class ChromosomeMap:
     """
-    Reads a file containing Refseq chromosome accessions
-    and their corresponding Ensembl identifyer.
-
-    Args:
-        filename (str): name of file.
-    Returns:
-        chr_accession_dict (dict): {refseq_acc:ensembl_acc}
-    
+    Bi-directional, case-insensitive, version-safe chromosome mapper.
+    Supports Ensembl-leading (default), RefSeq-leading, or identity mapping mode.
     """
-    refseqChrom = {}
-    with open(filename, 'r') as infile:
-        for line in infile:
-            if line[0] != "#":
-                refseqChrom[line.split("\t")[1].strip()] = line.split("\t")[0].strip()
+    NCBI_ACCESSION_PREFIXES = ("NC_", "NW_", "NT_", "AC_", "NZ_")
 
-    return refseqChrom
+    def __init__(self, mapping_file=None, leading_db="ensembl"):
+        self.leading_db = (leading_db or "ensembl").lower()
+        self.forward_map = {}  # Ensembl -> RefSeq
+        self.reverse_map = {}  # RefSeq -> Ensembl
+        self.norm_map = {}     # normalized_key -> target_canonical
+        self.unmapped_log = set()
+        self.total_queries = 0
+
+        if mapping_file:
+            self._load_mapping_file(mapping_file)
+
+    def _normalize_key(self, key):
+        if not key:
+            return ""
+        k = str(key).strip().lower()
+        if k.startswith("chr"):
+            k = k[3:]
+        return k
+
+    def _strip_version(self, key):
+        if any(key.startswith(prefix) for prefix in self.NCBI_ACCESSION_PREFIXES):
+            return key.split(".")[0]
+        return key
+
+    def _load_mapping_file(self, filepath):
+        with open(filepath, 'r') as f:
+            for line in f:
+                if line.startswith("#") or not line.strip():
+                    continue
+                parts = line.strip().split("\t")
+                if len(parts) >= 2:
+                    ensembl, refseq = parts[0].strip(), parts[1].strip()
+                    
+                    self.forward_map[ensembl] = refseq
+                    self.reverse_map[refseq] = ensembl
+                    
+                    target = refseq if self.leading_db == "refseq" else ensembl
+                    
+                    for val in (ensembl, refseq):
+                        self.norm_map[self._normalize_key(val)] = target
+                        self.norm_map[self._normalize_key(self._strip_version(val))] = target
+
+    def get(self, query_chr, default=None):
+        """Behaves like a dict.get() for seamless drop-in compatibility."""
+        if query_chr is None:
+            return default
+
+        q = str(query_chr).strip()
+        self.total_queries += 1
+
+        # Tier 1: Direct directional lookup
+        if self.leading_db == "refseq" and q in self.forward_map:
+            return self.forward_map[q]
+        if self.leading_db == "ensembl" and q in self.reverse_map:
+            return self.reverse_map[q]
+
+        # Tier 2: Normalized lookup
+        norm_q = self._normalize_key(q)
+        if norm_q in self.norm_map:
+            return self.norm_map[norm_q]
+
+        # Tier 3: Version-stripped normalized lookup
+        stripped_q = self._normalize_key(self._strip_version(q))
+        if stripped_q in self.norm_map:
+            return self.norm_map[stripped_q]
+
+        # Unmapped contig fallback
+        self.unmapped_log.add(q)
+        return default if default is not None else q
+
+    def __getitem__(self, key):
+        res = self.get(key, default=None)
+        if res is None and key not in self.norm_map:
+            raise KeyError(key)
+        return res
+
+    def __contains__(self, key):
+        if not key:
+            return False
+        q = str(key).strip()
+        return (q in self.forward_map or q in self.reverse_map or
+                self._normalize_key(q) in self.norm_map or
+                self._normalize_key(self._strip_version(q)) in self.norm_map)
+
+
+def read_chr_ref_acc(filename, leading_db="ensembl"):
+    """
+    Reads a file containing Refseq chromosome accessions and Ensembl identifiers.
+    Returns a ChromosomeMap instance.
+    """
+    if not filename:
+        return ChromosomeMap(leading_db=leading_db)
+    return ChromosomeMap(mapping_file=filename, leading_db=leading_db)
 
 
 def merge_fasta_dicts(fasta_files):

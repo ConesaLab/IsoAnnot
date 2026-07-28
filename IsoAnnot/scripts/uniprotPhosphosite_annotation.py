@@ -14,7 +14,7 @@ Script that projects protein features genomic coordinates into query isoforms an
 import argparse, sys, os, re, logging, csv, traceback
 import pandas as pd
 from collections import defaultdict
-from IsoAnnot import openfile, strand_table, get_consecutive_parts, argparse_nullable
+from IsoAnnot import openfile, strand_table, get_consecutive_parts, argparse_nullable, read_chr_ref_acc
 from Bio.SeqFeature import SeqFeature, FeatureLocation
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
@@ -66,24 +66,8 @@ def get_coding_transcripts(classification_filename, protein_sequences):
     return(transcript_dict)
 
 
-def get_genepred_exons(genepred_filename, match_file = None):
-    """
-    Get exons location info for each transcript from genepred file
-    Args: 
-        -genepred_filename (str)
-        - chr_assoc (dict): Refseq chromosome accession
-    
-    Returns:
-        -output_dict (dict)
-    """
-    chr_conversion = {}
-
-    # Get chr from Refseq
-    if match_file is not None:
-        logging.info(f"Reading chr accession table {match_file}")
-        with openfile(match_file, "rt") as read_handler:
-            tsv_reader = csv.reader(filter(lambda row: row[0] != "#", read_handler), delimiter="\t")
-            chr_conversion = {row[1]: row[0] for row in tsv_reader}
+def get_genepred_exons(genepred_filename, match_file=None, leading_db="ensembl"):
+    chr_conversion = read_chr_ref_acc(match_file, leading_db=leading_db) if match_file else {}
 
 
     logging.info(f"Reading GenePred file {genepred_filename}")
@@ -334,7 +318,7 @@ def main():
         coding_transcripts = get_coding_transcripts(classification_filename=args.classification_file,
                                                     protein_sequences=protein_sequences)
 
-        transcript_pred_exons = get_genepred_exons(genepred_filename=args.genepred_file, match_file=args.chr_ref)
+        transcript_pred_exons = get_genepred_exons(genepred_filename=args.genepred_file, match_file=args.chr_ref, leading_db=getattr(args, 'db', 'ensembl'))
         chrom_domains = get_uniprot_domains(domaingenomic_filename=args.uniprotmotif_file)
 
         protein_assoc = None

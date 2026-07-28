@@ -194,13 +194,20 @@ def main():
         # Get chromosome Ensembl-RefSeq IDs equivalence if we
         # are using GTF data
         if args.refseq_gtf:
-            chrom_ref = read_chr_ref_acc(args.chr_ref)
+            chrom_ref = read_chr_ref_acc(args.chr_ref, leading_db="ensembl")
 
         # Get Ensembl and RefSeq CDS info
         cds_ensembl = read_genomic_cds_from_gtf_group_chr(args.ensembl_gtf)
         if args.refseq_gtf:
             cds_refseq = read_genomic_cds_from_gtf_group_chr(args.refseq_gtf,
                                       chrom_ref)
+            if hasattr(chrom_ref, 'total_queries') and chrom_ref.total_queries > 0:
+                failure_rate = len(chrom_ref.unmapped_log) / chrom_ref.total_queries
+                if failure_rate > 0.50:
+                    raise RuntimeError(
+                        f"Critical Error in transcript2reference.py: {len(chrom_ref.unmapped_log)}/{chrom_ref.total_queries} "
+                        f"chromosome lookups failed using mapping file '{args.chr_ref}'. Halting execution to prevent silent data loss."
+                    )
             
         # Get isoforms exon locations and predicted proteins of sequenced transcriptome
         # using SQANTI outputs

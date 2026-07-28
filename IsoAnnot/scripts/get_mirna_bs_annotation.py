@@ -139,10 +139,17 @@ def main():
     try:
         # Step 1: Handle chromosome accessions mapping for RefSeq
         refseqChrom = {}
-        if args.chr_ref and args.db.lower() == "refseq":
-            refseqChrom = read_chr_ref_acc(args.chr_ref)
-            logging.info("Using Refseq chromosome accessions mapping.")
+        if args.chr_ref:
+            refseqChrom = read_chr_ref_acc(args.chr_ref, leading_db=args.db)
+            logging.info(f"Using chromosome accessions mapping (leading DB: {args.db}).")
             isoforms_by_chr, exons_by_chr = load_genepred(args.genepred, refseqChrom)
+            if hasattr(refseqChrom, 'total_queries') and refseqChrom.total_queries > 0:
+                failure_rate = len(refseqChrom.unmapped_log) / refseqChrom.total_queries
+                if failure_rate > 0.50:
+                    raise RuntimeError(
+                        f"Critical Error in get_mirna_bs_annotation.py: {len(refseqChrom.unmapped_log)}/{refseqChrom.total_queries} "
+                        f"chromosome lookups failed using mapping file '{args.chr_ref}'. Halting execution to prevent silent data loss."
+                    )
         else:
             logging.info("Using original chromosome accessions.")
             isoforms_by_chr, exons_by_chr = load_genepred(args.genepred)
