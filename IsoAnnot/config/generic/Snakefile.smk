@@ -507,8 +507,10 @@ rule run_sqanti:
         os.path.join(path_output, "logs", prefix, "{db}", "run_sqanti.log")
     shell:
         """
-        export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
-        sqanti3_qc.py --isoforms {input.user_cdna} --refGTF {input.reference_gtf} --refFasta {input.genome_fasta} -d {params.outdir} -o {params.out_name} {params.gmap_option} --force_id_ignore {params.extra_flag} &> {log}
+        sqanti3_qc.py --isoforms {input.user_cdna} --refGTF {input.reference_gtf} --refFasta {input.genome_fasta} \
+            -d {params.outdir} -o {params.out_name} \
+            --include_ORF \
+            {params.gmap_option} {params.extra_flag} &> {log}
         """
 
 rule clean_sqanti_proteins:
