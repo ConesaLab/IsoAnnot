@@ -21,8 +21,20 @@ nls_model = config.get("nls_model", None)
 nls_chunks = 50
 
 
-def _output_layer_db(layer_name, external_rule=[], wildcards=None):
+def is_feature_enabled(key, default=True):
+    val = config.get(key, None)
+    if val is None:
+        return default
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, str):
+        return val.lower() not in ["false", "no", "0", "off"]
+    return bool(val)
 
+
+def _output_layer_db(layer_name, external_rule=[], wildcards=None):
+    if layer_name == "layer_repeatmasker" and not is_feature_enabled("repeat_masker", is_feature_enabled("repeatmasker", True)):
+        return []
     if callable(external_rule):
         external_rule = external_rule({"prefix": prefix, "db": db })
     if len(config.get(layer_name, [])) or len(external_rule):
@@ -1112,7 +1124,7 @@ rule tappas_annotation:
     input:
         transcript_block = [
             rules.layer_utrscan.output,
-            rules.layer_repeatmasker.output,
+            rules.layer_repeatmasker.output if is_feature_enabled("repeat_masker", is_feature_enabled("repeatmasker", True)) else [],
             rules.layer_nmd.output,
             rules.layer_mirna_bs.output if config.get("mirna_regions_to_use") else []
         ] + config.get("transcript_gtf", []),
