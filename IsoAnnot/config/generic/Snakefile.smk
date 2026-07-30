@@ -532,9 +532,12 @@ rule run_utrscan:
         os.path.join(path_output, "data", prefix, "output", "{db}", "utrscan.txt")
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "run_utrscan.log")
+    params:
+        utrscan_bin = os.path.abspath("software/bin/UtrScan"),
+        utrsite_cmd = os.path.abspath("software/bin/UtrSite.Command")
     shell:
         """
-        software/bin/UtrScan -SIGNALLIST -COMMAND=software/bin/UtrSite.Command -INPUT={input} -OUTPUT={output} &> {log}
+        {params.utrscan_bin} -SIGNALLIST -COMMAND={params.utrsite_cmd} -INPUT={input} -OUTPUT={output} &> {log}
         """
 
 rule run_repeatmasker:
