@@ -135,6 +135,18 @@ class ChromosomeMap:
                 self._normalize_key(q) in self.norm_map or
                 self._normalize_key(self._strip_version(q)) in self.norm_map)
 
+    def values(self):
+        """Returns all mapped target chromosome names."""
+        return set(self.forward_map.values()) | set(self.reverse_map.values()) | set(self.norm_map.values())
+
+    def keys(self):
+        """Returns all recognized source chromosome names."""
+        return set(self.norm_map.keys())
+
+    def items(self):
+        """Returns (source_chrom, target_chrom) pairs."""
+        return [(k, self.get(k)) for k in self.keys()]
+
 
 def read_chr_ref_acc(filename, leading_db="ensembl"):
     """

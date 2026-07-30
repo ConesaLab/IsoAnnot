@@ -181,7 +181,7 @@ def gtf_parsing(gtf_file, ref, refseqChrom={}):
 				strand = line.split("\t")[6]
 				chrom = line.split("\t")[0]
 				# Filter transcripts that are not present in the main chromosomes (eg: mitochondrial)
-				if chrom in refseqChrom.values():
+				if chrom in refseqChrom:
 					if line.split("\t")[2]=="transcript":
 						transcript_id = line.split("transcript_id")[1].split("\"")[1].strip()
 
