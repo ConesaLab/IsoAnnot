@@ -875,7 +875,7 @@ rule run_nucimport:
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "run_nucimport", "run_nucimport_chunk_{n}.log")
     params:
-        jar_dir = "software/NucImport",
+        jar_dir = os.path.abspath(os.path.join(workflow.basedir, "../../software/NucImport")),
         jar_name = "NucImportMay2012.jar"
     shell:
         """
