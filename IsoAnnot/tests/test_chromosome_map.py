@@ -72,3 +72,15 @@ def test_unmapped_contig_fallback_and_tracking(sample_chr2acc_file):
     assert chr_map.get("unknown_contig_999") == "unknown_contig_999"
     assert "unknown_contig_999" in chr_map.unmapped_log
     assert chr_map.total_queries == 1
+
+
+def test_len_bool_iter(sample_chr2acc_file):
+    empty_map = ChromosomeMap()
+    assert len(empty_map) == 0
+    assert not bool(empty_map)
+
+    chr_map = ChromosomeMap(mapping_file=sample_chr2acc_file, leading_db="ensembl")
+    assert len(chr_map) > 0
+    assert bool(chr_map)
+    assert set(chr_map) == chr_map.keys()
+

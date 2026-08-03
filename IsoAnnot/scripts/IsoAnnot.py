@@ -135,6 +135,15 @@ class ChromosomeMap:
                 self._normalize_key(q) in self.norm_map or
                 self._normalize_key(self._strip_version(q)) in self.norm_map)
 
+    def __len__(self):
+        return len(self.norm_map)
+
+    def __bool__(self):
+        return bool(self.norm_map)
+
+    def __iter__(self):
+        return iter(self.keys())
+
     def values(self):
         """Returns all mapped target chromosome names."""
         return set(self.forward_map.values()) | set(self.reverse_map.values()) | set(self.norm_map.values())
