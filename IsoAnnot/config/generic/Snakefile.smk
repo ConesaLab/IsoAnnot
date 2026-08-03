@@ -18,7 +18,7 @@ db = config["db"]
 species_name = config["species_name"]
 path_output = config["path_output"]
 nls_model = config.get("nls_model", None)
-nls_chunks = 50
+nls_chunks = int(config.get("nls_chunks", 50))
 
 
 def is_feature_enabled(key, default=True):
@@ -875,7 +875,7 @@ rule run_nucimport:
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "run_nucimport", "run_nucimport_chunk_{n}.log")
     params:
-        jar_dir = os.path.abspath(os.path.join(workflow.basedir, "../../software/NucImport")),
+        jar_dir = os.path.abspath("software/NucImport"),
         jar_name = "NucImportMay2012.jar"
     shell:
         """
