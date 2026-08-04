@@ -1,7 +1,7 @@
 species:  Homo sapiens
 species_name: human
 
-biomart_host: https://www.ensembl.org
+biomart_host: www.ensembl.org
 biomart_dataset: hsapiens_gene_ensembl
 
 ensembl_cdna: https://ftp.ensembl.org/pub/release-115/fasta/homo_sapiens/cdna/Homo_sapiens.GRCh38.cdna.all.fa.gz

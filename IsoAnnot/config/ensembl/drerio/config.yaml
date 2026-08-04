@@ -1,7 +1,7 @@
 species:  Danio rerio
 species_name: zebrafish
 
-biomart_host: https://www.ensembl.org
+biomart_host: www.ensembl.org
 biomart_dataset: drerio_gene_ensembl
  
 ensembl_cdna: https://ftp.ensembl.org/pub/release-115/fasta/danio_rerio/cdna/Danio_rerio.GRCz11.cdna.all.fa.gz

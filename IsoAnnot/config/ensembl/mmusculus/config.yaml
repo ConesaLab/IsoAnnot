@@ -1,7 +1,7 @@
 species:  Mus musculus
 species_name: mouse
 
-biomart_host: https://www.ensembl.org
+biomart_host: www.ensembl.org
 biomart_dataset: mmusculus_gene_ensembl
 
 ensembl_cdna: https://ftp.ensembl.org/pub/release-115/fasta/mus_musculus/cdna/Mus_musculus.GRCm39.cdna.all.fa.gz
