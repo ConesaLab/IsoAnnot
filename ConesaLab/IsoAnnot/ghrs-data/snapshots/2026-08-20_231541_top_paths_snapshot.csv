@@ -1,0 +1,11 @@
+url_path,views_total,views_unique
+/ConesaLab/IsoAnnot,10,8
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot,3,1
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot/config,3,1
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot/config/refseq,2,1
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot/config/refseq/hsapiens,2,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/InterproScan_install.sh,1,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/config/ensembl/hsapiens/config.yaml,1,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/config/refseq/hsapiens/Snakefile.smk,1,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/config/refseq/hsapiens/config.yaml,1,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/isoannot.sh,1,1
