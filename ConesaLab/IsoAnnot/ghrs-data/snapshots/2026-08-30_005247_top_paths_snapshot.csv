@@ -1,0 +1,11 @@
+url_path,views_total,views_unique
+/ConesaLab/IsoAnnot,19,9
+/ConesaLab/IsoAnnot/tree/dev,15,1
+/ConesaLab/IsoAnnot/tree/dev/IsoAnnot,12,1
+/ConesaLab/IsoAnnot/tree/dev/IsoAnnot/config,10,1
+/ConesaLab/IsoAnnot/tree/dev/IsoAnnot/config/mytranscripts/hsapiens,7,1
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot,6,2
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot/config,6,2
+/ConesaLab/IsoAnnot/blob/dev/IsoAnnot/config/generic/Snakefile.smk,5,1
+/ConesaLab/IsoAnnot/commits/dev,4,1
+/ConesaLab/IsoAnnot/tree/dev/IsoAnnot/config/generic,4,1
