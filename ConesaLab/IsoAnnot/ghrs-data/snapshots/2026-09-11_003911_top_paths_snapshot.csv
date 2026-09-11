@@ -1,0 +1,11 @@
+url_path,views_total,views_unique
+/ConesaLab/IsoAnnot,16,10
+/ConesaLab/IsoAnnot/tree/dev,6,2
+/ConesaLab/IsoAnnot/blob/dev/IsoAnnot/config/generic/Snakefile.smk,5,1
+/ConesaLab/IsoAnnot/tree/dev/IsoAnnot,4,2
+/ConesaLab/IsoAnnot/tree/dev/IsoAnnot/config,4,1
+/ConesaLab/IsoAnnot/tree/dev/IsoAnnot/config/generic,4,1
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot,3,3
+/ConesaLab/IsoAnnot/tree/dev/IsoAnnot/scripts,2,2
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/isoannot.sh,2,1
+/ConesaLab/IsoAnnot/releases/tag/v0.9.0b1,2,1
