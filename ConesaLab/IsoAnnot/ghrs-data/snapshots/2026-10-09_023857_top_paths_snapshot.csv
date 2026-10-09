@@ -1,0 +1,11 @@
+url_path,views_total,views_unique
+/ConesaLab/IsoAnnot,11,9
+/ConesaLab/IsoAnnot/tree/main/.github/workflows,3,1
+/ConesaLab/IsoAnnot/releases/tag/v0.9.0b1,2,2
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot,2,2
+/ConesaLab/IsoAnnot/tree/main/.github,2,1
+/ConesaLab/IsoAnnot/blob/main/.github/workflows/github-repo-stats.yml,1,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/data/global/PSP_data/Acetylation_site_dataset,1,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/scripts/IsoAnnot.py,1,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/scripts/sqanti/sqanti_filter.py,1,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/scripts/sqanti/sqanti_qc.py,1,1
