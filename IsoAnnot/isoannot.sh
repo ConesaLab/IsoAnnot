@@ -1,6 +1,8 @@
 #! /usr/bin/env bash
 
 POSITIONAL=()
+# Empty, so a CONFIG variable from the environment is not passed to snakemake
+CONFIG=""
 while [[ $# -gt 0 ]]
 do
 key="$1"
@@ -32,8 +34,14 @@ case $key in
     shift # past value
     ;;
     --config)
-    CONFIG="$2"
     shift # past argument
+    # Take every key=value up to the next --option, so --config a=1 b=2 keeps b=2 too.
+    # The quoted form --config "a=1 b=2" still works because $CONFIG is word-split below
+    while [[ $# -gt 0 && "$1" != --* ]]
+    do
+        CONFIG="$CONFIG $1"
+        shift # past value
+    done
     ;;
     --default)
     DEFAULT=YES
