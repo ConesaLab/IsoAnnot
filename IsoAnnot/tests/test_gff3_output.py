@@ -312,6 +312,31 @@ def test_end_to_end_gff3(synthetic_dir, run_script, tmp_path):
     assert all(re.match(r"^ID=[A-Za-z0-9_.\-]+;", attributes) for _, _, attributes in proteins.values())
 
 
+def test_t2go_empty_blocks(run_script, tmp_path):
+    """
+    Layers can be empty (no UTR motif, no NMD transcript). When every file of a block is empty, t2go
+    writes the primary lines instead of crashing on pd.concat([]).
+    """
+    classification = write_classification(tmp_path / "classification.txt", [
+        ["ENST00000000005", "1", "+", 700, "lncRNA", "SYNC", "ENST00000000005", "non_coding", "NA", "NA", "NA", "NA"],
+    ])
+    empty = tmp_path / "empty.gtf"
+    empty.write_text("")
+    exons = tmp_path / "exons.gtf"
+    exons.write_text("ENST00000000005\ttappAS\texon\t12001\t12400\t.\t+\t.\tChr=chr1\n")
+    output = tmp_path / "annotation.gff3"
+    result = run_script("t2goAnnotationFile.py", "--classification_file", classification,
+                        "--input_transcripts", empty, empty, "--input_genomic", exons, "--input_protein", empty,
+                        "--output", output)
+    assert result.returncode == 0, result.stderr
+    assert [row[:5] for row in read_tsv(output)] == [
+        ["ENST00000000005", "tappAS", "transcript", "1", "700"],
+        ["ENST00000000005", "tappAS", "gene", "1", "700"],
+        ["ENST00000000005", "tappAS", "genomic", "1", "1"],
+        ["ENST00000000005", "tappAS", "exon", "12001", "12400"],
+    ]
+
+
 def test_rename_features_keeps_unknown_pairs(run_script, tmp_path):
     """
     A source/feature pair renameFeatures.py does not know (e.g. from a user protein_gtf) no longer stops

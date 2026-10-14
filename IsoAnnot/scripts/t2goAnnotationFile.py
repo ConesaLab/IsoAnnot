@@ -232,7 +232,8 @@ def main():
                     logging.error(f"Error reading GTF file {gtf_file}: " + str(e) + ". Ignoring.")
                     continue
 
-            return gtf_dfs
+            # pd.concat([]) fails when every file of a block is empty
+            return gtf_dfs if gtf_dfs else [pd.DataFrame()]
 
         # Get transcript IDs annotated in primary DFs
         existing_ids = block_dfs.get("transcript")[block_dfs.get("transcript").columns[0]]
