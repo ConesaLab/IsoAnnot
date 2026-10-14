@@ -58,7 +58,10 @@ def _remove_extension(config_value, all=False):
     if config_value.endswith("gz"):
         output_name = filename[:-7] if all else filename[:-3]
     elif all:
-        ouput_name = filename[:-4]
+        output_name = filename[:-4]
+    else:
+        # Plain (not gzipped) URLs keep their name
+        output_name = filename
 
     return output_name
 
@@ -180,16 +183,18 @@ rule prepare_refseq_gtf:
         os.path.join(path_output, "data", prefix, "config", "refseq", f"{_remove_extension(config['refseq_gtf'], all=True)}_nopartial_nc.gtf")
     log:
         os.path.join(path_output, "logs", prefix, "prepare_refseq_gtf.log")
+    # zcat -f also reads a plain (not gzipped) GTF
     shell:
         """
-        zcat {input}|grep -v -F 'partial=true' | grep '^NC_' > {output} 2> {log}
+        zcat -f {input}|grep -v -F 'partial=true' | grep '^NC_' > {output} 2> {log}
         """
 
 
 rule get_ensembl_proteins:
     output:
         gz=os.path.join(path_output, "data", prefix, "config", "ensembl", os.path.basename(config["ensembl_proteins"])),
-        fa=os.path.join(path_output, "data", prefix, "config", "ensembl", _remove_extension(config["ensembl_proteins"]))
+        # A plain (not gzipped) URL would give fa the same name as the download, so it gets a fixed name
+        fa=os.path.join(path_output, "data", prefix, "config", "ensembl", _remove_extension(config["ensembl_proteins"]) if config["ensembl_proteins"].endswith("gz") else "ensembl_proteins.fa")
     params:
         URL=config["ensembl_proteins"]
     log:
@@ -197,7 +202,7 @@ rule get_ensembl_proteins:
     shell:
         """
         (wget -nv -P {path_output}/data/{prefix}/config/ensembl/ {params.URL}
-        gunzip -c {output.gz} > {output.fa}.tmp
+        gunzip -cf {output.gz} > {output.fa}.tmp
         sed s/\\*//g {output.fa}.tmp > {output.fa}
         rm {output.fa}.tmp) 2> {log}
         """

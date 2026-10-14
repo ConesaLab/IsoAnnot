@@ -60,6 +60,29 @@ def test_dry_run_reference_modes(dry_run, database):
     assert jobs[f"prepare_{database}_gtf"] == 1
 
 
+@pytest.mark.parametrize("database", ["ensembl", "refseq"])
+def test_dry_run_plain_urls(dry_run, tmp_path, database):
+    """URLs without .gz are downloaded and used as they are, instead of crashing at parse time."""
+    result = dry_run(database,
+                     "ensembl_proteins=https://host/p/Homo_sapiens.GRCh38.pep.all.fa",
+                     "ensembl_cdna=https://host/p/Homo_sapiens.GRCh38.cdna.all.fa",
+                     "ensembl_gtf=https://host/p/Homo_sapiens.GRCh38.115.chr.gtf",
+                     "refseq_proteins=https://host/p/GCF_1_protein.faa",
+                     "refseq_cdna=https://host/p/GCF_1_rna.fna",
+                     "refseq_gtf=https://host/p/GCF_1_genomic.gtf")
+    assert result.returncode == 0, result.stdout + result.stderr
+    jobs = job_counts(result.stdout)
+    assert "prepare_ensembl_gtf" not in jobs
+    assert jobs["get_ensembl_gtf"] == 1
+    assert jobs["get_ensembl_proteins"] == 1
+    assert jobs["prepare_refseq_gtf"] == 1
+    planned = " ".join(result.stdout.split())
+    ensembl_dir = tmp_path / "data" / "Hsapiens" / "config" / "ensembl"
+    refseq_dir = tmp_path / "data" / "Hsapiens" / "config" / "refseq"
+    assert f"gunzip -cf {ensembl_dir}/Homo_sapiens.GRCh38.pep.all.fa > {ensembl_dir}/ensembl_proteins.fa.tmp" in planned
+    assert f"zcat -f {refseq_dir}/GCF_1_genomic.gtf|grep -v -F 'partial=true' | grep '^NC_' > {refseq_dir}/GCF_1_genomic_nopartial_nc.gtf" in planned
+
+
 def test_dry_run_mytranscripts_fasta(dry_run, synthetic_dir):
     """mytranscripts with a FASTA input runs SQANTI3 with a GMAP index and transcript2reference."""
     cdna = synthetic_dir / "ensembl_cdna.fa"
