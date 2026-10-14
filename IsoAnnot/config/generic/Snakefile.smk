@@ -892,7 +892,9 @@ rule merge_nls_chunks:
         os.path.join(path_output,"logs",prefix,"{db}","nls_chunks_merged.log")
     shell:
         """
-        awk "NR == FNR || (FNR > 3 && !/^Protein/ && !/^\\*/)" {input} > {output} 2> {log}
+        # Each chunk starts with a header line and a line of stars. Keep them once and match them by
+        # pattern: skipping a fixed number of lines lost the first protein of every chunk but the first.
+        awk '/^Protein ID\\t/ {{ if (!header++) print; next }} /^\\*+$/ {{ if (!stars++) print; next }} {{ print }}' {input} > {output} 2> {log}
         """
 
 rule parse_nls:
