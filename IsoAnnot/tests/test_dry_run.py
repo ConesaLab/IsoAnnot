@@ -21,11 +21,11 @@ def dry_run(tmp_path):
     if not os.path.isfile(SNAKEMAKE):
         pytest.skip(f"Snakemake not found at {SNAKEMAKE} (set ISOANNOT_SNAKEMAKE to use another one)")
 
-    def _run(database, *config):
+    def _run(database, *config, configfile=None):
         config_dir = os.path.join(ISOANNOT_DIR, "config", database, "hsapiens")
         cmd = [SNAKEMAKE, "-n", "-p",
                "--snakefile", os.path.join(config_dir, "Snakefile.smk"),
-               "--configfile", os.path.join(config_dir, "config.yaml"),
+               "--configfile", configfile or os.path.join(config_dir, "config.yaml"),
                "--config", f"db={database}", f"path_output={tmp_path}", *config,
                "--directory", ISOANNOT_DIR, "--cores", "8", "all",
                "--rerun-incomplete", "--nolock", "--resources", "n_downloads=1"]
@@ -95,3 +95,34 @@ def test_dry_run_mytranscripts_fasta(dry_run, synthetic_dir):
     assert jobs["tappas_annotation"] == 1
     assert "run_refsqanti" not in jobs
     assert f"--isoforms {cdna}" in result.stdout
+
+
+@pytest.mark.parametrize("key, layer", [
+    ("layer_go", "layer_go"),
+])
+def test_dry_run_empty_toggle_is_off(dry_run, tmp_path, key, layer):
+    """An empty value in the species YAML keeps the layer off, as it was before is_feature_enabled."""
+    configfile = tmp_path / "empty_toggle.yaml"
+    configfile.write_text(f'{key}: ""\n')
+    result = dry_run("ensembl", configfile=str(configfile))
+    assert result.returncode == 0, result.stdout + result.stderr
+    jobs = job_counts(result.stdout)
+    assert layer not in jobs
+    assert jobs["tappas_annotation"] == 1
+
+
+@pytest.mark.parametrize("value, enabled", [
+    ("si", True),
+    ("True", True),
+    ("true", True),
+    ("yes", True),
+    ("no", False),
+    ("False", False),
+])
+def test_dry_run_layer_go_toggle(dry_run, value, enabled):
+    """layer_go accepts si/true/yes to turn the layer on and no/false to turn it off."""
+    result = dry_run("ensembl", f"layer_go={value}")
+    assert result.returncode == 0, result.stdout + result.stderr
+    jobs = job_counts(result.stdout)
+    assert ("layer_go" in jobs) == enabled
+    assert jobs["tappas_annotation"] == 1

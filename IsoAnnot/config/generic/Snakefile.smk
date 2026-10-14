@@ -23,7 +23,8 @@ nls_chunks = int(config.get("nls_chunks", 50))
 
 def is_feature_enabled(key, default=True):
     val = config.get(key, None)
-    if val is None:
+    # An empty value counts as not set: layer_go: "" and reactome: "" stayed off before
+    if val is None or val == "":
         return default
     if isinstance(val, bool):
         return val
@@ -37,7 +38,8 @@ def _output_layer_db(layer_name, external_rule=[], wildcards=None):
         return []
     if callable(external_rule):
         external_rule = external_rule({"prefix": prefix, "db": db })
-    if len(config.get(layer_name, [])) or len(external_rule):
+    # is_feature_enabled instead of len(): layer_go can be a YAML boolean
+    if is_feature_enabled(layer_name, False) or len(external_rule):
         return os.path.join(path_output, "data", prefix, "output", "{db}", "layers", f"{layer_name}.gtf")
     else:
         return []
@@ -1138,7 +1140,7 @@ rule tappas_annotation:
             rules.layer_junctions.output,
         ] + config.get("genomic_gtf", []),
         protein_block = [
-            rules.layer_go.output if config.get("layer_go", "no") == "si" else [],
+            rules.layer_go.output if is_feature_enabled("layer_go", False) else [],
             rules.layer_reactome.output if config.get("reactome") else [],
             rules.layer_interproscan.output,
             rules.layer_uniprot.output,

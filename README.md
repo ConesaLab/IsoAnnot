@@ -403,7 +403,7 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
 | `uniprot_fasta` | UniProt FASTA file URLs (list) | List of URLs |
 | `uniprot_dat` | UniProt DAT file URLs (list) | List of URLs |
 | `reactome` | Reactome pathway mapping file URL | URL or pathway-specific URL |
-| `layer_go` | Include Gene Ontology layer | `si` (yes) or omit |
+| `layer_go` | Include Gene Ontology layer | `si`, `yes` or `true` to include; `no`, `false` or omit to skip |
 
 **Important notes**:
 
