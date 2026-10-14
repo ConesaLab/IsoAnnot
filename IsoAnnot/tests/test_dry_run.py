@@ -99,6 +99,7 @@ def test_dry_run_mytranscripts_fasta(dry_run, synthetic_dir):
 
 @pytest.mark.parametrize("key, layer", [
     ("layer_go", "layer_go"),
+    ("reactome", "layer_reactome"),
 ])
 def test_dry_run_empty_toggle_is_off(dry_run, tmp_path, key, layer):
     """An empty value in the species YAML keeps the layer off, as it was before is_feature_enabled."""
@@ -126,3 +127,17 @@ def test_dry_run_layer_go_toggle(dry_run, value, enabled):
     jobs = job_counts(result.stdout)
     assert ("layer_go" in jobs) == enabled
     assert jobs["tappas_annotation"] == 1
+
+
+@pytest.mark.parametrize("value, enabled", [
+    ("https://reactome.org/download/current/Ensembl2Reactome_All_Levels.txt", True),
+    ("no", False),
+    ("False", False),
+])
+def test_dry_run_reactome_toggle(dry_run, value, enabled):
+    """reactome=no (or False, what YAML makes of "reactome: no") turns the Reactome layer off, as the BioMart error advises."""
+    result = dry_run("ensembl", f"reactome={value}")
+    assert result.returncode == 0, result.stdout + result.stderr
+    jobs = job_counts(result.stdout)
+    assert ("layer_reactome" in jobs) == enabled
+    assert ("get_reactome" in jobs) == enabled

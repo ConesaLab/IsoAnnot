@@ -402,7 +402,7 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
 | `refseq_gtf` | RefSeq GTF annotation file URL | URL to .gtf.gz file |
 | `uniprot_fasta` | UniProt FASTA file URLs (list) | List of URLs |
 | `uniprot_dat` | UniProt DAT file URLs (list) | List of URLs |
-| `reactome` | Reactome pathway mapping file URL | URL or pathway-specific URL |
+| `reactome` | Reactome pathway mapping file URL | URL or pathway-specific URL; `no` to skip the layer |
 | `layer_go` | Include Gene Ontology layer | `si`, `yes` or `true` to include; `no`, `false` or omit to skip |
 
 **Important notes**:

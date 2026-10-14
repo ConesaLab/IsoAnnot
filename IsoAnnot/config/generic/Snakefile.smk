@@ -362,7 +362,8 @@ rule get_reactome:
     conda:
         "../../envs/isoannotpy.yaml" 
     output:
-        os.path.join(path_output, "data", "global", os.path.basename(config["reactome"]))
+        # str(): YAML reads "reactome: no" as False, which turns the layer off
+        os.path.join(path_output, "data", "global", os.path.basename(str(config["reactome"])))
     params:
         URL=config["reactome"]
     log:
@@ -1141,7 +1142,8 @@ rule tappas_annotation:
         ] + config.get("genomic_gtf", []),
         protein_block = [
             rules.layer_go.output if is_feature_enabled("layer_go", False) else [],
-            rules.layer_reactome.output if config.get("reactome") else [],
+            # reactome is a URL; reactome=no turns the layer off, as the BioMart error message says
+            rules.layer_reactome.output if is_feature_enabled("reactome", False) else [],
             rules.layer_interproscan.output,
             rules.layer_uniprot.output,
             rules.layer_nls.output if config.get("nls_model") else []
