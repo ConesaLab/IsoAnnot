@@ -2,6 +2,8 @@ import csv
 import os
 import sys
 
+import pytest
+
 main_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts"))
 sys.path.insert(0, main_path)
 
@@ -50,3 +52,16 @@ def test_refseq_mode_matches_the_ensembl_mode(run_script, synthetic_dir, tmp_pat
     columns = ["chrom", "strand", "length", "exons", "coding", "ORF_length", "CDS_length", "CDS_start", "CDS_end"]
     assert [[r[c] for c in columns] for r in read_tsv(outputs["classification"])] == \
         [[r[c] for c in columns] for r in ensembl]
+
+
+@pytest.mark.parametrize("database, lookups", [("ensembl", 66), ("refseq", 54)])
+def test_genome_with_other_chromosome_names_stops_the_run(run_script, synthetic_dir, tmp_path, database, lookups):
+    """A genome on "chr1" matches no transcript: the run fails instead of writing empty tables with exit 0."""
+    genome = tmp_path / "genome_chr.fa"
+    genome.write_text((synthetic_dir / "genome.fa").read_text().replace(">1 ", ">chr1 ", 1))
+    result, outputs = run_reference_sqanti(run_script, tmp_path, synthetic_dir / f"{database}.gtf",
+                                           genome, synthetic_dir / "chr2acc", database)
+    assert result.returncode != 0
+    # Every GTF line the parser looks up fails: 66 non-gene lines in ensembl.gtf, all 54 lines in refseq.gtf
+    assert f"{lookups}/{lookups} chromosome lookups failed" in result.stderr
+    assert [path for path in outputs.values() if path.exists()] == []

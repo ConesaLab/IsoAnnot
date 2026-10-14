@@ -145,13 +145,7 @@ def main():
             refseqChrom = read_chr_ref_acc(args.chr_ref, target_db="ensembl")
             logging.info("Using chromosome accessions mapping (target: Ensembl names).")
             isoforms_by_chr, exons_by_chr = load_genepred(args.genepred, refseqChrom)
-            if hasattr(refseqChrom, 'total_queries') and refseqChrom.total_queries > 0:
-                failure_rate = len(refseqChrom.unmapped_log) / refseqChrom.total_queries
-                if failure_rate > 0.50:
-                    raise RuntimeError(
-                        f"Critical Error in get_mirna_bs_annotation.py: {len(refseqChrom.unmapped_log)}/{refseqChrom.total_queries} "
-                        f"chromosome lookups failed using mapping file '{args.chr_ref}'. Halting execution to prevent silent data loss."
-                    )
+            refseqChrom.check_unmapped("get_mirna_bs_annotation.py")
         else:
             logging.info("Using original chromosome accessions.")
             isoforms_by_chr, exons_by_chr = load_genepred(args.genepred)

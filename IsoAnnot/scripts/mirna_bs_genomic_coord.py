@@ -168,14 +168,8 @@ def main():
         refseqChrom = read_chr_ref_acc(args.chr_ref, target_db="ensembl") if args.chr_ref else {}
 
         coord_dict = get_exon_from_gtf(args.refseq_gtf, chrom_ref=refseqChrom)
-        
-        if hasattr(refseqChrom, 'total_queries') and refseqChrom.total_queries > 0:
-            failure_rate = len(refseqChrom.unmapped_log) / refseqChrom.total_queries
-            if failure_rate > 0.50:
-                raise RuntimeError(
-                    f"Critical Error in mirna_bs_genomic_coord.py: {len(refseqChrom.unmapped_log)}/{refseqChrom.total_queries} "
-                    f"chromosome lookups failed using mapping file '{args.chr_ref}'. Halting execution to prevent silent data loss."
-                )
+        if args.chr_ref:
+            refseqChrom.check_unmapped("mirna_bs_genomic_coord.py")
 
         fasta_dict = get_fasta_seq(args.refseq_fasta)
 

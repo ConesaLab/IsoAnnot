@@ -63,6 +63,8 @@ class ChromosomeMap:
         self.norm_map = {}     # normalized_key -> target_canonical
         self.unmapped_log = set()
         self.total_queries = 0
+        self.unmapped_queries = 0
+        self.mapping_file = mapping_file
 
         if mapping_file:
             self._load_mapping_file(mapping_file)
@@ -104,15 +106,21 @@ class ChromosomeMap:
             return default
 
         q = str(query_chr).strip()
-        self.total_queries += 1
-
-        res = self._lookup(q)
+        res = self._count(q)
         if res is not None:
             return res
 
         # Unmapped contig fallback
-        self.unmapped_log.add(q)
         return default if default is not None else q
+
+    def _count(self, q):
+        """Looks q up and records the result in the failure stats that check_unmapped uses."""
+        res = self._lookup(q)
+        self.total_queries += 1
+        if res is None:
+            self.unmapped_queries += 1
+            self.unmapped_log.add(q)
+        return res
 
     def _lookup(self, q):
         """Returns the target name of q, or None if it has none."""
@@ -135,15 +143,29 @@ class ChromosomeMap:
         return res
 
     def __getitem__(self, key):
-        res = self.get(key, default=None)
-        if res is None and key not in self.norm_map:
+        # Not counted: callers check "in" first, and that lookup was counted already
+        res = self._lookup(str(key).strip())
+        if res is None:
             raise KeyError(key)
         return res
 
     def __contains__(self, key):
         if not key:
             return False
-        return self._lookup(str(key).strip()) is not None
+        return self._count(str(key).strip()) is not None
+
+    def check_unmapped(self, caller, max_rate=0.5):
+        """
+        Stops the run when more than max_rate of the lookups found no name: the chromosome names of the input,
+        the mapping table and the genome do not match, and the output would be empty or nearly so.
+        Every lookup counts, not every distinct name, so one unmapped chromosome on most lines stops it.
+        """
+        if self.total_queries and self.unmapped_queries / self.total_queries > max_rate:
+            raise RuntimeError(
+                f"Critical Error in {caller}: {self.unmapped_queries}/{self.total_queries} chromosome lookups failed "
+                f"using mapping file '{self.mapping_file}' (unmapped names: {', '.join(sorted(self.unmapped_log)[:10])}). "
+                f"Halting execution to prevent silent data loss."
+            )
 
     def __len__(self):
         return len(self.norm_map)

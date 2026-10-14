@@ -102,3 +102,38 @@ def test_len_bool_iter(sample_chr2acc_file):
     assert bool(chr_map)
     assert set(chr_map) == chr_map.keys()
 
+
+def test_getitem_raises_keyerror_for_unmapped_names(sample_chr2acc_file):
+    """chr_map[name] raises KeyError like a dict instead of returning the name unchanged."""
+    chr_map = ChromosomeMap(mapping_file=sample_chr2acc_file, target_db="ensembl")
+    assert chr_map["NC_000002.12"] == "2"
+    with pytest.raises(KeyError):
+        chr_map["unknown_contig_999"]
+
+
+def test_contains_is_counted(sample_chr2acc_file):
+    """"in" checks count in the failure stats; the chr_map[name] that follows them does not count twice."""
+    chr_map = ChromosomeMap(mapping_file=sample_chr2acc_file, target_db="ensembl")
+    for name in ["NC_000001.11", "MT", "MT"]:
+        if name in chr_map:
+            chr_map[name]
+    assert (chr_map.total_queries, chr_map.unmapped_queries, chr_map.unmapped_log) == (3, 2, {"MT"})
+
+
+def test_check_unmapped_counts_lookups_not_names(sample_chr2acc_file):
+    """Three lookups of one unmapped name out of four is 75%, not 1/4 distinct names: the abort fires."""
+    chr_map = ChromosomeMap(mapping_file=sample_chr2acc_file, target_db="ensembl")
+    for name in ["NC_000001.11", "MT", "MT", "MT"]:
+        chr_map.get(name, name)
+    with pytest.raises(RuntimeError, match=r"test.py: 3/4 chromosome lookups failed .*unmapped names: MT\)"):
+        chr_map.check_unmapped("test.py")
+
+
+def test_check_unmapped_accepts_a_few_unmapped_names(sample_chr2acc_file):
+    """MT and scaffolds missing from chr2acc are normal: half or less of the lookups does not stop the run."""
+    chr_map = ChromosomeMap(mapping_file=sample_chr2acc_file, target_db="ensembl")
+    for name in ["NC_000001.11", "MT"]:
+        chr_map.get(name, name)
+    chr_map.check_unmapped("test.py")
+    assert (chr_map.total_queries, chr_map.unmapped_queries) == (2, 1)
+

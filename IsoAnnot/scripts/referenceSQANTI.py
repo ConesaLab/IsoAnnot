@@ -373,13 +373,7 @@ def main():
 
 	transcript_dicc = gtf_parsing(gtf_file, ref_type, refseqChrom)
 
-	if hasattr(refseqChrom, 'total_queries') and refseqChrom.total_queries > 0:
-		failure_rate = len(refseqChrom.unmapped_log) / refseqChrom.total_queries
-		if failure_rate > 0.50:
-			raise RuntimeError(
-				f"Critical Error in referenceSQANTI.py: {len(refseqChrom.unmapped_log)}/{refseqChrom.total_queries} "
-				f"chromosome lookups failed using mapping file '{args.chr_ref}'. Halting execution to prevent silent data loss."
-			)
+	refseqChrom.check_unmapped("referenceSQANTI.py")
 
 
 	output_NMD = open(output_NMD_file, "w")

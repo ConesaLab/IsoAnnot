@@ -201,13 +201,7 @@ def main():
         if args.refseq_gtf:
             cds_refseq = read_genomic_cds_from_gtf_group_chr(args.refseq_gtf,
                                       chrom_ref)
-            if hasattr(chrom_ref, 'total_queries') and chrom_ref.total_queries > 0:
-                failure_rate = len(chrom_ref.unmapped_log) / chrom_ref.total_queries
-                if failure_rate > 0.50:
-                    raise RuntimeError(
-                        f"Critical Error in transcript2reference.py: {len(chrom_ref.unmapped_log)}/{chrom_ref.total_queries} "
-                        f"chromosome lookups failed using mapping file '{args.chr_ref}'. Halting execution to prevent silent data loss."
-                    )
+            chrom_ref.check_unmapped("transcript2reference.py")
             
         # Get isoforms exon locations and predicted proteins of sequenced transcriptome
         # using SQANTI outputs

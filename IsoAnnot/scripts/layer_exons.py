@@ -51,15 +51,9 @@ def main():
         chrom_ref = {}
         if args.chr_ref:
             chrom_ref = read_chr_ref_acc(args.chr_ref, target_db="ensembl")
-            if hasattr(chrom_ref, 'total_queries') and chrom_ref.total_queries > 0:
-                failure_rate = len(chrom_ref.unmapped_log) / chrom_ref.total_queries
-                if failure_rate > 0.50:
-                    raise RuntimeError(
-                        f"Critical Error in layer_exons.py: {len(chrom_ref.unmapped_log)}/{chrom_ref.total_queries} "
-                        f"chromosome lookups failed using mapping file '{args.chr_ref}'. Halting execution to prevent silent data loss."
-                    )
 
-        with open(args.output, "w") as output_file:
+        # Written to a .tmp file first: the chromosome check can only run after the lookups
+        with open(f"{args.output}.tmp", "w") as output_file:
             logging.info(f"Starting exons conversion to GTF {args.output}")
             output_file_tsv = csv.writer(output_file, delimiter="\t")
 
@@ -82,8 +76,15 @@ def main():
                         f"Chr=chr{chr_name}"  # attribute
                     ])
 
+        if args.chr_ref:
+            chrom_ref.check_unmapped("layer_exons.py")
+        os.replace(f"{args.output}.tmp", args.output)
+
     except Exception as ex:
         logging.error(str(ex))
+        # A failed run leaves no partial layer behind
+        if os.path.exists(f"{args.output}.tmp"):
+            os.remove(f"{args.output}.tmp")
         sys.exit(os.EX_SOFTWARE)
 
     sys.exit(os.EX_OK)
