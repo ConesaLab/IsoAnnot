@@ -194,7 +194,7 @@ def main():
         # Get chromosome Ensembl-RefSeq IDs equivalence if we
         # are using GTF data
         if args.refseq_gtf:
-            chrom_ref = read_chr_ref_acc(args.chr_ref, leading_db="ensembl")
+            chrom_ref = read_chr_ref_acc(args.chr_ref, target_db="ensembl")
 
         # Get Ensembl and RefSeq CDS info
         cds_ensembl = read_genomic_cds_from_gtf_group_chr(args.ensembl_gtf)

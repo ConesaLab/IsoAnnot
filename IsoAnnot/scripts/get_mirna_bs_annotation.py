@@ -140,8 +140,10 @@ def main():
         # Step 1: Handle chromosome accessions mapping for RefSeq
         refseqChrom = {}
         if args.chr_ref:
-            refseqChrom = read_chr_ref_acc(args.chr_ref, leading_db=args.db)
-            logging.info(f"Using chromosome accessions mapping (leading DB: {args.db}).")
+            # The miRWalk sites have Ensembl genome names (mirna_bs_genomic_coord.py), so the isoforms
+            # are translated to Ensembl names in every mode.
+            refseqChrom = read_chr_ref_acc(args.chr_ref, target_db="ensembl")
+            logging.info("Using chromosome accessions mapping (target: Ensembl names).")
             isoforms_by_chr, exons_by_chr = load_genepred(args.genepred, refseqChrom)
             if hasattr(refseqChrom, 'total_queries') and refseqChrom.total_queries > 0:
                 failure_rate = len(refseqChrom.unmapped_log) / refseqChrom.total_queries

@@ -367,7 +367,9 @@ def main():
 	output_NMD_file = args.output_nmd
 
 	genome_dicc = fasta_parser(genome)
-	refseqChrom = read_chr_ref_acc(args.chr_ref, leading_db=ref_type)
+	# The genome is always the Ensembl one, also in refseq mode, so chromosomes are translated to Ensembl
+	# names and must exist in the genome. Translating to RefSeq names wrote an empty table.
+	refseqChrom = read_chr_ref_acc(args.chr_ref, target_db="ensembl", target_names=genome_dicc)
 
 	transcript_dicc = gtf_parsing(gtf_file, ref_type, refseqChrom)
 

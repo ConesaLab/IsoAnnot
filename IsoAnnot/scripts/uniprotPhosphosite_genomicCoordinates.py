@@ -337,7 +337,7 @@ def main():
         # Refseq chromosomes
         if args.chr_ref:
             logging.info(f"Reading chr accession table {args.chr_ref}")
-            refseqChrom = read_chr_ref_acc(args.chr_ref, leading_db="ensembl")
+            refseqChrom = read_chr_ref_acc(args.chr_ref, target_db="ensembl")
             logging.info(f"chr_conversion loaded with {len(refseqChrom)} entries")
 
         # Compile 3 databases in one dictionary containing protein identifiers and the sequence.

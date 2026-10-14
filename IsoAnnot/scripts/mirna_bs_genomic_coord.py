@@ -163,8 +163,9 @@ def main():
     args = parser.parse_args()
 
     try:
-        # Load chromosome mapping if provided (e.g., NCBI accessions to Ensembl names)
-        refseqChrom = read_chr_ref_acc(args.chr_ref, leading_db="ensembl") if args.chr_ref else {}
+        # Load chromosome mapping if provided (e.g., NCBI accessions to Ensembl names).
+        # Ensembl, because the genome is always the Ensembl one; get_mirna_bs_annotation.py uses the same.
+        refseqChrom = read_chr_ref_acc(args.chr_ref, target_db="ensembl") if args.chr_ref else {}
 
         coord_dict = get_exon_from_gtf(args.refseq_gtf, chrom_ref=refseqChrom)
         

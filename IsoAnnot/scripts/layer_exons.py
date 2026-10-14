@@ -50,7 +50,7 @@ def main():
         # Get chromosome Ensembl-Refseq IDs
         chrom_ref = {}
         if args.chr_ref:
-            chrom_ref = read_chr_ref_acc(args.chr_ref, leading_db="ensembl")
+            chrom_ref = read_chr_ref_acc(args.chr_ref, target_db="ensembl")
             if hasattr(chrom_ref, 'total_queries') and chrom_ref.total_queries > 0:
                 failure_rate = len(chrom_ref.unmapped_log) / chrom_ref.total_queries
                 if failure_rate > 0.50:

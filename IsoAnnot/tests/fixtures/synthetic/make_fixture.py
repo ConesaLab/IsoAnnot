@@ -365,12 +365,13 @@ def main():
     def path(name):
         return os.path.join(outdir, name)
 
-    subprocess.run([sys.executable, os.path.join(SCRIPTS_DIR, "referenceSQANTI.py"),
-                    "--gtf_file", path("ensembl.gtf"), "--reference_file", path("genome.fa"),
-                    "--chr_ref", path("chr2acc"), "--database", "ensembl",
-                    "--output_classification", path("ensembl_sqanti_classification.txt"),
-                    "--output_junctions", path("ensembl_sqanti_junctions.txt"),
-                    "--output_nmd", path("ensembl_sqanti_NMD.txt")], cwd=SCRIPTS_DIR, check=True)
+    for database in ("ensembl", "refseq"):
+        subprocess.run([sys.executable, os.path.join(SCRIPTS_DIR, "referenceSQANTI.py"),
+                        "--gtf_file", path(f"{database}.gtf"), "--reference_file", path("genome.fa"),
+                        "--chr_ref", path("chr2acc"), "--database", database,
+                        "--output_classification", path(f"{database}_sqanti_classification.txt"),
+                        "--output_junctions", path(f"{database}_sqanti_junctions.txt"),
+                        "--output_nmd", path(f"{database}_sqanti_NMD.txt")], cwd=SCRIPTS_DIR, check=True)
     subprocess.run([sys.executable, os.path.join(SCRIPTS_DIR, "parse_protein_databases.py"),
                     "--uniprot_fasta", path("uniprot.fasta"), path("uniprot_additional.fasta"),
                     "--ensembl_fasta", path("ensembl_pep.fa"), "--refseq_fasta", path("refseq_protein.faa"),

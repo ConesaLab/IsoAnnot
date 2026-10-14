@@ -47,12 +47,17 @@ def openfile(filename, mode='r'):
 class ChromosomeMap:
     """
     Bi-directional, case-insensitive, version-safe chromosome mapper.
-    Supports Ensembl-leading (default), RefSeq-leading, or identity mapping mode.
+    Every name is translated to the naming of target_db ("ensembl" or "refseq"), which must be the naming of
+    the genome FASTA the output is compared with. The pipeline always uses the Ensembl genome
+    (prepare_ensembl_reference), also in refseq mode. target_names, when given, is the set of names
+    that genome has: a translation that is not in it counts as unmapped, so the callers' 50% abort fires
+    instead of writing an empty output.
     """
     NCBI_ACCESSION_PREFIXES = ("NC_", "NW_", "NT_", "AC_", "NZ_")
 
-    def __init__(self, mapping_file=None, leading_db="ensembl"):
-        self.leading_db = (leading_db or "ensembl").lower()
+    def __init__(self, mapping_file=None, target_db="ensembl", target_names=None):
+        self.target_db = (target_db or "ensembl").lower()
+        self.target_names = set(target_names) if target_names is not None else None
         self.forward_map = {}  # Ensembl -> RefSeq
         self.reverse_map = {}  # RefSeq -> Ensembl
         self.norm_map = {}     # normalized_key -> target_canonical
@@ -87,7 +92,7 @@ class ChromosomeMap:
                     self.forward_map[ensembl] = refseq
                     self.reverse_map[refseq] = ensembl
                     
-                    target = refseq if self.leading_db == "refseq" else ensembl
+                    target = refseq if self.target_db == "refseq" else ensembl
                     
                     for val in (ensembl, refseq):
                         self.norm_map[self._normalize_key(val)] = target
@@ -101,25 +106,33 @@ class ChromosomeMap:
         q = str(query_chr).strip()
         self.total_queries += 1
 
-        # Tier 1: Direct directional lookup
-        if self.leading_db == "refseq" and q in self.forward_map:
-            return self.forward_map[q]
-        if self.leading_db == "ensembl" and q in self.reverse_map:
-            return self.reverse_map[q]
-
-        # Tier 2: Normalized lookup
-        norm_q = self._normalize_key(q)
-        if norm_q in self.norm_map:
-            return self.norm_map[norm_q]
-
-        # Tier 3: Version-stripped normalized lookup
-        stripped_q = self._normalize_key(self._strip_version(q))
-        if stripped_q in self.norm_map:
-            return self.norm_map[stripped_q]
+        res = self._lookup(q)
+        if res is not None:
+            return res
 
         # Unmapped contig fallback
         self.unmapped_log.add(q)
         return default if default is not None else q
+
+    def _lookup(self, q):
+        """Returns the target name of q, or None if it has none."""
+        norm_q = self._normalize_key(q)
+        # Tier 1: Direct directional lookup
+        if self.target_db == "refseq" and q in self.forward_map:
+            res = self.forward_map[q]
+        elif self.target_db == "ensembl" and q in self.reverse_map:
+            res = self.reverse_map[q]
+        # Tier 2: Normalized lookup
+        elif norm_q in self.norm_map:
+            res = self.norm_map[norm_q]
+        # Tier 3: Version-stripped normalized lookup
+        else:
+            res = self.norm_map.get(self._normalize_key(self._strip_version(q)))
+
+        # A name the genome FASTA does not have is as good as unmapped
+        if self.target_names is not None and res not in self.target_names:
+            return None
+        return res
 
     def __getitem__(self, key):
         res = self.get(key, default=None)
@@ -130,10 +143,7 @@ class ChromosomeMap:
     def __contains__(self, key):
         if not key:
             return False
-        q = str(key).strip()
-        return (q in self.forward_map or q in self.reverse_map or
-                self._normalize_key(q) in self.norm_map or
-                self._normalize_key(self._strip_version(q)) in self.norm_map)
+        return self._lookup(str(key).strip()) is not None
 
     def __len__(self):
         return len(self.norm_map)
@@ -157,14 +167,14 @@ class ChromosomeMap:
         return [(k, self.get(k)) for k in self.keys()]
 
 
-def read_chr_ref_acc(filename, leading_db="ensembl"):
+def read_chr_ref_acc(filename, target_db="ensembl", target_names=None):
     """
     Reads a file containing Refseq chromosome accessions and Ensembl identifiers.
-    Returns a ChromosomeMap instance.
+    Returns a ChromosomeMap that translates names to the naming of target_db.
     """
     if not filename:
-        return ChromosomeMap(leading_db=leading_db)
-    return ChromosomeMap(mapping_file=filename, leading_db=leading_db)
+        return ChromosomeMap(target_db=target_db, target_names=target_names)
+    return ChromosomeMap(mapping_file=filename, target_db=target_db, target_names=target_names)
 
 
 def query_biomart_with_retry(dataset, attributes, layer_name="biomart", max_retries=5, initial_delay=5):

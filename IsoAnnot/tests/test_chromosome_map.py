@@ -27,8 +27,8 @@ def sample_chr2acc_file():
         os.remove(tf_path)
 
 
-def test_ensembl_leading_mode(sample_chr2acc_file):
-    chr_map = ChromosomeMap(mapping_file=sample_chr2acc_file, leading_db="ensembl")
+def test_ensembl_target(sample_chr2acc_file):
+    chr_map = ChromosomeMap(mapping_file=sample_chr2acc_file, target_db="ensembl")
 
     # Tier 1: RefSeq -> Ensembl
     assert chr_map.get("NC_000001.11") == "1"
@@ -44,8 +44,8 @@ def test_ensembl_leading_mode(sample_chr2acc_file):
     assert chr_map.get("NC_000001") == "1"
 
 
-def test_refseq_leading_mode(sample_chr2acc_file):
-    chr_map = ChromosomeMap(mapping_file=sample_chr2acc_file, leading_db="refseq")
+def test_refseq_target(sample_chr2acc_file):
+    chr_map = ChromosomeMap(mapping_file=sample_chr2acc_file, target_db="refseq")
 
     # Tier 1: Ensembl -> RefSeq
     assert chr_map.get("1") == "NC_000001.11"
@@ -57,8 +57,26 @@ def test_refseq_leading_mode(sample_chr2acc_file):
     assert chr_map.get("Chr1") == "NC_000001.11"
 
 
+def test_refseq_gtf_names_translate_to_the_ensembl_genome(sample_chr2acc_file):
+    """API check for target_db="ensembl": the RefSeq chromosome bug was in the callers, see test_referenceSQANTI.py."""
+    genome_names = ["1", "2", "X", "MT"]
+    chr_map = read_chr_ref_acc(sample_chr2acc_file, target_db="ensembl", target_names=genome_names)
+    assert [chr_map.get(c) for c in ["NC_000001.11", "NC_000002.12", "NC_000023.11"]] == ["1", "2", "X"]
+    assert "NC_000001.11" in chr_map
+    assert chr_map["NC_000001.11"] == "1"
+    assert chr_map.unmapped_log == set()
+
+
+def test_translation_missing_from_the_genome_is_unmapped(sample_chr2acc_file):
+    """A name that maps but is not in the genome FASTA counts as unmapped, so the 50% abort can fire."""
+    chr_map = read_chr_ref_acc(sample_chr2acc_file, target_db="ensembl", target_names=["chr1", "chr2"])
+    assert chr_map.get("NC_000001.11") == "NC_000001.11"
+    assert "NC_000001.11" not in chr_map
+    assert chr_map.unmapped_log == {"NC_000001.11"}
+
+
 def test_custom_scaffold_no_version_collision(sample_chr2acc_file):
-    chr_map = ChromosomeMap(mapping_file=sample_chr2acc_file, leading_db="ensembl")
+    chr_map = ChromosomeMap(mapping_file=sample_chr2acc_file, target_db="ensembl")
 
     # Tier 1 exact match prevents collision between scaffold_1.1 and scaffold_1.2
     assert chr_map.get("NW_001.1") == "scaffold_1.1"
@@ -66,7 +84,7 @@ def test_custom_scaffold_no_version_collision(sample_chr2acc_file):
 
 
 def test_unmapped_contig_fallback_and_tracking(sample_chr2acc_file):
-    chr_map = ChromosomeMap(mapping_file=sample_chr2acc_file, leading_db="ensembl")
+    chr_map = ChromosomeMap(mapping_file=sample_chr2acc_file, target_db="ensembl")
 
     # Unknown contig should return original string
     assert chr_map.get("unknown_contig_999") == "unknown_contig_999"
@@ -79,7 +97,7 @@ def test_len_bool_iter(sample_chr2acc_file):
     assert len(empty_map) == 0
     assert not bool(empty_map)
 
-    chr_map = ChromosomeMap(mapping_file=sample_chr2acc_file, leading_db="ensembl")
+    chr_map = ChromosomeMap(mapping_file=sample_chr2acc_file, target_db="ensembl")
     assert len(chr_map) > 0
     assert bool(chr_map)
     assert set(chr_map) == chr_map.keys()

@@ -79,11 +79,12 @@ example, `ORF_length` is written as a float).
 * **`ensembl_sqanti_classification.txt`**, **`ensembl_sqanti_junctions.txt`** and **`ensembl_sqanti_NMD.txt`**:
   output of `referenceSQANTI.py --database ensembl` (rule `run_refsqanti`). `refProt` is the unversioned
   Ensembl protein ID, as in a real run. `ENST00000000002` is the only `NMD` transcript.
+* **`refseq_sqanti_classification.txt`**, **`refseq_sqanti_junctions.txt`** and **`refseq_sqanti_NMD.txt`**:
+  output of `referenceSQANTI.py --database refseq`. The `NC_000001.11` chromosome is written as `1`, the
+  name in the Ensembl genome. `refProt` is the versioned RefSeq protein ID and `structural_category`
+  is `NA`. `NM_900002.1` is the only `NMD` transcript.
 * **`parsed_databases.json`**: output of `parse_protein_databases.py` (rule `parse_protein_databases`). It maps
   each protein sequence to its IDs by source (`swissprot`, `trembl`, `refseq`, `ensembl`), without versions.
-
-There is no RefSeq classification yet: `referenceSQANTI.py --database refseq` writes an empty table on this
-dataset because of a chromosome-naming bug in RefSeq mode. The `fix/chromosome-map` branch should add it to the generator.
 
 ## Not included
 

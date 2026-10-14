@@ -66,8 +66,10 @@ def get_coding_transcripts(classification_filename, protein_sequences):
     return(transcript_dict)
 
 
-def get_genepred_exons(genepred_filename, match_file=None, leading_db="ensembl"):
-    chr_conversion = read_chr_ref_acc(match_file, leading_db=leading_db) if match_file else {}
+def get_genepred_exons(genepred_filename, match_file=None):
+    # The motif file has Ensembl genome names (uniprotPhosphosite_genomicCoordinates.py), so the
+    # transcripts are translated to Ensembl names in every mode.
+    chr_conversion = read_chr_ref_acc(match_file, target_db="ensembl") if match_file else {}
 
 
     logging.info(f"Reading GenePred file {genepred_filename}")
@@ -318,7 +320,7 @@ def main():
         coding_transcripts = get_coding_transcripts(classification_filename=args.classification_file,
                                                     protein_sequences=protein_sequences)
 
-        transcript_pred_exons = get_genepred_exons(genepred_filename=args.genepred_file, match_file=args.chr_ref, leading_db=getattr(args, 'db', 'ensembl'))
+        transcript_pred_exons = get_genepred_exons(genepred_filename=args.genepred_file, match_file=args.chr_ref)
         chrom_domains = get_uniprot_domains(domaingenomic_filename=args.uniprotmotif_file)
 
         protein_assoc = None
