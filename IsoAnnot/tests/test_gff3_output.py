@@ -1,6 +1,7 @@
 import csv
 import json
 import os
+import re
 import sys
 
 import pytest
@@ -247,6 +248,68 @@ def test_full_protein_ids_and_desc(synthetic_dir, run_script, tmp_path):
         "ENST00000000006": "ID=ENSP00000000006",
     }
     assert proteins == cds
+
+
+TAPPAS_FEATURES = {"transcript": "t", "gene": "g", "CDS": "c", "genomic": "G", "exon": "e",
+                   "splice_junction": "j", "protein": "p"}
+
+
+def block_letter(row):
+    """One letter per line: tappAS features by name, layer features by their PosType (T, P or N)."""
+    return TAPPAS_FEATURES[row[2]] if row[1] == "tappAS" else row[8][-1]
+
+
+def test_end_to_end_gff3(synthetic_dir, run_script, tmp_path):
+    """
+    t2goAnnotationFile.py and renameFeatures.py on the fixture, as rules tappas_annotation and renameFeatures
+    run them, give the layout of the legacy tappAS files: each transcript starts with its transcript line,
+    then the transcript, genomic and protein blocks; full protein IDs and integer coordinates
+    (GitHub #10).
+    """
+    protein_assoc, _ = run_reference_protein_assoc(run_script, synthetic_dir, tmp_path, "ensembl")
+    run_t2go(run_script, synthetic_dir, tmp_path, protein_assoc=protein_assoc)
+    result = run_script("renameFeatures.py", tmp_path / "annotation.gff3")
+    assert result.returncode == 0, result.stderr
+    rows = read_tsv(tmp_path / "annotation.gff3_mod")
+
+    assert all(len(row) == 9 and re.search(r"[^;\s]; PosType=[TGPN]$", row[8]) for row in rows)
+
+    # Each transcript's lines are contiguous and in the legacy tappAS order
+    transcripts = list(dict.fromkeys(row[0] for row in rows))
+    assert transcripts == CODING[:4] + ["ENST00000000005", "ENST00000000006"]
+    assert [row[0] for row in rows] == sorted((row[0] for row in rows), key=transcripts.index)
+    blocks = {transcript: "".join(block_letter(row) for row in rows if row[0] == transcript)
+              for transcript in transcripts}
+    assert blocks == {"ENST00000000001": "tgcGeeejjpN", "ENST00000000002": "tgcTGeeeejjjp",
+                      "ENST00000000003": "tgcGeeeejjjpN", "ENST00000000004": "tgcGeeeeejjjjp",
+                      "ENST00000000005": "tgGeej", "ENST00000000006": "tgcGep"}
+    assert all(re.match(r"^tgc?T*Ge+j*(p[NP]*)?$", block) for block in blocks.values())
+
+    # Integer coordinates, except the position-less GO and NMD features
+    for row in rows:
+        if row[1] in ("GeneOntology", "NMD"):
+            assert (row[3], row[4]) == (".", ".")
+        else:
+            assert re.match(r"^\d+$", row[3]) and re.match(r"^\d+$", row[4]), row
+
+    # Same ID and Desc on CDS and protein lines, shared by the two SYNB transcripts
+    cds = {row[0]: (row[3], row[4], row[8]) for row in rows if row[2] == "CDS"}
+    proteins = {row[0]: (row[3], row[4], row[8]) for row in rows if row[2] == "protein"}
+    assert cds == {
+        "ENST00000000001": ("101", "550", "ID=P0SYA1; Desc=ENSP00000000001; PosType=T"),
+        "ENST00000000002": ("101", "361", "ID=A0A0S1YNA6; Desc=ENSP00000000002; PosType=T"),
+        "ENST00000000003": ("51", "611", "ID=P0SYB1-2; Desc=ENSP00000000003,ENSP00000000004; PosType=T"),
+        "ENST00000000004": ("111", "671", "ID=P0SYB1-2; Desc=ENSP00000000003,ENSP00000000004; PosType=T"),
+        "ENST00000000006": ("101", "901", "ID=ENSP00000000006; PosType=T"),
+    }
+    assert proteins == {
+        "ENST00000000001": ("1", "150", "ID=P0SYA1; Desc=ENSP00000000001; PosType=P"),
+        "ENST00000000002": ("1", "87", "ID=A0A0S1YNA6; Desc=ENSP00000000002; PosType=P"),
+        "ENST00000000003": ("1", "187", "ID=P0SYB1-2; Desc=ENSP00000000003,ENSP00000000004; PosType=P"),
+        "ENST00000000004": ("1", "187", "ID=P0SYB1-2; Desc=ENSP00000000003,ENSP00000000004; PosType=P"),
+        "ENST00000000006": ("1", "267", "ID=ENSP00000000006; PosType=P"),
+    }
+    assert all(re.match(r"^ID=[A-Za-z0-9_.\-]+;", attributes) for _, _, attributes in proteins.values())
 
 
 def test_protein_id_fallbacks(run_script, tmp_path):
