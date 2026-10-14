@@ -223,8 +223,14 @@ def main():
                 try:
                     logging.info(f"Reading GTF file {gtf_file}...")
                     gtf_contents = pd.read_csv(gtf_file, sep="\t", header=None)
+                    n_lines = len(gtf_contents)
 
                     gtf_contents = gtf_contents[gtf_contents[0].isin(filter_ids)]
+                    # A version mismatch used to empty a layer without any message
+                    if len(gtf_contents) < n_lines:
+                        logging.warning(f"{n_lines - len(gtf_contents)} of {n_lines} lines in {gtf_file} were dropped because "
+                                        f"their transcript ID is not in the classification file. If that is most of "
+                                        f"the file, check the transcript_versioned setting of the config file.")
 
                     gtf_dfs.append(gtf_contents)
                 except Exception as e:

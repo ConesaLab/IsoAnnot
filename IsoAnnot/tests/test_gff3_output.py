@@ -337,6 +337,33 @@ def test_t2go_empty_blocks(run_script, tmp_path):
     ]
 
 
+def test_t2go_warns_about_dropped_layer_lines(run_script, tmp_path):
+    """
+    Layer lines whose transcript ID is not in the classification (e.g. versioned vs unversioned IDs) are
+    dropped. t2go now says how many, once per layer, instead of emptying the layer silently.
+    """
+    classification = write_classification(tmp_path / "classification.txt", [
+        ["ENST00000000005", "1", "+", 700, "lncRNA", "SYNC", "ENST00000000005", "non_coding", "NA", "NA", "NA", "NA"],
+    ])
+    exons = tmp_path / "layer_exons.gtf"
+    exons.write_text("ENST00000000005\ttappAS\texon\t12001\t12400\t.\t+\t.\tChr=chr1\n"
+                     "ENST00000000005\ttappAS\texon\t13001\t13300\t.\t+\t.\tChr=chr1\n")
+    repeats = tmp_path / "layer_repeatmasker.gtf"
+    repeats.write_text("ENST00000000005.2\tRepeatMasker\trepeat\t10\t60\t.\t+\t.\tID=AluY\n"
+                       "ENST00000000005.2\tRepeatMasker\trepeat\t90\t120\t.\t+\t.\tID=L1\n"
+                       "ENST00000000005\tRepeatMasker\trepeat\t200\t260\t.\t+\t.\tID=MIR\n")
+    output = tmp_path / "annotation.gff3"
+    result = run_script("t2goAnnotationFile.py", "--classification_file", classification,
+                        "--input_transcripts", repeats, "--input_genomic", exons, "--input_protein", exons,
+                        "--output", output)
+    assert result.returncode == 0, result.stderr
+    assert [row[8] for row in read_tsv(output) if row[1] == "RepeatMasker"] == ["ID=MIR"]
+    warnings = [line for line in result.stderr.splitlines() if "not in the classification file" in line]
+    assert warnings == [f"WARNING:root:2 of 3 lines in {repeats} were dropped because their transcript ID is "
+                        f"not in the classification file. If that is most of the file, check the "
+                        f"transcript_versioned setting of the config file."]
+
+
 def test_rename_features_keeps_unknown_pairs(run_script, tmp_path):
     """
     A source/feature pair renameFeatures.py does not know (e.g. from a user protein_gtf) no longer stops
