@@ -678,7 +678,11 @@ checkpoint run_interproscan:
 def gather_interproscan(wildcards):
     checkpoint_output=checkpoints.run_interproscan.get(**wildcards).output[0]
     fname_vals = glob_wildcards(os.path.join(checkpoint_output, "{filename}.xml")).filename
-    return expand(os.path.join(checkpoint_output, "{filename}.xml"), dir=checkpoint_output, filename=fname_vals)[0]
+    # Say what went wrong here, instead of an argparse error from parseInterproscanXml.py
+    if not fname_vals:
+        raise ValueError(f"InterProScan wrote no XML file in {checkpoint_output}. Please check run_interproscan.log in the logs folder.")
+    # All XML files, not only the first: parseInterproscanXml.py takes several
+    return expand(os.path.join(checkpoint_output, "{filename}.xml"), dir=checkpoint_output, filename=fname_vals)
 
 
 rule parse_interproscan:
