@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import sys
 
@@ -91,3 +92,77 @@ def test_merge_nls_chunks_empty_chunks(run_rule, nls_dir):
     result = run_rule("merge_nls_chunks", [merged], "nls_chunks=3")
     assert result.returncode == 0, result.stdout + result.stderr
     assert merged.read_text() == nucimport_output("P1")
+
+
+def folder_state(path):
+    return sorted((entry.name, entry.stat().st_mtime_ns) for entry in os.scandir(path))
+
+
+@pytest.fixture
+def leftover_aout():
+    """
+    software/NucImport/aout.txt as left by the old run_nucimport, which ran the jar in that folder.
+    It is untracked, so installs that ran NLS before keep it after a pull. A real leftover is used as it is;
+    otherwise one is written and removed after the test.
+    """
+    aout = os.path.join(ISOANNOT_DIR, "software", "NucImport", "aout.txt")
+    if os.path.exists(aout):
+        yield aout
+        return
+    with open(aout, "w") as h:
+        h.write("OLD RUN LEFTOVER\n")
+    yield aout
+    os.remove(aout)
+
+
+def test_run_nucimport_own_folder(run_rule, nls_dir, leftover_aout):
+    """Parallel NucImport runs all wrote aout.txt into software/NucImport; each chunk now runs in its own folder, also when an old aout.txt is there. Empty chunks give a header-only output."""
+    if shutil.which("java") is None:
+        pytest.skip("java not found on PATH")
+    chunk_dir = nls_dir / "chunks_temp"
+    chunk_dir.mkdir(parents=True)
+    (chunk_dir / "chunk_0.fa").write_text(">P1\nMSPKKKRKVEDPAAAALLLLKRKRRSPPKKKRKVAAAGGGLLL\n"
+                                          ">P3\nMKRPRGRPKKKRKVLLAAAPEDKRRKAAAGGGLLLAAAGGGLLLDDE\n")
+    (chunk_dir / "chunk_1.fa").write_text("")
+    nucimport_dir = os.path.join(ISOANNOT_DIR, "software", "NucImport")
+    before = folder_state(nucimport_dir)
+    with open(leftover_aout) as h:
+        aout_before = h.read()
+    outputs = [nls_dir / "tmp" / f"output_chunk_{n}.txt" for n in range(2)]
+    result = run_rule("run_nucimport", outputs, "nls_chunks=2")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert folder_state(nucimport_dir) == before
+    with open(leftover_aout) as h:
+        assert h.read() == aout_before
+    assert sorted(os.listdir(nls_dir / "tmp")) == ["output_chunk_0.txt", "output_chunk_1.txt"]
+    lines = outputs[0].read_text().splitlines()
+    assert lines[:2] == [NUCIMPORT_HEADER, NUCIMPORT_STARS]
+    rows = [line.split("\t") for line in lines[2:]]
+    assert [[r[0], r[3], r[4], r[5]] for r in rows] == [["P1", "AALLLLKRKRRSPPKKKRKV", "Class1", "15"],
+                                                         ["P3", "PRGRPKKKRKVLLAAAPEDK", "Class1", "4"]]
+    assert [float(r[1]) for r in rows] == pytest.approx([0.99499797, 0.99333969])
+    assert outputs[1].read_text() == nucimport_output()
+
+
+@pytest.mark.parametrize("config, xmx", [((), "-Xmx2g"), (("nls_java_memory=6g",), "-Xmx6g")])
+def test_run_nucimport_java_memory(run_rule, nls_dir, config, xmx):
+    """Each NucImport JVM gets a maximum heap, 2g by default as the NucImport README asks."""
+    chunk_dir = nls_dir / "chunks_temp"
+    chunk_dir.mkdir(parents=True)
+    (chunk_dir / "chunk_0.fa").write_text(">P1\nMSPKKKRKVEDPAAAALLLLKRKRRSPPKKKRKVAAAGGGLLL\n")
+    result = run_rule("run_nucimport", [nls_dir / "tmp" / "output_chunk_0.txt"], "nls_chunks=1", *config,
+                      dry_run=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert f"java {xmx} -jar " in result.stdout
+
+
+def test_expand_nls_writes_log(run_rule, tmp_path, nls_dir):
+    """expand_nls declared a log but never wrote to it."""
+    nls_dir.mkdir(parents=True)
+    (nls_dir / "nls_parsed.tsv").write_text("ID\tImpProb\tcNLSProb\tSeq\tClass\tPos\n"
+                                            "P1\t0.995\t0.806\tAALLLLKRKRRSPPKKKRKV\tClass1\t15\n")
+    (nls_dir / "protein_mapping.tsv").write_text("UniqueID\tOriginalIDs\nP1\tP1,P2\nP3\tP3\n")
+    result = run_rule("expand_nls", [nls_dir / "nls_final_expanded.tsv"])
+    assert result.returncode == 0, result.stdout + result.stderr
+    log = tmp_path / "logs" / "Hsapiens" / "ensembl" / "expand_nls.log"
+    assert log.read_text().splitlines()[-1] == "INFO: Expansion complete. Total annotations generated: 2"
