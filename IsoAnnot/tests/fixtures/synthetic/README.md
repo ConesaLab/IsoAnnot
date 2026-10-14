@@ -73,8 +73,7 @@ plain text: most real downloads are gzipped, and the pipeline decompresses them 
 ## Derived files
 
 These files are made by running the pipeline scripts on the input files, with the same arguments as the
-Snakefile rules. They are the exact output of the current scripts, including their known problems (for
-example, `ORF_length` is written as a float).
+Snakefile rules. They are the exact output of the current scripts, including their known problems.
 
 * **`ensembl_sqanti_classification.txt`**, **`ensembl_sqanti_junctions.txt`** and **`ensembl_sqanti_NMD.txt`**:
   output of `referenceSQANTI.py --database ensembl` (rule `run_refsqanti`). `refProt` is the unversioned

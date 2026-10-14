@@ -166,8 +166,9 @@ def get_primary_dfs(classification_file, gene_desc_file, protein_assoc_info, ext
             transcript_df.append([transcript_id, "tappAS", "CDS", t_cds_start, t_prop.get("cds_end"),
                               ".", t_prop.get("strand"), ".", "; ".join(cds_attributes)])
 
-            # Append 'protein' line
-            protein_df.append([transcript_id, "tappAS", "protein", 1, t_prop.get("ORF_length"),
+            # Append 'protein' line. The end must be an integer: IsoAnnotLite crashes on '180.0' and
+            # tappAS reads it as 0. Classifications made before this fix (GitHub #10) still have floats.
+            protein_df.append([transcript_id, "tappAS", "protein", 1, int(float(t_prop.get("ORF_length"))),
                                   ".", t_prop.get("strand"), ".", "; ".join(cds_attributes)])
 
     output_dfs = {
