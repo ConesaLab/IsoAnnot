@@ -60,7 +60,26 @@ def test_dry_run_reference_modes(dry_run, database):
     assert jobs[f"prepare_{database}_gtf"] == 1
 
 
-def test_dry_run_mytranscripts_fasta(dry_run, synthetic_dir):
+def planned_command(output, script):
+    """The planned shell command (-p) that runs scripts/<script>, as one line."""
+    blocks = output.split("\n\n")
+    return next(" ".join(block.split()) for block in blocks if f"scripts/{script}" in block)
+
+
+@pytest.mark.parametrize("database", ["ensembl", "refseq"])
+def test_dry_run_reference_protein_ids(dry_run, database, tmp_path):
+    """Reference modes give t2goAnnotationFile.py the same-sequence protein IDs (GitHub #10)."""
+    result = dry_run(database)
+    assert result.returncode == 0, result.stdout + result.stderr
+    jobs = job_counts(result.stdout)
+    assert jobs["reference_protein_assoc"] == 1
+    assert jobs["parse_protein_databases"] == 1
+    assoc = tmp_path / "data" / "Hsapiens" / "output" / database / "reference_protein_assoc_data.txt"
+    assert f"--protein_association {assoc}" in planned_command(result.stdout, "t2goAnnotationFile.py")
+    assert f"--database {database} --output {assoc}" in planned_command(result.stdout, "reference_protein_assoc.py")
+
+
+def test_dry_run_mytranscripts_fasta(dry_run, synthetic_dir, tmp_path):
     """mytranscripts with a FASTA input runs SQANTI3 with a GMAP index and transcript2reference."""
     cdna = synthetic_dir / "ensembl_cdna.fa"
     result = dry_run("mytranscripts", f"fasta_cdna={cdna}")
@@ -72,3 +91,7 @@ def test_dry_run_mytranscripts_fasta(dry_run, synthetic_dir):
     assert jobs["tappas_annotation"] == 1
     assert "run_refsqanti" not in jobs
     assert f"--isoforms {cdna}" in result.stdout
+    # Protein IDs come from transcript2reference.py, not reference_protein_assoc
+    assert "reference_protein_assoc" not in jobs
+    assoc = tmp_path / "data" / "Hsapiens" / "output" / "mytranscripts" / "protein_assoc_data.txt"
+    assert f"--protein_association {assoc}" in planned_command(result.stdout, "t2goAnnotationFile.py")

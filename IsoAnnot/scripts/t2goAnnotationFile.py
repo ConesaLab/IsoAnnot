@@ -9,10 +9,33 @@ and produces a GFF3 file that can be read by tappAS.
 
 '''
 
-import argparse, sys, os, logging, csv, traceback, gc
+import argparse, sys, os, logging, csv, traceback, gc, re
 import pandas as pd
 from functools import reduce
-from IsoAnnot import openfile, argparse_nullable
+from IsoAnnot import openfile, argparse_nullable, natural_key
+
+# Order in which protein databases are used for the protein ID of a transcript (GitHub #10).
+# SwissProt beats TrEMBL, which beats the native IDs. mytranscripts uses the Ensembl GTF as reference,
+# so Ensembl comes before RefSeq there; the reference modes only list their own native database.
+# "novel" is the Protein_<isoform> ID that transcript2reference.py gives to ORFs with no match.
+PROTEIN_DB_RANK = {"swissprot": 0, "trembl": 1, "ensembl": 2, "refseq": 3, "novel": 4}
+
+
+def resolve_protein_id(proteins):
+    """
+    Picks the protein ID of a transcript from the (protein_id, database) pairs that share its protein
+    sequence, and returns it with the other IDs, which go to Desc. The result only depends on the set of
+    pairs, so all transcripts that encode the same protein get the same ID and Desc in tappAS.
+    Within a database, canonical UniProt entries come before isoform entries, even of a lower accession
+    (P12345 before P12344-2), so a canonical entry is used whenever the sequence has one.
+    """
+    def _key(protein):
+        protein_id, database = protein
+        return (PROTEIN_DB_RANK.get(database, len(PROTEIN_DB_RANK)),
+                re.search(r"-\d+$", protein_id) is not None, natural_key(protein_id))
+
+    ranked = [protein_id for protein_id, _ in sorted(set(proteins), key=_key)]
+    return ranked[0], ranked[1:]
 
 
 def _free_df(df):
@@ -48,7 +71,6 @@ def get_structural_classification_df(classification_filename):
                 "ORF_length": None if line.get("coding") != "coding" else line.get("ORF_length"),
                 "ref_protein": None,
                 # "ref_CDS": None,
-                "extra_ref_proteins": set([])
             }
 
             # Override CDS qualifiers for coding lines
@@ -71,10 +93,16 @@ def get_primary_dfs(classification_file, gene_desc_file, protein_assoc_info, ext
     transcript_collection = get_structural_classification_df(classification_file)
     # gene_descriptions = pd.read_csv(gene_desc_file, sep="\t", index_col=0, header=None) if gene_desc_file else None
 
-    protein_assoc = None
-    if protein_assoc_info:
-        protein_assoc = pd.read_csv(protein_assoc_info, sep="\t", index_col=None, header=None)
+    # Protein ID and Desc of each transcript, from the reference proteins with the same sequence
+    # (GitHub #10). The file is empty when no protein matched.
+    protein_ids = {}
+    if protein_assoc_info and os.path.getsize(protein_assoc_info) > 0:
+        protein_assoc = pd.read_csv(protein_assoc_info, sep="\t", index_col=None, header=None, dtype=str)
         protein_assoc.columns = ['transcript', 'protein', 'database', 'info']
+        protein_assoc = protein_assoc[protein_assoc['info'] == 'sequence']
+        for transcript_id, t_proteins in protein_assoc.groupby('transcript'):
+            protein_ids[transcript_id] = resolve_protein_id(zip(t_proteins['protein'], t_proteins['database']))
+    n_ref_protein_fallback = 0
 
     # Support info from GTF
     extra_second_files = None
@@ -102,22 +130,6 @@ def get_primary_dfs(classification_file, gene_desc_file, protein_assoc_info, ext
             # TODO: iterate t_extra_second
             # for t_row in t_extra_second.iterrows():
             #     t_secondary_classes.extend(list(t_row)[1:])
-
-        # When extra protein file is available
-        if isinstance(protein_assoc, pd.DataFrame):
-            protein_assoc = protein_assoc[protein_assoc['info'] == 'sequence']
-            t_uniprot_extra = protein_assoc.loc[protein_assoc['transcript'] == transcript_id, 'protein'].tolist()  # TODO: select second column?
-            # If ORFlength is not None equals "coding"
-            if t_prop.get("ORF_length"):
-                if not t_prop["ref_protein"]:
-                    if len(t_uniprot_extra) == 1:
-                        t_prop["ref_protein"] = t_uniprot_extra
-                    elif len(t_uniprot_extra) > 1:
-                        t_prop["ref_protein"] = [t_uniprot_extra[0]]
-                        t_prop["extra_ref_proteins"] = t_uniprot_extra[1:]
-
-                elif t_prop["ref_protein"] != t_uniprot_extra:
-                    t_prop["extra_ref_proteins"].add(t_uniprot_extra)
 
         t_primary_class = t_prop.get("primary_class")
         if t_primary_class != "NA":
@@ -151,17 +163,20 @@ def get_primary_dfs(classification_file, gene_desc_file, protein_assoc_info, ext
         t_cds_start = t_prop.get("cds_start")
 
         if t_cds_start:
-            t_ref_protein = t_prop.get("ref_protein", None)
-            t_extra_proteins = t_prop.get("extra_ref_proteins", [])
-
-            if not t_ref_protein:
-                cds_attributes = [f"ID=Novel"]
+            if transcript_id in protein_ids:
+                t_protein_id, t_other_proteins = protein_ids[transcript_id]
+            elif t_prop.get("ref_protein") not in (None, "", "NA"):
+                # Reference modes: refProt has no sequence in parsed_databases.json
+                t_protein_id, t_other_proteins = t_prop["ref_protein"], []
+                n_ref_protein_fallback += 1
             else:
-                cds_attributes = [f"ID={t_ref_protein[0]}"]
+                # IsoAnnotLite convention, instead of one "Novel" protein shared by all novel ORFs
+                t_protein_id, t_other_proteins = "Protein_" + re.sub(r"[^A-Za-z0-9_.\-]", "_", transcript_id), []
 
-            if len(t_extra_proteins):
-                ref_extra_proteins = ",".join(t_extra_proteins)
-                cds_attributes.append(f"Desc={ref_extra_proteins}")
+            # Same attributes on the CDS and protein lines; no empty Desc (GitHub #10)
+            cds_attributes = [f"ID={t_protein_id}"]
+            if t_other_proteins:
+                cds_attributes.append(f"Desc={','.join(t_other_proteins)}")
 
             transcript_df.append([transcript_id, "tappAS", "CDS", t_cds_start, t_prop.get("cds_end"),
                               ".", t_prop.get("strand"), ".", "; ".join(cds_attributes)])
@@ -170,6 +185,10 @@ def get_primary_dfs(classification_file, gene_desc_file, protein_assoc_info, ext
             # tappAS reads it as 0. Classifications made before this fix (GitHub #10) still have floats.
             protein_df.append([transcript_id, "tappAS", "protein", 1, int(float(t_prop.get("ORF_length"))),
                                   ".", t_prop.get("strand"), ".", "; ".join(cds_attributes)])
+
+    if n_ref_protein_fallback:
+        logging.warning(f"{n_ref_protein_fallback} coding transcripts have no reference protein with the same sequence. "
+                        f"Their refProt from the classification file is used as protein ID.")
 
     output_dfs = {
         "transcript": pd.DataFrame(transcript_df),

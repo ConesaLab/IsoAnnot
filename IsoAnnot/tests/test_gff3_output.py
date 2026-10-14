@@ -1,4 +1,5 @@
 import csv
+import json
 import os
 import sys
 
@@ -6,6 +7,10 @@ import pytest
 
 main_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts"))
 sys.path.insert(0, main_path)
+
+from IsoAnnot import natural_key
+from t2goAnnotationFile import resolve_protein_id
+from transcript2reference import get_novel_protein_ids
 
 CODING = ["ENST00000000001", "ENST00000000002", "ENST00000000003", "ENST00000000004", "ENST00000000006"]
 
@@ -77,3 +82,205 @@ def test_protein_end_is_an_integer(synthetic_dir, run_script, tmp_path, float_or
     assert proteins == {"ENST00000000001": ("1", "150"), "ENST00000000002": ("1", "87"),
                         "ENST00000000003": ("1", "187"), "ENST00000000004": ("1", "187"),
                         "ENST00000000006": ("1", "267")}
+
+
+def write_classification(path, rows):
+    """Writes a classification with the columns t2goAnnotationFile.py and reference_protein_assoc.py read."""
+    columns = ["isoform", "chrom", "strand", "length", "structural_category", "associated_gene",
+               "associated_transcript", "coding", "ORF_length", "CDS_start", "CDS_end", "refProt"]
+    with open(path, "w") as handle:
+        handle.write("\t".join(columns) + "\n")
+        for row in rows:
+            handle.write("\t".join(str(v) for v in row) + "\n")
+    return path
+
+
+def run_reference_protein_assoc(run_script, synthetic_dir, tmp_path, database, classification=None):
+    classification = classification or synthetic_dir / "ensembl_sqanti_classification.txt"
+    output = tmp_path / "reference_protein_assoc_data.txt"
+    result = run_script("reference_protein_assoc.py", "--classification_file", classification,
+                        "--species_db", synthetic_dir / "parsed_databases.json", "--database", database,
+                        "--output", output)
+    assert result.returncode == 0, result.stderr
+    return output, result
+
+
+def test_natural_key():
+    """Numbers inside IDs compare as numbers (GitHub #10)."""
+    ids = ["Q9HBE1-10", "NP_000005.10", "Q9HBE1-2", "NP_000005.3", "Q9HBE1", "PB.10.1", "PB.2.1"]
+    assert sorted(ids, key=natural_key) == ["NP_000005.3", "NP_000005.10", "PB.2.1", "PB.10.1",
+                                            "Q9HBE1", "Q9HBE1-2", "Q9HBE1-10"]
+
+
+@pytest.mark.parametrize("proteins,expected", [
+    # SwissProt beats TrEMBL, which beats the native IDs
+    ([("ENSP00000000001", "ensembl"), ("A0A024R1K6", "trembl"), ("Q9BZE7", "swissprot")],
+     ("Q9BZE7", ["A0A024R1K6", "ENSP00000000001"])),
+    # A canonical entry beats an isoform; isoform numbers compare as numbers
+    ([("Q9HBE1-10", "swissprot"), ("Q9HBE1-2", "swissprot"), ("Q9HBE1", "swissprot")],
+     ("Q9HBE1", ["Q9HBE1-2", "Q9HBE1-10"])),
+    ([("Q9HBE1-10", "swissprot"), ("Q9HBE1-2", "swissprot")], ("Q9HBE1-2", ["Q9HBE1-10"])),
+    # Any canonical entry beats an isoform entry, even one with a lower accession
+    ([("P12344-2", "swissprot"), ("P12345", "swissprot")], ("P12345", ["P12344-2"])),
+    # Without UniProt, the lowest native ID, whatever the transcript's own protein is
+    ([("ENSP00000384194", "ensembl"), ("ENSP00000350199", "ensembl")], ("ENSP00000350199", ["ENSP00000384194"])),
+    # mytranscripts: Ensembl before RefSeq, and Protein_<isoform> only when nothing else matched
+    ([("NP_000005", "refseq"), ("ENSP00000325785", "ensembl")], ("ENSP00000325785", ["NP_000005"])),
+    ([("Protein_PB.1.1", "novel")], ("Protein_PB.1.1", [])),
+    # Duplicated rows are reported once
+    ([("P0SYA1", "swissprot"), ("P0SYA1", "swissprot")], ("P0SYA1", [])),
+])
+def test_resolve_protein_id(proteins, expected):
+    """The protein ID and Desc only depend on the set of same-sequence IDs (GitHub #10)."""
+    assert resolve_protein_id(proteins) == expected
+    assert resolve_protein_id(list(reversed(proteins))) == expected
+
+
+def test_reference_protein_assoc_ensembl(synthetic_dir, run_script, tmp_path):
+    """Ensembl mode links each transcript to the UniProt and Ensembl IDs of its protein sequence."""
+    output, _ = run_reference_protein_assoc(run_script, synthetic_dir, tmp_path, "ensembl")
+    assert read_tsv(output) == [
+        ["ENST00000000001", "P0SYA1", "swissprot", "sequence"],
+        ["ENST00000000001", "ENSP00000000001", "ensembl", "sequence"],
+        ["ENST00000000002", "A0A0S1YNA6", "trembl", "sequence"],
+        ["ENST00000000002", "ENSP00000000002", "ensembl", "sequence"],
+        ["ENST00000000003", "P0SYB1-2", "swissprot", "sequence"],
+        ["ENST00000000003", "ENSP00000000003", "ensembl", "sequence"],
+        ["ENST00000000003", "ENSP00000000004", "ensembl", "sequence"],
+        ["ENST00000000004", "P0SYB1-2", "swissprot", "sequence"],
+        ["ENST00000000004", "ENSP00000000003", "ensembl", "sequence"],
+        ["ENST00000000004", "ENSP00000000004", "ensembl", "sequence"],
+        ["ENST00000000006", "ENSP00000000006", "ensembl", "sequence"],
+    ]
+
+
+def test_reference_protein_assoc_refseq(synthetic_dir, run_script, tmp_path):
+    """RefSeq mode looks up versioned refProt IDs and keeps RefSeq, not Ensembl, IDs."""
+    classification = write_classification(tmp_path / "classification.txt", [
+        ["NM_900003.2", "1", "-", 710, "protein_coding", "SYNB", "NM_900003.2", "coding", 187, 51, 611, "NP_900003.1"],
+        ["NR_900005.1", "1", "+", 700, "lncRNA", "SYNC", "NR_900005.1", "non_coding", "NA", "NA", "NA", "NA"],
+        ["NM_900006.3", "1", "+", 1100, "protein_coding", "SYND", "NM_900006.3", "coding", 267, 101, 901, "NP_900006.2"],
+        ["NM_900009.1", "1", "+", 900, "protein_coding", "SYNE", "NM_900009.1", "coding", 200, 101, 700, "NP_900009.1"],
+    ])
+    output, result = run_reference_protein_assoc(run_script, synthetic_dir, tmp_path, "refseq", classification)
+    assert read_tsv(output) == [
+        ["NM_900003.2", "P0SYB1-2", "swissprot", "sequence"],
+        ["NM_900003.2", "NP_900003", "refseq", "sequence"],
+        ["NM_900003.2", "NP_900004", "refseq", "sequence"],
+        ["NM_900006.3", "NP_900006", "refseq", "sequence"],
+    ]
+    assert "1 of 3 coding transcripts" in result.stderr
+
+
+def test_reference_protein_assoc_ambiguous_native_id(run_script, tmp_path):
+    """
+    A native ID that maps to two sequences once the version is removed (AT1G01010.1 and AT1G01010.2 in
+    Ensembl Plants) is not used to pick a sequence.
+    """
+    species_db = tmp_path / "parsed_databases.json"
+    species_db.write_text(json.dumps({"MAAA": {"swissprot": ["Q00001"], "ensembl": ["AT1G01010"]},
+                                      "MCCC": {"ensembl": ["AT1G01010"]},
+                                      "MGGG": {"swissprot": ["Q00002"], "ensembl": ["AT1G01020"]}}))
+    classification = write_classification(tmp_path / "classification.txt", [
+        ["AT1G01010.1", "1", "+", 900, "protein_coding", "G1", "AT1G01010.1", "coding", 3, 1, 9, "AT1G01010.1"],
+        ["AT1G01020.1", "1", "+", 900, "protein_coding", "G2", "AT1G01020.1", "coding", 3, 1, 9, "AT1G01020.1"],
+    ])
+    output = tmp_path / "assoc.txt"
+    result = run_script("reference_protein_assoc.py", "--classification_file", classification,
+                        "--species_db", species_db, "--database", "ensembl", "--output", output)
+    assert result.returncode == 0, result.stderr
+    assert read_tsv(output) == [["AT1G01020.1", "Q00002", "swissprot", "sequence"],
+                                ["AT1G01020.1", "AT1G01020", "ensembl", "sequence"]]
+
+
+def test_novel_protein_ids():
+    """ORFs with no exact match get Protein_<isoform>, shared by isoforms with the same ORF."""
+    isoform_proteins = {"PB.10.1": "MKKK", "PB.2.1": "MKKK", "PB.3.1": "MAAA", "PB.4.1": "MLLL",
+                        "PB:5,1": "MWWW"}
+    assert get_novel_protein_ids(isoform_proteins, {"MAAA": {"swissprot": ["Q00001"]}}) == {
+        "PB.10.1": "Protein_PB.2.1", "PB.2.1": "Protein_PB.2.1", "PB.4.1": "Protein_PB.4.1",
+        "PB:5,1": "Protein_PB_5_1"}
+
+
+def test_transcript2reference_writes_novel_rows(synthetic_dir, run_script, tmp_path):
+    """transcript2reference.py writes the shared Protein_<isoform> ID of novel ORFs to protein_assoc."""
+    with open(synthetic_dir / "parsed_databases.json") as handle:
+        p0sya1 = next(seq for seq, dbs in json.load(handle).items() if dbs.get("swissprot") == ["P0SYA1"])
+    corrected_gtf = tmp_path / "corrected.gtf"
+    corrected_gtf.write_text("".join(f'1\tPacBio\texon\t1001\t2000\t.\t+\t.\ttranscript_id "{isoform}"; gene_id "PB.1";\n'
+                                     for isoform in ("PB.2.1", "PB.3.1", "PB.10.1")))
+    orfs = tmp_path / "corrected.faa"
+    orfs.write_text(f">PB.2.1 GeneMark.hmm|4_aa|+|11|22\nMKKK\n"
+                    f">PB.3.1 GeneMark.hmm|150_aa|+|11|460\n{p0sya1}\n"
+                    f">PB.10.1 GeneMark.hmm|4_aa|+|11|22\nMKKK\n")
+    protein_assoc = tmp_path / "protein_assoc_data.txt"
+    nmd = tmp_path / "nmd.txt"
+    result = run_script("transcript2reference.py", "--ensembl_gtf", synthetic_dir / "ensembl.gtf",
+                        "--corrected_gtf", corrected_gtf, "--corrected_fasta_proteins", orfs,
+                        "--database", "mytranscripts", "--species_db", synthetic_dir / "parsed_databases.json",
+                        "--output_assoc", protein_assoc, "--output_nmd", nmd)
+    assert result.returncode == 0, result.stderr
+    assert [line.split("\t") for line in protein_assoc.read_text().splitlines()] == [
+        ["PB.2.1", "Protein_PB.2.1", "novel", "sequence"],
+        ["PB.3.1", "P0SYA1", "swissprot", "sequence"],
+        ["PB.3.1", "NP_900001", "refseq", "sequence"],
+        ["PB.3.1", "ENSP00000000001", "ensembl", "sequence"],
+        ["PB.10.1", "Protein_PB.2.1", "novel", "sequence"],
+    ]
+    assert sorted(os.listdir(tmp_path)) == ["corrected.faa", "corrected.gtf", "nmd.txt", "protein_assoc_data.txt"]
+
+
+def test_full_protein_ids_and_desc(synthetic_dir, run_script, tmp_path):
+    """
+    CDS and protein lines carry the full UniProt ID, with the other same-sequence IDs in Desc, instead of
+    the first character of refProt (GitHub #10). SYNB-201 and SYNB-202 share one ID and Desc.
+    """
+    protein_assoc, _ = run_reference_protein_assoc(run_script, synthetic_dir, tmp_path, "ensembl")
+    rows = run_t2go(run_script, synthetic_dir, tmp_path, protein_assoc=protein_assoc)
+    cds = {row[0]: row[8] for row in rows if row[2] == "CDS"}
+    proteins = {row[0]: row[8] for row in rows if row[2] == "protein"}
+    assert cds == {
+        "ENST00000000001": "ID=P0SYA1; Desc=ENSP00000000001",
+        "ENST00000000002": "ID=A0A0S1YNA6; Desc=ENSP00000000002",
+        "ENST00000000003": "ID=P0SYB1-2; Desc=ENSP00000000003,ENSP00000000004",
+        "ENST00000000004": "ID=P0SYB1-2; Desc=ENSP00000000003,ENSP00000000004",
+        "ENST00000000006": "ID=ENSP00000000006",
+    }
+    assert proteins == cds
+
+
+def test_protein_id_fallbacks(run_script, tmp_path):
+    """
+    Without a sequence match the ID is the refProt (reference modes) or Protein_<isoform> (mytranscripts),
+    never a single character or a shared "Novel" (GitHub #10).
+    """
+    classification = write_classification(tmp_path / "classification.txt", [
+        ["ENST00000000001", "1", "+", 750, "protein_coding", "SYNA", "ENST00000000001", "coding", 150, 101, 550, "ENSP00000000001"],
+        ["ENST00000000006", "1", "+", 1100, "protein_coding", "SYND", "ENST00000000006", "coding", 267, 101, 901, "ENSP00000000006"],
+    ])
+    protein_assoc = tmp_path / "assoc.txt"
+    protein_assoc.write_text("ENST00000000001\tP0SYA1\tswissprot\tsequence\n")
+    exons = tmp_path / "exons.gtf"
+    exons.write_text("ENST00000000001\ttappAS\texon\t1001\t1750\t.\t+\t.\tChr=chr1\n")
+    output = tmp_path / "annotation.gff3"
+    result = run_script("t2goAnnotationFile.py", "--classification_file", classification,
+                        "--input_transcripts", exons, "--input_genomic", exons, "--input_protein", exons,
+                        "--protein_association", protein_assoc, "--output", output)
+    assert result.returncode == 0, result.stderr
+    cds = {row[0]: row[8] for row in read_tsv(output) if row[2] == "CDS"}
+    assert cds == {"ENST00000000001": "ID=P0SYA1", "ENST00000000006": "ID=ENSP00000000006"}
+    assert ("WARNING:root:1 coding transcripts have no reference protein with the same sequence. "
+            "Their refProt from the classification file is used as protein ID.") in result.stderr.splitlines()
+
+    # mytranscripts: SQANTI3 classifications have no refProt column
+    sqanti = tmp_path / "sqanti_classification.txt"
+    sqanti.write_text("isoform\tchrom\tstrand\tlength\tstructural_category\tassociated_gene\tassociated_transcript"
+                      "\tcoding\tORF_length\tCDS_start\tCDS_end\n"
+                      "PB.1.1\t1\t+\t750\tnovel_not_in_catalog\tSYNA\tnovel\tcoding\t150\t101\t553\n"
+                      "PB:2,1\t1\t+\t750\tnovel_not_in_catalog\tSYNA\tnovel\tcoding\t150\t101\t553\n")
+    result = run_script("t2goAnnotationFile.py", "--classification_file", sqanti,
+                        "--input_transcripts", exons, "--input_genomic", exons, "--input_protein", exons,
+                        "--output", output)
+    assert result.returncode == 0, result.stderr
+    cds = {row[0]: row[8] for row in read_tsv(output) if row[2] == "CDS"}
+    assert cds == {"PB.1.1": "ID=Protein_PB.1.1", "PB:2,1": "ID=Protein_PB_2_1"}
