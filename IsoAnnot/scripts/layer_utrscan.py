@@ -9,7 +9,7 @@ GTF format
 '''
 
 import argparse, sys, os, re, logging, csv, traceback
-from IsoAnnot import openfile
+from IsoAnnot import openfile, normalize_id
 from t2goAnnotationFile import get_structural_classification_df
 
 
@@ -68,8 +68,10 @@ def main():
             for transcript_utrscan in utrscan_info:
                 transcript_id = transcript_utrscan.get("transcript")
 
-                if args.keep_version.upper()=="FALSE":
-                    transcript_id = transcript_id.partition(".")[0]
+                # Strip the version only when the exact ID is not in the classification. This does not
+                # depend on --keep_version, so a wrong transcript_versioned value cannot empty the layer.
+                if transcript_id not in transcript_info:
+                    transcript_id = normalize_id(transcript_id)
 
                 if transcript_id in transcript_info:
                     transcript_params = transcript_info.get(transcript_id)

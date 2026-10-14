@@ -8,7 +8,7 @@ Script to retrieve information from Interproscan.
 """
 
 import argparse, sys, os, logging, csv
-from IsoAnnot import openfile
+from IsoAnnot import openfile, normalize_id
 
 def read_interproscan_file(filename):
     """
@@ -148,9 +148,10 @@ def main():
                 transcript_db = transcript_interproscan.get("database")
                 transcript_its_id = transcript_interproscan.get("id")
                 
-                # Keep transcript version or not
-                if args.keep_version.upper() == "FALSE":
-                    transcript_id = transcript_id.split(".")[0]
+                # Strip the version only when the exact ID is not in the classification. This does not
+                # depend on --keep_version, so a wrong transcript_versioned value cannot empty the layer.
+                if transcript_id not in transcript_info:
+                    transcript_id = normalize_id(transcript_id)
                 
                 # Only annotate features from the allowed databases
                 if transcript_id in transcript_info and transcript_db in args.allowed_databases:
