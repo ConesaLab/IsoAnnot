@@ -630,14 +630,15 @@ rule filter_interactions:
     params:
         species_name=config["species"],
         mirbase="data/global/miRNA/miRNA.dat",
-        score=config.get("mirna_db_evidence_score_threshold")
+        # Left out when the key is missing, so filter_mirna_bs.py uses its default
+        score=_optional_param("mirna_db_evidence_score_threshold", "--score")
     output:
         os.path.join(path_output, "data", prefix, "config", "mirna", "filter_interactions.txt")
     log:
         os.path.join(path_output, "logs", prefix, "filter_interactions.log")
     shell:
         """
-        scripts/filter_mirna_bs.py --mirbase_file {params.mirbase} --mirwalk_file {input.mirwalk} --species {params.species_name:q} --score {params.score} --mirwalk_output {output} &> {log}
+        scripts/filter_mirna_bs.py --mirbase_file {params.mirbase} --mirwalk_file {input.mirwalk} --species {params.species_name:q} {params.score} --mirwalk_output {output} &> {log}
         """
  
 rule run_mirwalk2gen:

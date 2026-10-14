@@ -21,10 +21,10 @@ def dry_run(tmp_path):
     if not os.path.isfile(SNAKEMAKE):
         pytest.skip(f"Snakemake not found at {SNAKEMAKE} (set ISOANNOT_SNAKEMAKE to use another one)")
 
-    def _run(database, *config, configfile=None):
+    def _run(database, *config, snakefile=None, configfile=None):
         config_dir = os.path.join(ISOANNOT_DIR, "config", database, "hsapiens")
         cmd = [SNAKEMAKE, "-n", "-p",
-               "--snakefile", os.path.join(config_dir, "Snakefile.smk"),
+               "--snakefile", snakefile or os.path.join(config_dir, "Snakefile.smk"),
                "--configfile", configfile or os.path.join(config_dir, "config.yaml"),
                "--config", f"db={database}", f"path_output={tmp_path}", *config,
                "--directory", ISOANNOT_DIR, "--cores", "8", "all",
@@ -141,3 +141,38 @@ def test_dry_run_reactome_toggle(dry_run, value, enabled):
     jobs = job_counts(result.stdout)
     assert ("layer_reactome" in jobs) == enabled
     assert ("get_reactome" in jobs) == enabled
+
+
+def planned_command(output, script):
+    """The planned shell line that runs scripts/<script>, from the -p output of a dry run, with single spaces."""
+    return next(" ".join(line.split()) for line in output.splitlines() if f"scripts/{script} " in line)
+
+
+@pytest.mark.parametrize("config, score_option", [
+    ([], "--score 0.95 "),
+    (["mirna_db_evidence_score_threshold="], ""),
+])
+def test_dry_run_mirna_score_threshold(dry_run, config, score_option):
+    """An empty mirna_db_evidence_score_threshold leaves the --score option out instead of giving it no value."""
+    result = dry_run("ensembl", *config)
+    assert result.returncode == 0, result.stdout + result.stderr
+    command = planned_command(result.stdout, "filter_mirna_bs.py")
+    assert f"--species 'Homo sapiens' {score_option}--mirwalk_output " in command
+
+
+def test_dry_run_mirna_score_threshold_missing(dry_run, tmp_path):
+    """A species config without mirna_db_evidence_score_threshold gave --score None."""
+    species_config = os.path.join(ISOANNOT_DIR, "config", "ensembl", "hsapiens", "config.yaml")
+    with open(species_config) as h:
+        lines = [line for line in h if not line.startswith("mirna_db_evidence_score_threshold:")]
+    configfile = tmp_path / "config.yaml"
+    configfile.write_text("".join(lines))
+    # The species Snakefile loads its own config.yaml, which has the key, so include the generic one directly
+    snakefile = tmp_path / "Snakefile.smk"
+    snakefile.write_text(f'configfile: "{configfile}"\n\n'
+                         f'include: "{os.path.join(ISOANNOT_DIR, "config", "generic", "Snakefile_ensembl.smk")}"\n')
+    result = dry_run("ensembl", snakefile=str(snakefile), configfile=str(configfile))
+    assert result.returncode == 0, result.stdout + result.stderr
+    command = planned_command(result.stdout, "filter_mirna_bs.py")
+    assert "--species 'Homo sapiens' --mirwalk_output " in command
+    assert "None" not in command
