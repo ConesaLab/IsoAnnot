@@ -143,7 +143,7 @@ cd IsoAnnot
 - `--species`: Species code in lowercase (first letter of genus + species, e.g., `hsapiens` for *Homo sapiens*)
 
 **Optional parameter:**
-- `--outputdir`: Output directory to store the results (working directory by default)
+- `--outputdir`: Output directory to store the results (working directory by default). A relative path is taken from the folder you run `isoannot.sh` in.
 - `--config`: Additional configuration options (required for `mytranscripts`)
 
 **Supported databases:**
@@ -181,7 +181,7 @@ This example annotates potato (*Solanum tuberosum*) transcripts from a custom FA
 |-----------|-------------|----------|--------|
 | `--database` | Database source | Yes | `ensembl`, `refseq`, `mytranscripts` |
 | `--species` | Species identifier | Yes | Lowercase species code (e.g., `hsapiens`, `mmusculus`) |
-| `--outputdir`| Output directory | No | Path to directory (working directory by default) |
+| `--outputdir`| Output directory | No | Path to directory (working directory by default). A relative path is taken from the current folder |
 | `--config` | Override config values | Conditional* | `key=value` pairs |
 | `--configfile` | Custom config file path | No | Path to YAML file |
 | `--snakefile` | Custom snakefile path | No | Path to Snakefile |

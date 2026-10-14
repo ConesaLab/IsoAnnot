@@ -27,8 +27,8 @@ def launch(tmp_path):
     env = dict(os.environ, PATH=f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
     env.pop("SLURM_CPUS_PER_TASK", None)
 
-    def _run(*args, **extra_env):
-        result = subprocess.run(["bash", LAUNCHER, *args], cwd=work_dir, env=dict(env, **extra_env),
+    def _run(*args, cwd=work_dir, **extra_env):
+        result = subprocess.run(["bash", LAUNCHER, *args], cwd=cwd, env=dict(env, **extra_env),
                                 capture_output=True, text=True)
         assert result.returncode == 0, result.stdout + result.stderr
         return result.stdout.splitlines()
@@ -66,3 +66,24 @@ def test_config_ignores_environment(launch):
     argv = launch("--database", "ensembl", "--species", "hsapiens", "--outputdir", "/abs/out",
                   "--config", "layer_go=no", CONFIG="/etc/someapp.conf")
     assert config_tokens(argv) == ["db=ensembl", "path_output=/abs/out", "layer_go=no"]
+
+
+@pytest.mark.parametrize("outputdir", ["results", "./results/run1", "../results"])
+def test_relative_outputdir_made_absolute(launch, tmp_path, outputdir):
+    """A relative --outputdir is resolved against the current folder: run_nucimport and run_repeatmasker cd."""
+    argv = launch("--database", "ensembl", "--species", "hsapiens", "--outputdir", outputdir)
+    assert config_tokens(argv)[1] == f"path_output={tmp_path / 'work'}/{outputdir}"
+
+
+def test_relative_outputdir_with_space_in_cwd(launch, tmp_path):
+    """A space in the current folder does not split path_output into two config tokens."""
+    cwd = tmp_path / "work" / "with space"
+    cwd.mkdir()
+    argv = launch("--database", "ensembl", "--species", "hsapiens", "--outputdir", "results", cwd=cwd)
+    assert config_tokens(argv) == ["db=ensembl", f"path_output={cwd}/results"]
+
+
+def test_absolute_outputdir_unchanged(launch):
+    """An absolute --outputdir is passed as given."""
+    argv = launch("--database", "ensembl", "--species", "hsapiens", "--outputdir", "/abs/out")
+    assert config_tokens(argv)[1] == "path_output=/abs/out"

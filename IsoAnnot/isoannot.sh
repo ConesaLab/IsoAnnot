@@ -76,6 +76,14 @@ then
     OUTPUTDIR="$DIR"
 fi
 
+# run_nucimport and run_repeatmasker cd before using their paths, so a relative
+# --outputdir has to be made absolute. It is taken from the current folder; before,
+# snakemake resolved it from the install folder ($DIR) because of --directory
+if [[ "$OUTPUTDIR" != /* ]]
+then
+    OUTPUTDIR="$PWD/$OUTPUTDIR"
+fi
+
 if [ -z "$SNAKEFILE" ]
 then
     SNAKEFILE="$DIR/config/${DATABASE}/${SPECIES}/Snakefile.smk"
@@ -95,6 +103,6 @@ fi
 # TODO ASK the user the directory where they want to store the final annotation. Connect with isoannot.sh script
 
 
-exec snakemake -p --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE path_output=$OUTPUTDIR $CONFIG --directory $DIR --cores ${SLURM_CPUS_PER_TASK:-8} all --rerun-incomplete --nolock --resources n_downloads=1 #-n
+exec snakemake -p --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE "path_output=$OUTPUTDIR" $CONFIG --directory $DIR --cores ${SLURM_CPUS_PER_TASK:-8} all --rerun-incomplete --nolock --resources n_downloads=1 #-n
 #exec snakemake -p --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE $CONFIG --directory $DIR --cores 8 all  --rerun-incomplete --nolock --summary
 #exec snakemake -p --nolock --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE $CONFIG --directory $DIR --cores 8 all --rerun-incomplete --dag | dot -Tsvg > dag.svg
