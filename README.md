@@ -506,6 +506,15 @@ The output GFF3 file integrates information from multiple sources:
 - Phosphorylation sites
 - Other PTMs from PhosphoSitePlus
 
+**Protein IDs**: the `CDS` and `protein` lines of a coding transcript have the same attributes, for example `ID=Q9HBE1-4; Desc=ENSP00000215919`.
+* `ID` is one identifier of the protein sequence of the transcript. IsoAnnot looks for proteins with exactly the same sequence and picks SwissProt first, then TrEMBL, then Ensembl (`ensembl` mode) or RefSeq (`refseq` mode). In `mytranscripts` mode, Ensembl comes before RefSeq.
+* `Desc` lists the other identifiers of that sequence, separated by commas. It is left out when there are none.
+* All transcripts that encode the same protein get the same `ID` and `Desc`, so tappAS treats them as one protein.
+* When no reference protein has that sequence, `ID` is the reference protein of the transcript (`ensembl` and `refseq` modes) or `Protein_<isoform>` (`mytranscripts` mode).
+* Ensembl and RefSeq IDs found through the sequence are written without their version (`NP_000005`), as in `parsed_databases.json`. The reference protein used when there is no match is written as in the classification file, so in `refseq` mode it keeps its version (`NP_000005.3`). In Ensembl Plants, where protein IDs are transcript IDs, an ID without version looks like the gene ID (`AT1G01020`).
+
+The lines of each transcript start with its `transcript` line, followed by the transcript, genomic and protein features, as in the legacy tappAS files.
+
 **Example GFF3 attributes**:
 ```
 gene_id=ENSG00000000003;transcript_id=ENST00000000003;GO=GO:0005515,GO:0003824;
