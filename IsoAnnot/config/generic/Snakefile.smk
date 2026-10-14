@@ -1226,9 +1226,11 @@ rule layer_mirna_bs:
         _output_layer_db("layer_mirna_bs", external_rule=rules.get_mirna_bs_annotation.output)
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "layer_mirna_bs.log")
+    # sort -u compares only the -k keys, so different miRNAs or features at the same coordinates were merged;
+    # uniq drops whole-line duplicates only. LC_ALL=C makes sort break key ties bytewise, so equal lines are adjacent.
     shell:
         """
-        sort -u -V -k1,1 -k4,4n -k5,5n {input.mirna_bs_file} > {output} 2> {log}
+        LC_ALL=C sort -V -k1,1 -k4,4n -k5,5n {input.mirna_bs_file} 2> {log} | uniq > {output}
         """
 
 rule layer_uniprot:
@@ -1238,9 +1240,11 @@ rule layer_uniprot:
         _output_layer_db("layer_uniprot", external_rule=rules.get_uniprot_phosphosite_annotation.output)
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "layer_uniprot.log")
+    # Whole-line dedup, as in layer_mirna_bs. A PTM reported by both Swiss-Prot and PhosphoSitePlus
+    # is kept twice, because the Desc source suffix differs.
     shell:
         """
-        sort -u -V -k1,1 -k3,3 -k4,4n -k5,5n {input.uniprot_file} > {output} 2> {log}
+        LC_ALL=C sort -V -k1,1 -k3,3 -k4,4n -k5,5n {input.uniprot_file} 2> {log} | uniq > {output}
         """
 
 
