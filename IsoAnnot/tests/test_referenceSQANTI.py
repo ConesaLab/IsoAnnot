@@ -54,6 +54,52 @@ def test_refseq_mode_matches_the_ensembl_mode(run_script, synthetic_dir, tmp_pat
         [[r[c] for c in columns] for r in ensembl]
 
 
+def test_ambiguous_splice_site_bases_do_not_truncate_the_junctions(run_script, tmp_path):
+    """An R or Y at a splice site is read as N and processing goes on; it used to stop with exit 0."""
+    genome = ["A"] * 120
+    for pos, base in {11: "G", 12: "R", 19: "A", 20: "G",    # TA, + strand: GR..AG
+                      51: "G", 52: "T", 59: "A", 60: "G",    # TB, + strand: GT..AG
+                      91: "C", 92: "Y", 99: "A", 100: "C"}.items():  # TC, - strand: CY..AC
+        genome[pos - 1] = base
+    genome_file = tmp_path / "genome.fa"
+    genome_file.write_text(">1\n" + "".join(genome) + "\n")
+    gtf = tmp_path / "ensembl.gtf"
+    lines = []
+    for transcript, strand, exons in [("TA", "+", [(1, 10), (21, 30)]), ("TB", "+", [(41, 50), (61, 70)]),
+                                      ("TC", "-", [(81, 90), (101, 110)])]:
+        attributes = f'gene_id "G{transcript}"; transcript_id "{transcript}"; gene_name "G{transcript}"; transcript_biotype "lncRNA";'
+        lines.append(f"1\ttest\ttranscript\t{exons[0][0]}\t{exons[-1][1]}\t.\t{strand}\t.\t{attributes}")
+        lines.extend(f"1\ttest\texon\t{start}\t{end}\t.\t{strand}\t.\t{attributes}" for start, end in exons)
+    gtf.write_text("\n".join(lines) + "\n")
+    chr2acc = tmp_path / "chr2acc"
+    chr2acc.write_text("#Chromosome\tAccession.version\n1\tNC_000001.11\n")
+
+    result, outputs = run_reference_sqanti(run_script, tmp_path, gtf, genome_file, chr2acc, "ensembl")
+    assert result.returncode == 0, result.stderr
+    assert [(j["isoform"], j["splice_site"], j["canonical"]) for j in read_tsv(outputs["junctions"])] == [
+        ("TA", "GNAG", "non_canonical"), ("TB", "GTAG", "canonical"), ("TC", "GTNG", "non_canonical")]
+    assert result.stderr.count("2 splice sites have bases other than A, C, G, T or N") == 1
+
+
+def test_stopped_run_leaves_no_truncated_junctions_file(synthetic_dir, tmp_path, monkeypatch):
+    """A run that stops in the middle of the junctions leaves no junctions file, not a header-only one."""
+    import referenceSQANTI
+
+    def stop(site):
+        raise RuntimeError("stopped at a - strand junction")
+    # The first - strand junction comes after the + strand junctions of SYNA have been written
+    monkeypatch.setattr(referenceSQANTI, "ReverseComplement", stop)
+    junctions = tmp_path / "ensembl_sqanti_junctions.txt"
+    monkeypatch.setattr(sys, "argv", ["referenceSQANTI.py", "--gtf_file", str(synthetic_dir / "ensembl.gtf"),
+                                      "--reference_file", str(synthetic_dir / "genome.fa"),
+                                      "--chr_ref", str(synthetic_dir / "chr2acc"), "--database", "ensembl",
+                                      "--output_classification", str(tmp_path / "classification.txt"),
+                                      "--output_junctions", str(junctions), "--output_nmd", str(tmp_path / "NMD.txt")])
+    with pytest.raises(RuntimeError, match="stopped at a - strand junction"):
+        referenceSQANTI.main()
+    assert not junctions.exists()
+
+
 @pytest.mark.parametrize("database, lookups", [("ensembl", 66), ("refseq", 54)])
 def test_genome_with_other_chromosome_names_stops_the_run(run_script, synthetic_dir, tmp_path, database, lookups):
     """A genome on "chr1" matches no transcript: the run fails instead of writing empty tables with exit 0."""
