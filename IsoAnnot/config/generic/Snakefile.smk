@@ -860,6 +860,8 @@ rule split_proteins:
     shell:
         """
         mkdir -p $(dirname {output[0]})
+        # Create every chunk first: with fewer proteins than nls_chunks, awk leaves some of them unwritten
+        for chunk in {output}; do : > $chunk; done
         awk 'BEGIN {{RS=">"; FS="\\n"}} \
              NR>1 {{ \
                 out_file = "{path_output}/data/{prefix}/output/{wildcards.db}/nls/chunks_temp/chunk_" (i++ % {nls_chunks}) ".fa"; \

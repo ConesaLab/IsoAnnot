@@ -67,3 +67,27 @@ def test_merge_nls_chunks_keeps_first_protein(run_rule, nls_dir):
     result = run_rule("merge_nls_chunks", [merged], "nls_chunks=3")
     assert result.returncode == 0, result.stdout + result.stderr
     assert merged.read_text() == nucimport_output("P1", "P4", "P2", "P5", "P3")
+
+
+def test_split_proteins_fewer_proteins_than_chunks(run_rule, nls_dir):
+    """With fewer proteins than nls_chunks, awk did not create the extra chunks and Snakemake stopped with MissingOutputException."""
+    nls_dir.mkdir(parents=True)
+    (nls_dir / "unique_proteins.fa").write_text(">P1\nMSPKKKRKVEDPAAAALLLL\n>P2\nMAAAAGGGGLLLLVVVVSSSS\n")
+    chunks = [nls_dir / "chunks_temp" / f"chunk_{n}.fa" for n in range(4)]
+    result = run_rule("split_proteins", chunks, "nls_chunks=4")
+    assert result.returncode == 0, result.stdout + result.stderr
+    records = [[line for line in chunk.read_text().splitlines() if line] for chunk in chunks]
+    assert records == [[">P1", "MSPKKKRKVEDPAAAALLLL"], [">P2", "MAAAAGGGGLLLLVVVVSSSS"], [], []]
+
+
+def test_merge_nls_chunks_empty_chunks(run_rule, nls_dir):
+    """Empty chunks give a NucImport output with only the two header lines; the pattern-based merge keeps one header."""
+    chunk_dir = nls_dir / "tmp"
+    chunk_dir.mkdir(parents=True)
+    (chunk_dir / "output_chunk_0.txt").write_text(nucimport_output())
+    (chunk_dir / "output_chunk_1.txt").write_text(nucimport_output("P1"))
+    (chunk_dir / "output_chunk_2.txt").write_text(nucimport_output())
+    merged = nls_dir / "output_merged.txt"
+    result = run_rule("merge_nls_chunks", [merged], "nls_chunks=3")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert merged.read_text() == nucimport_output("P1")
