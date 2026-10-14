@@ -312,6 +312,54 @@ def test_end_to_end_gff3(synthetic_dir, run_script, tmp_path):
     assert all(re.match(r"^ID=[A-Za-z0-9_.\-]+;", attributes) for _, _, attributes in proteins.values())
 
 
+def test_rename_features_keeps_unknown_pairs(run_script, tmp_path):
+    """
+    A source/feature pair renameFeatures.py does not know (e.g. from a user protein_gtf) no longer stops
+    the loop and truncates the file with exit 0. The line is kept as PosType=N with one summary warning.
+    """
+    gff3 = tmp_path / "annotation.gff3"
+    gff3.write_text("TX1\ttappAS\ttranscript\t1\t750\t.\t+\t.\tID=TX1\n"
+                    "TX1\tMyTool\tmotif\t10\t20\t.\t+\t.\tID=M1\n"
+                    "TX1\tPFAM\tFAMILY\t1\t50\t.\t.\t.\tID=PF00001\n"
+                    "TX1\tMyTool\tmotif\t30\t40\t.\t+\t.\tID=M2\n"
+                    "TX1\ttappAS\tprotein\t1\t150\t.\t+\t.\tID=P0SYA1\n")
+    result = run_script("renameFeatures.py", gff3)
+    assert result.returncode == 0, result.stderr
+    assert [row[8] for row in read_tsv(tmp_path / "annotation.gff3_mod")] == [
+        "ID=TX1; PosType=T", "ID=M1; PosType=N", "ID=PF00001; PosType=N", "ID=M2; PosType=N",
+        "ID=P0SYA1; PosType=P"]
+    warnings = [line for line in result.stderr.splitlines() if "renameFeatures.py does not know" in line]
+    assert warnings == ["WARNING:root:3 lines have a source/feature pair that renameFeatures.py does not know "
+                        "(MyTool/motif: 2, PFAM/FAMILY: 1). They were kept with PosType=N (no position)."]
+
+
+@pytest.mark.parametrize("feature", ["CA_BIND", "NONT_STD", "NON_STD", "ACT_SITE"])
+def test_rename_features_uniprot_features(run_script, tmp_path, feature):
+    """Every feature layer_uniprot can write is a positional protein feature."""
+    gff3 = tmp_path / "annotation.gff3"
+    gff3.write_text(f"TX1\tUniProtKB/Swiss-Prot_Phosphosite\t{feature}\t5\t9\t.\t.\t.\tID=X\n")
+    result = run_script("renameFeatures.py", gff3)
+    assert result.returncode == 0, result.stderr
+    assert read_tsv(tmp_path / "annotation.gff3_mod") == [
+        ["TX1", "UniProtKB/Swiss-Prot_Phosphosite", feature, "5", "9", ".", ".", ".", "ID=X; PosType=P"]]
+    assert "does not know" not in result.stderr
+
+
+def test_rename_features_malformed_line(run_script, tmp_path):
+    """
+    A line without 9 columns stops with its line number instead of a NameError on idx, and leaves no
+    partial output that a later run would reuse.
+    """
+    gff3 = tmp_path / "annotation.gff3"
+    gff3.write_text("TX1\ttappAS\ttranscript\t1\t750\t.\t+\t.\tID=TX1\n"
+                    "TX1\ttappAS\tgene\t1\t750\n")
+    result = run_script("renameFeatures.py", gff3)
+    assert result.returncode != 0
+    assert "Invalid line 2 (5 columns instead of 9)" in result.stderr
+    assert "NameError" not in result.stderr
+    assert sorted(os.listdir(tmp_path)) == ["annotation.gff3"]
+
+
 def test_protein_id_fallbacks(run_script, tmp_path):
     """
     Without a sequence match the ID is the refProt (reference modes) or Protein_<isoform> (mytranscripts),
