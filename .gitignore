@@ -36,3 +36,5 @@ docs/
 dev/
 
 
+# Ignore NucImport results left in the jar folder by older runs
+IsoAnnot/software/NucImport/aout.txt

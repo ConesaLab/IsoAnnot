@@ -19,6 +19,7 @@ species_name = config["species_name"]
 path_output = config["path_output"]
 nls_model = config.get("nls_model", None)
 nls_chunks = int(config.get("nls_chunks", 50))
+nls_java_memory = config.get("nls_java_memory", "2g")
 
 
 def is_feature_enabled(key, default=True):
@@ -847,6 +848,8 @@ rule split_proteins:
     shell:
         """
         mkdir -p $(dirname {output[0]})
+        # Create every chunk first: with fewer proteins than nls_chunks, awk leaves some of them unwritten
+        for chunk in {output}; do : > $chunk; done
         awk 'BEGIN {{RS=">"; FS="\\n"}} \
              NR>1 {{ \
                 out_file = "{path_output}/data/{prefix}/output/{wildcards.db}/nls/chunks_temp/chunk_" (i++ % {nls_chunks}) ".fa"; \
@@ -863,11 +866,18 @@ rule run_nucimport:
         os.path.join(path_output, "logs", prefix, "{db}", "run_nucimport", "run_nucimport_chunk_{n}.log")
     params:
         jar_dir = os.path.abspath("software/NucImport"),
-        jar_name = "NucImportMay2012.jar"
+        jar_name = "NucImportMay2012.jar",
+        work_dir = os.path.join(path_output, "data", prefix, "output", "{db}", "nls", "tmp", "nucimport_chunk_{n}")
     shell:
         """
-        cd {params.jar_dir}
-        java -jar {params.jar_name} {input} {nls_model} Mouse ID=F > {output} 2> {log}
+        # NucImport reads its model files from the current folder and also writes its results to aout.txt there.
+        # Each chunk runs in its own folder with links to the model files, so parallel runs do not share aout.txt.
+        # Link only the files the jar reads: a glob would also link an aout.txt left in software/NucImport by older runs.
+        rm -rf {params.work_dir}
+        mkdir -p {params.work_dir}
+        ln -s {params.jar_dir}/{params.jar_name} {params.jar_dir}/*.mod {params.jar_dir}/HomologFinal*.txt {params.jar_dir}/Int*.txt {params.work_dir}/
+        (cd {params.work_dir} && java -Xmx{nls_java_memory} -jar {params.jar_name} {input} {nls_model} Mouse ID=F > {output} 2> {log})
+        rm -rf {params.work_dir}
         """
 
 rule merge_nls_chunks:
@@ -879,7 +889,9 @@ rule merge_nls_chunks:
         os.path.join(path_output,"logs",prefix,"{db}","nls_chunks_merged.log")
     shell:
         """
-        awk "NR == FNR || (FNR > 3 && !/^Protein/ && !/^\\*/)" {input} > {output} 2> {log}
+        # Each chunk starts with a header line and a line of stars. Keep them once and match them by
+        # pattern: skipping a fixed number of lines lost the first protein of every chunk but the first.
+        awk '/^Protein ID\\t/ {{ if (!header++) print; next }} /^\\*+$/ {{ if (!stars++) print; next }} {{ print }}' {input} > {output} 2> {log}
         """
 
 rule parse_nls:
@@ -914,7 +926,7 @@ rule expand_nls:
     shell:
         """
         scripts/expand_nls_annotation.py --parsed {input.parsed_tsv} \
-            --mapping {input.mapping} --output {output}
+            --mapping {input.mapping} --output {output} &> {log}
         """
 
 # LAYERS
