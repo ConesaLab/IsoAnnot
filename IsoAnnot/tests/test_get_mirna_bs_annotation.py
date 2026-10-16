@@ -23,6 +23,6 @@ def test_refseq_mode_finds_sites_on_the_ensembl_genome(run_script, synthetic_dir
     output = tmp_path / "mirna_bs_annotation.txt"
     result = run_script("get_mirna_bs_annotation.py", "--chr_ref", synthetic_dir / "chr2acc", "--genepred", genepred,
                         "--isoform_fasta", synthetic_dir / "refseq_rna.fna", "--mirwalk_genomic", sites,
-                        "--output", output, "--db", "refseq")
+                        "--output", output)
     assert result.returncode == 0, result.stderr
     assert output.read_text().splitlines() == ["NM_900001.1\tmiRWalk\tmiRNA_binding_site\t11\t20\t.\t+\t.\tID=hsa-miR-1"]

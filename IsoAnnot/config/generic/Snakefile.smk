@@ -712,15 +712,13 @@ rule get_mirna_bs_annotation:
         gene_prediction=rules.run_gtftogenepred.output,
         mirna_bs=rules.run_mirwalk2gen.output,
         chr_ref=rules.get_refseq_acc.output
-    params:
-        db=config.get("db")
     output:
         os.path.join(path_output, "data", prefix, "output", "{db}", "mirna_bs_annotation.txt")
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "get_mirna_bs_annotation.log")
     shell:
         """
-        scripts/get_mirna_bs_annotation.py --chr_ref {input.chr_ref} --genepred {input.gene_prediction} --isoform_fasta {input.fasta} --mirwalk_genomic {input.mirna_bs} --output {output} --db {params.db} &> {log}
+        scripts/get_mirna_bs_annotation.py --chr_ref {input.chr_ref} --genepred {input.gene_prediction} --isoform_fasta {input.fasta} --mirwalk_genomic {input.mirna_bs} --output {output} &> {log}
         """
 
 rule get_genomic_coordinates:

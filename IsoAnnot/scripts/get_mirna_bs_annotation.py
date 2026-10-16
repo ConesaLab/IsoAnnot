@@ -132,7 +132,6 @@ def main():
     parser.add_argument("--isoform_fasta", required=True, help="FASTA file of isoforms")
     parser.add_argument("--mirwalk_genomic", required=True, help="miRWalk file with genomic coordinates")
     parser.add_argument("--output", required=True, help="Final output TSV/GTF")
-    parser.add_argument("--db", nargs=None, required=True, help="Database type (ensembl/refseq)")
     parser.add_argument("--chr_ref", required=False, help="Refseq-Ensembl chromosome mapping table")
     args = parser.parse_args()
 
