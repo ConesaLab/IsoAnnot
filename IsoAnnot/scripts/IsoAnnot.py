@@ -167,10 +167,13 @@ def read_chr_ref_acc(filename, leading_db="ensembl"):
     return ChromosomeMap(mapping_file=filename, leading_db=leading_db)
 
 
-def query_biomart_with_retry(dataset, attributes, layer_name="biomart", max_retries=5, initial_delay=5):
+def query_biomart_with_retry(dataset, attributes, layer_name="biomart", max_retries=5, initial_delay=5, disable_hint=True):
     """
     Queries pybiomart Dataset with up to max_retries attempts using exponential backoff.
-    If all attempts fail, raises RuntimeError with explicit instructions on how to disable the layer.
+    If all attempts fail, raises RuntimeError with explicit instructions on how to disable the layer,
+    or a saved table can be used instead.
+
+    :param disable_hint: add the advice on turning the layer off; False when the caller is not a layer.
     """
     import time
     import logging
@@ -178,19 +181,49 @@ def query_biomart_with_retry(dataset, attributes, layer_name="biomart", max_retr
     for attempt in range(1, max_retries + 1):
         try:
             logging.info(f"[{layer_name}] Querying BioMart (Attempt {attempt}/{max_retries})...")
-            return dataset.query(attributes=attributes)
+            result = dataset.query(attributes=attributes)
+            # When Ensembl is down, pybiomart reads its "Service unavailable" HTML page as a one-column
+            # table instead of raising. Check the columns so that page is retried like any error.
+            if result.shape[1] != len(attributes):
+                raise ValueError(f"BioMart answered with {result.shape[1]} column(s) instead of {len(attributes)}, "
+                                 f"probably an error page: {str(result.columns[0])[:80]}")
+            return result
         except Exception as err:
             if attempt == max_retries:
                 # The Reactome layer is turned off with the reactome key; layer_reactome=no has no effect
                 config_key = "reactome" if layer_name == "layer_reactome" else layer_name
-                raise RuntimeError(
-                    f"Fatal Error in '{layer_name}': BioMart query failed after {max_retries} attempts due to server/network error ({err}). "
-                    f"To run IsoAnnot without BioMart, deactivate this layer by passing '--config {config_key}=no' to isoannot.sh, "
-                    f"or set '{config_key}: no' in your species config.yaml."
-                )
+                message = f"Fatal Error in '{layer_name}': BioMart query failed after {max_retries} attempts due to server/network error ({err})."
+                if disable_hint:
+                    message += (f" To run IsoAnnot without BioMart, deactivate this layer by passing '--config {config_key}=no' to isoannot.sh, "
+                                f"or set '{config_key}: no' in your species config.yaml.")
+                raise RuntimeError(message)
             delay = initial_delay * (2 ** (attempt - 1))
             logging.warning(f"[{layer_name}] BioMart attempt {attempt}/{max_retries} failed ({err}). Retrying in {delay}s...")
             time.sleep(delay)
+
+
+# BioMart attributes saved by save_biomart_tables.py, and the column names BioMart gives them.
+# layer_go uses the GO columns and layer_reactome the gene ID and name pairs.
+BIOMART_TABLE_ATTRIBUTES = ["ensembl_gene_id", "external_gene_name", "go_id", "name_1006", "namespace_1003"]
+BIOMART_TABLE_COLUMNS = ["Gene stable ID", "Gene name", "GO term accession", "GO term name", "GO domain"]
+
+
+def read_biomart_table(filename, layer_name="biomart"):
+    """
+    Reads a table written by save_biomart_tables.py. The layers use it instead of querying BioMart when
+    the biomart_table config key is set, so a run works offline and stays tied to one Ensembl release.
+    Empty cells become NA, as in a BioMart answer.
+    """
+    import logging
+    import pandas as pd
+
+    table = pd.read_csv(filename, sep="\t", dtype=str, keep_default_na=False, na_values=[""])
+    missing = [col for col in BIOMART_TABLE_COLUMNS if col not in table.columns]
+    if missing:
+        raise ValueError(f"{filename} is not a saved BioMart table: columns {', '.join(missing)} are missing. "
+                         f"Write it with scripts/save_biomart_tables.py.")
+    logging.info(f"[{layer_name}] Using the saved BioMart table {filename} ({len(table)} rows) instead of querying BioMart")
+    return table
 
 
 def merge_fasta_dicts(fasta_files):

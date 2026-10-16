@@ -921,10 +921,13 @@ rule layer_go:
     conda:
         "../../envs/isoannotpy.yaml"
     input:
-        classification_file=select_sqanti_classification 
+        classification_file=select_sqanti_classification,
+        # Saved BioMart answer (save_biomart_tables.py), read instead of querying BioMart
+        biomart_table=config.get("biomart_table") or []
     output:
         _output_layer_db("layer_go", lambda x: config.get("biomart_dataset", []))
     params:
+        biomart_table=_optional_param("biomart_table", "--biomart_table"),
         biomart_host=config.get("biomart_host", []),
         biomart_dataset=config.get("biomart_dataset", []),
         db=config.get("db")
@@ -932,7 +935,7 @@ rule layer_go:
         os.path.join(path_output, "logs", prefix, "{db}", "layer_go.log")
     shell:
         """
-        scripts/layer_go.py --classification_file {input.classification_file} --output {output} --biomart_host {params.biomart_host} --biomart_dataset {params.biomart_dataset} --db {params.db} &> {log}
+        scripts/layer_go.py --classification_file {input.classification_file} --output {output} --biomart_host {params.biomart_host} --biomart_dataset {params.biomart_dataset} --db {params.db} {params.biomart_table} &> {log}
         """
 
 
@@ -1010,8 +1013,10 @@ rule layer_reactome:
         "../../envs/isoannotpy.yaml"
     input:
         classification_file=select_sqanti_classification,
-        reactome_file=rules.get_reactome.output
+        reactome_file=rules.get_reactome.output,
+        biomart_table=config.get("biomart_table") or []
     params:
+        biomart_table=_optional_param("biomart_table", "--biomart_table"),
         biomart_host=config.get("biomart_host", []),
         biomart_dataset=config.get("biomart_dataset", []),
         species=config["species"],
@@ -1022,7 +1027,7 @@ rule layer_reactome:
         os.path.join(path_output, "logs", prefix, "{db}", "layer_reactome.log")
     shell:
         """
-        scripts/layer_reactome.py --reactome_file {input.reactome_file} --classification_file {input.classification_file} --biomart_host {params.biomart_host} --biomart_dataset {params.biomart_dataset} --species {params.species:q} --db {params.db} --output {output} &> {log}
+        scripts/layer_reactome.py --reactome_file {input.reactome_file} --classification_file {input.classification_file} --biomart_host {params.biomart_host} --biomart_dataset {params.biomart_dataset} --species {params.species:q} --db {params.db} {params.biomart_table} --output {output} &> {log}
         """
 
 
