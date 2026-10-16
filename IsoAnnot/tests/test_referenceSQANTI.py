@@ -108,6 +108,6 @@ def test_genome_with_other_chromosome_names_stops_the_run(run_script, synthetic_
     result, outputs = run_reference_sqanti(run_script, tmp_path, synthetic_dir / f"{database}.gtf",
                                            genome, synthetic_dir / "chr2acc", database)
     assert result.returncode != 0
-    # Every GTF line the parser looks up fails: 66 non-gene lines in ensembl.gtf, all 54 lines in refseq.gtf
+    # Every non-comment GTF line is looked up, gene lines included (66 in ensembl.gtf, 54 in refseq.gtf), and every lookup fails
     assert f"{lookups}/{lookups} chromosome lookups failed" in result.stderr
     assert [path for path in outputs.values() if path.exists()] == []

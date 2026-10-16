@@ -1,11 +1,13 @@
 import gzip
 import os
+import shutil
 import subprocess
 
 import pytest
 
 ISOANNOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-SNAKEMAKE = os.environ.get("ISOANNOT_SNAKEMAKE", "/media/pabloati/HDD1/conda/envs/snakemake/bin/snakemake")
+# ISOANNOT_SNAKEMAKE, or snakemake on PATH
+SNAKEMAKE = os.environ.get("ISOANNOT_SNAKEMAKE") or shutil.which("snakemake")
 
 # A fly-like chr2acc: chromosome arms are NT_ accessions, not NC_
 CHR2ACC = "#Chromosome\tAccession.version\nX\tNC_004354.4\n2L\tNT_033779.5\n"
@@ -22,8 +24,8 @@ def test_prepare_refseq_gtf_keeps_chromosomes_listed_in_chr2acc(tmp_path):
     Chromosomes listed in chr2acc are kept even when they are not NC_ (the fruit-fly arms 2L/2R/3L/3R are NT_
     and were dropped, losing most fly genes). Unlisted scaffolds and partial genes are still dropped.
     """
-    if not os.path.isfile(SNAKEMAKE):
-        pytest.skip(f"Snakemake not found at {SNAKEMAKE} (set ISOANNOT_SNAKEMAKE to use another one)")
+    if not SNAKEMAKE or not os.path.isfile(SNAKEMAKE):
+        pytest.skip("Snakemake not found (set ISOANNOT_SNAKEMAKE or put snakemake on PATH)")
     config_dir = os.path.join(ISOANNOT_DIR, "config", "refseq", "hsapiens")
     refseq_dir = tmp_path / "data" / "Hsapiens" / "config" / "refseq"
     refseq_dir.mkdir(parents=True)
