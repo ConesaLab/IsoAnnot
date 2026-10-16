@@ -190,3 +190,22 @@ def test_dry_run_mirna_score_threshold_missing(dry_run, tmp_path):
     command = planned_command(result.stdout, "filter_mirna_bs.py")
     assert "--species 'Homo sapiens' --mirwalk_output " in command
     assert "None" not in command
+
+
+def test_dry_run_reactome_missing(dry_run, tmp_path):
+    """A species config without the reactome key has the Reactome layer off, instead of a KeyError."""
+    species_config = os.path.join(ISOANNOT_DIR, "config", "ensembl", "hsapiens", "config.yaml")
+    with open(species_config) as h:
+        lines = [line for line in h if not line.startswith("reactome:")]
+    configfile = tmp_path / "config.yaml"
+    configfile.write_text("".join(lines))
+    # The species Snakefile loads its own config.yaml, which has the key, so include the generic one directly
+    snakefile = tmp_path / "Snakefile.smk"
+    snakefile.write_text(f'configfile: "{configfile}"\n\n'
+                         f'include: "{os.path.join(ISOANNOT_DIR, "config", "generic", "Snakefile_ensembl.smk")}"\n')
+    result = dry_run("ensembl", snakefile=str(snakefile), configfile=str(configfile))
+    assert result.returncode == 0, result.stdout + result.stderr
+    jobs = job_counts(result.stdout)
+    assert "layer_reactome" not in jobs
+    assert "get_reactome" not in jobs
+    assert jobs["tappas_annotation"] == 1

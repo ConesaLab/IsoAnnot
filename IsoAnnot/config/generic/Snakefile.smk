@@ -362,10 +362,11 @@ rule get_reactome:
     conda:
         "../../envs/isoannotpy.yaml" 
     output:
-        # str(): YAML reads "reactome: no" as False, which turns the layer off
-        os.path.join(path_output, "data", "global", os.path.basename(str(config["reactome"])))
+        # str(): YAML reads "reactome: no" as False, which turns the layer off.
+        # .get(): a config without the key also has the layer off, instead of a KeyError
+        os.path.join(path_output, "data", "global", os.path.basename(str(config.get("reactome", ""))))
     params:
-        URL=config["reactome"]
+        URL=config.get("reactome", "")
     log:
         os.path.join(path_output, "logs", prefix, "get_reactome.log")
     shell:
