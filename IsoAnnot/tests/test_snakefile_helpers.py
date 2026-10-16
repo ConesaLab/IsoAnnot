@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
 
@@ -9,7 +10,8 @@ main_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scrip
 sys.path.insert(0, main_path)
 
 SNAKEFILE = os.path.join(os.path.dirname(main_path), "config", "generic", "Snakefile.smk")
-SNAKEMAKE = os.environ.get("ISOANNOT_SNAKEMAKE", "/media/pabloati/HDD1/conda/envs/snakemake/bin/snakemake")
+# ISOANNOT_SNAKEMAKE, or snakemake on PATH
+SNAKEMAKE = os.environ.get("ISOANNOT_SNAKEMAKE") or shutil.which("snakemake")
 
 
 def load_helpers(*names, config=None, **variables):
@@ -91,6 +93,8 @@ print(json.dumps(namespace["gather_interproscan"]({"db": "ensembl"})))
 """
 
     def run_gather(self, xml_dir):
+        if not SNAKEMAKE or not os.path.isfile(SNAKEMAKE):
+            pytest.skip("Snakemake not found (set ISOANNOT_SNAKEMAKE or put snakemake on PATH)")
         python = os.path.join(os.path.dirname(SNAKEMAKE), "python")
         if not os.path.isfile(python):
             pytest.skip(f"Python of the Snakemake env not found at {python} (set ISOANNOT_SNAKEMAKE to use another one)")
