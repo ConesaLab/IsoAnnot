@@ -1,0 +1,7 @@
+isoform	chrom	strand	length	exons	structural_category	associated_gene	associated_transcript	ref_length	ref_exons	diff_to_TSS	diff_to_TTS	subcategory	RTS_stage	all_canonical	min_cov	min_cov_pos	sd_cov	FL	n_indels	n_indels_junc	bite	iso_exp	gene_exp	ratio_exp	FSM_class	coding	ORF_length	CDS_length	CDS_start	CDS_end	refProt
+NM_900001.1	1	+	750	3	NA	SYNA	NM_900001.1	750	3	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	coding	150.0	450	101	550	NP_900001.1
+NM_900002.1	1	+	850	4	NA	SYNA	NM_900002.1	850	4	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	coding	87.0	261	101	361	NP_900002.1
+NM_900003.2	1	-	710	4	NA	SYNB	NM_900003.2	710	4	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	coding	187.0	561	51	611	NP_900003.1
+NM_900004.1	1	-	770	5	NA	SYNB	NM_900004.1	770	5	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	coding	187.0	561	111	671	NP_900004.1
+NR_900005.1	1	+	700	2	NA	SYNC	NR_900005.1	700	2	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	non_coding	NA	NA	NA	NA	NA
+NM_900006.3	1	+	1100	1	NA	SYND	NM_900006.3	1100	1	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	coding	267.0	801	101	901	NP_900006.2

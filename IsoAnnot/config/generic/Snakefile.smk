@@ -184,15 +184,18 @@ rule get_refseq_gtf:
 
 rule prepare_refseq_gtf:
     input:
-        rules.get_refseq_gtf.output
+        gtf=rules.get_refseq_gtf.output,
+        chr_ref=rules.get_refseq_acc.output
     output:
         os.path.join(path_output, "data", prefix, "config", "refseq", f"{_remove_extension(config['refseq_gtf'], all=True)}_nopartial_nc.gtf")
     log:
         os.path.join(path_output, "logs", prefix, "prepare_refseq_gtf.log")
+    # Keep the chromosomes listed in chr2acc as well as the NC_ ones: the fruit-fly arms 2L/2R/3L/3R are NT_
+    # accessions and were dropped. Alt loci, patches and scaffolds (NT_/NW_ not in chr2acc) stay out, as before.
     # zcat -f also reads a plain (not gzipped) GTF
     shell:
         """
-        zcat -f {input}|grep -v -F 'partial=true' | grep '^NC_' > {output} 2> {log}
+        zcat -f {input.gtf} | grep -v -F 'partial=true' | awk -F'\\t' 'NR==FNR {{ if ($1 !~ /^#/) keep[$2]; next }} $1 ~ /^NC_/ || ($1 in keep)' {input.chr_ref} - > {output} 2> {log}
         """
 
 
@@ -695,15 +698,13 @@ rule get_mirna_bs_annotation:
         gene_prediction=rules.run_gtftogenepred.output,
         mirna_bs=rules.run_mirwalk2gen.output,
         chr_ref=rules.get_refseq_acc.output
-    params:
-        db=config.get("db")
     output:
         os.path.join(path_output, "data", prefix, "output", "{db}", "mirna_bs_annotation.txt")
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "get_mirna_bs_annotation.log")
     shell:
         """
-        scripts/get_mirna_bs_annotation.py --chr_ref {input.chr_ref} --genepred {input.gene_prediction} --isoform_fasta {input.fasta} --mirwalk_genomic {input.mirna_bs} --output {output} --db {params.db} &> {log}
+        scripts/get_mirna_bs_annotation.py --chr_ref {input.chr_ref} --genepred {input.gene_prediction} --isoform_fasta {input.fasta} --mirwalk_genomic {input.mirna_bs} --output {output} &> {log}
         """
 
 rule get_genomic_coordinates:

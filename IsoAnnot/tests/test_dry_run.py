@@ -82,7 +82,7 @@ def test_dry_run_plain_urls(dry_run, tmp_path, database):
     ensembl_dir = tmp_path / "data" / "Hsapiens" / "config" / "ensembl"
     refseq_dir = tmp_path / "data" / "Hsapiens" / "config" / "refseq"
     assert f"gunzip -cf {ensembl_dir}/Homo_sapiens.GRCh38.pep.all.fa > {ensembl_dir}/ensembl_proteins.fa.tmp" in planned
-    assert f"zcat -f {refseq_dir}/GCF_1_genomic.gtf|grep -v -F 'partial=true' | grep '^NC_' > {refseq_dir}/GCF_1_genomic_nopartial_nc.gtf" in planned
+    assert f"zcat -f {refseq_dir}/GCF_1_genomic.gtf | grep -v -F 'partial=true' | awk " in planned
 
 
 def test_dry_run_plain_uniprot_urls(dry_run, tmp_path, synthetic_dir):

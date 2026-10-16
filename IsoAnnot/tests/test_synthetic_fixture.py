@@ -26,6 +26,7 @@ GENERATED_FILES = [
     "refseq.gtf", "refseq_rna.fna", "refseq_protein.faa", "chr2acc",
     "uniprot.fasta", "uniprot_additional.fasta",
     "ensembl_sqanti_classification.txt", "ensembl_sqanti_junctions.txt", "ensembl_sqanti_NMD.txt",
+    "refseq_sqanti_classification.txt", "refseq_sqanti_junctions.txt", "refseq_sqanti_NMD.txt",
     "parsed_databases.json",
 ]
 
@@ -154,7 +155,7 @@ def test_chr2acc_covers_gtf_chromosomes(synthetic_dir):
     assert set(read_fasta(synthetic_dir / "genome.fa")) == {"1"}
     assert {m["chrom"] for m in read_gtf_models(synthetic_dir / "ensembl.gtf").values()} == {"1"}
     assert {m["chrom"] for m in read_gtf_models(synthetic_dir / "refseq.gtf").values()} == {"NC_000001.11"}
-    chrom_map = read_chr_ref_acc(str(synthetic_dir / "chr2acc"), leading_db="ensembl")
+    chrom_map = read_chr_ref_acc(str(synthetic_dir / "chr2acc"), target_db="ensembl")
     assert chrom_map.get("NC_000001.11") == "1"
 
 
