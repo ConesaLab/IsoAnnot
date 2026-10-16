@@ -562,6 +562,7 @@ rule run_repeatmasker:
     params:
         species=config["species"],
         outdir=os.path.join(path_output, "data", prefix, "output", "{db}", "repeat_masker/"),
+        ids_script=os.path.abspath("scripts/repeatmasker_ids.py"),  # absolute: the rule cd's into outdir
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "run_repeatmasker.log")
     shell:
@@ -574,46 +575,13 @@ rule run_repeatmasker:
         if [ ! -e "$LIBDIR/libnsl.so.1" ]; then
             ln -sf "$LIBDIR/libnsl.so.3" "$LIBDIR/libnsl.so.1"  #A symbolic link is created; there is no version that installs the required dependency
         fi
-        export LD_LIBRARY_PATH="$LIBDIR:$LD_LIBRARY_PATH"
+        export LD_LIBRARY_PATH="$LIBDIR${{LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}}"
 
-        # Create a mapping file and a FASTA with short IDs (MD5 Hashes)
-        # We only apply hashing if the ID length is > 50 characters to avoid RepeatMasker errors
-        tmp_fasta="tmp_hashed.fasta"
-        mapping_file="id_mapping.tsv"
-
-        python3 -c "
-import sys, hashlib
-with open('{input}', 'r') as f, open('$tmp_fasta', 'w') as out, open('$mapping_file', 'w') as m:
-    for line in f:
-        if line.startswith('>'):
-            original_id = line[1:].strip().split()[0]
-            if len(original_id) > 50:
-                new_id = hashlib.md5(original_id.encode()).hexdigest()
-                m.write(f'{{new_id}}\\t{{original_id}}\\n')
-                out.write(f'>{{new_id}}\\n')
-            else:
-                out.write(line)
-        else:
-            out.write(line)
-"
-
-        # Run RepeatMasker
-        RepeatMasker $tmp_fasta -species "{params.species}" -dir . &> {log}
-
-        # Restore original IDs in the .out file
-        # Use a small Python script to replace the temporary hashes with the original long names
-        python3 -c "
-import os
-if os.path.exists(tmp_fasta):
-mapping = dict(line.strip().split('\\t') for line in open('$mapping_file'))
-with open('$tmp_fasta.out', 'r') as f_in, open('final_corrected.out', 'w') as f_out:
-    for line in f_in:
-        for short_id, long_id in mapping.items():
-            line = line.replace(short_id, long_id)
-        f_out.write(line)
-"
-        # 5. Cleanup
-        mv final_corrected.out {output}
+        # RepeatMasker stops on FASTA IDs longer than 50 characters: run it on a copy with those IDs hashed,
+        # then put the original IDs back in the .out file
+        {params.ids_script} shorten --fasta {input} --output tmp_hashed.fasta --mapping id_mapping.tsv &> {log}
+        RepeatMasker tmp_hashed.fasta -species "{params.species}" -dir . &>> {log}
+        {params.ids_script} restore --repeatmasker_file tmp_hashed.fasta.out --mapping id_mapping.tsv --output {output} &>> {log}
         """
 
 rule filter_interactions:
