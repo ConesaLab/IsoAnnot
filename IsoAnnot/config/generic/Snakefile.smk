@@ -67,6 +67,10 @@ def _remove_extension(config_value, all=False):
 
     return output_name
 
+def _uniprot_files(config_key):
+    # Chosen by config list, not by the .dat.gz/.fasta.gz ending, so plain (not gzipped) URLs are kept too
+    return [os.path.join(path_output, "data", prefix, "config", "uniprot", os.path.basename(url)) for url in config[config_key]]
+
 def get_sqanti_extra_params(wildcards):
     if config.get("fasta_cdna"):
         return "--fasta"
@@ -347,7 +351,7 @@ rule prepare_uniprot_data:
     conda:
         "../../envs/isoannotpy.yaml"
     input:
-        [file for file in rules.get_uniprot_data.output if file.endswith(".dat.gz")]
+        _uniprot_files("uniprot_dat")
     output:
         os.path.join(path_output, "data", prefix, "config", "uniprot", "uniprot_parsed.txt")
     log:
@@ -738,7 +742,7 @@ rule get_genomic_coordinates:
     conda:
         "../../envs/isoannotpy.yaml"
     input:
-        uniprot_fasta = [file for file in rules.get_uniprot_data.output if file.endswith(".fasta.gz")],
+        uniprot_fasta = _uniprot_files("uniprot_fasta"),
         refseq_fasta = rules.prepare_refseq_proteins.output,
         ensembl_fasta = rules.get_ensembl_proteins.output.fa,
         phosphosite_files = [
@@ -793,7 +797,7 @@ rule parse_protein_databases:
     conda:
         "../../envs/isoannotpy.yaml"
     input:
-        uniprot_fasta = [file for file in rules.get_uniprot_data.output if file.endswith(".fasta.gz")],
+        uniprot_fasta = _uniprot_files("uniprot_fasta"),
         refseq_fasta=rules.prepare_refseq_proteins.output,
         ensembl_fasta=rules.get_ensembl_proteins.output.fa,
     output:

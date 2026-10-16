@@ -83,6 +83,20 @@ def test_dry_run_plain_urls(dry_run, tmp_path, database):
     assert f"zcat -f {refseq_dir}/GCF_1_genomic.gtf|grep -v -F 'partial=true' | grep '^NC_' > {refseq_dir}/GCF_1_genomic_nopartial_nc.gtf" in planned
 
 
+def test_dry_run_plain_uniprot_urls(dry_run, tmp_path, synthetic_dir):
+    """UniProt URLs without .gz are passed to the scripts, instead of being dropped by a .dat.gz/.fasta.gz filter."""
+    configfile = tmp_path / "plain_uniprot.yaml"
+    configfile.write_text("uniprot_fasta:\n  - https://host/p/UP1_9606.fasta\n"
+                          "uniprot_dat:\n  - https://host/p/UP1_9606.dat\n")
+    # mytranscripts, because parse_protein_databases only runs in that mode
+    result = dry_run("mytranscripts", f"fasta_cdna={synthetic_dir / 'ensembl_cdna.fa'}", configfile=str(configfile))
+    assert result.returncode == 0, result.stdout + result.stderr
+    uniprot_dir = tmp_path / "data" / "Hsapiens" / "config" / "uniprot"
+    assert f"--uniprot_files {uniprot_dir}/UP1_9606.dat --output " in planned_command(result.stdout, "uniprot_parse.py")
+    assert f"--uniprot_fasta {uniprot_dir}/UP1_9606.fasta --ensembl_fasta " in planned_command(result.stdout, "parse_protein_databases.py")
+    assert f"--uniprot_fasta {uniprot_dir}/UP1_9606.fasta --refseq_fasta " in planned_command(result.stdout, "uniprotPhosphosite_genomicCoordinates.py")
+
+
 def test_dry_run_mytranscripts_fasta(dry_run, synthetic_dir):
     """mytranscripts with a FASTA input runs SQANTI3 with a GMAP index and transcript2reference."""
     cdna = synthetic_dir / "ensembl_cdna.fa"
