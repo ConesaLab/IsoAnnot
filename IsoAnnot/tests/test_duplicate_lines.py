@@ -11,7 +11,7 @@ sys.path.insert(0, main_path)
 
 
 def test_layer_interproscan_writes_each_clan_once(run_script, synthetic_dir, tmp_path):
-    """Two domains of one Pfam family give two domain lines but one clan line per transcript."""
+    """Several domains of one clan give one domain line each but one clan line per transcript."""
     interproscan = tmp_path / "interproResultsPfam.tsv"
     interproscan.write_text(
         "ENSP00000000001\tPfam\t-\tPF13855\tLRR_8\tLeucine rich repeat\t10\t40\n"
@@ -22,22 +22,23 @@ def test_layer_interproscan_writes_each_clan_once(run_script, synthetic_dir, tmp
     pfam = tmp_path / "Pfam-A.clans.tsv"
     pfam.write_text("PF13855\tCL0022\tLRR\tLRR_8\tLeucine rich repeat\n"
                     "PF12799\tCL0022\tLRR\tLRR_4\tLeucine Rich repeats (2 copies)\n")
+    clans = tmp_path / "Pfam-C"
+    clans.write_text("# STOCKHOLM 1.0\n#=GF ID   LRR\n#=GF AC   CL0022.41\n#=GF DE   Leucine Rich Repeat\n//\n")
     output = tmp_path / "layer_interproscan.gtf"
-    result = run_script("layer_interproscan.py", "--interproscan_file", interproscan, "--pfam_file", pfam,
+    result = run_script("layer_interproscan.py", "--interproscan_file", interproscan, "--pfam_file", pfam, "--pfam_clan_desc", clans,
                         "--classification_file", synthetic_dir / "ensembl_sqanti_classification.txt",
                         "--keep_version", "False", "--output", output)
     assert result.returncode == 0, result.stderr
     domain = "PFAM\tDOMAIN\t{}\t{}\t.\t.\t.\tID=PF13855; Name=LRR_8; Desc=Leucine rich repeat"
-    clan = "PFAM\tclan\t.\t.\t.\t.\t.\tID=CL0022; Name=LRR_8; Desc=Leucine rich repeat"
+    clan = "PFAM\tclan\t.\t.\t.\t.\t.\tID=CL0022; Name=LRR; Desc=Leucine Rich Repeat"
+    # LRR_4 is a second family of clan CL0022: ENST00000000002 already has that clan line
     assert output.read_text().splitlines() == [
         "ENST00000000001\t" + domain.format(10, 40),
         "ENST00000000001\t" + clan,
         "ENST00000000001\t" + domain.format(60, 90),
         "ENST00000000002\t" + domain.format(5, 30),
         "ENST00000000002\t" + clan,
-        # A second family of the same clan keeps its own clan line: it carries the family's name
         "ENST00000000002\tPFAM\tDOMAIN\t40\t70\t.\t.\t.\tID=PF12799; Name=LRR_4; Desc=Leucine Rich repeats (2 copies)",
-        "ENST00000000002\tPFAM\tclan\t.\t.\t.\t.\t.\tID=CL0022; Name=LRR_4; Desc=Leucine Rich repeats (2 copies)",
     ]
 
 

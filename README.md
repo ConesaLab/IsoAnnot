@@ -272,12 +272,14 @@ The generic configuration file (`config/generic/config.yaml`) contains global se
 ```yaml
 interproscan_path: "software/interproscan/interproscan.sh"
 pfam_clan_url: ftp://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-A.clans.tsv.gz
+pfam_clan_desc_url: https://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-C.gz
 dir_sqanti: "scripts/sqanti3/"
 ```
 
 **Key parameters**:
 - `interproscan_path`: Path to InterProScan executable
-- `pfam_clan_url`: URL for Pfam clan database
+- `pfam_clan_url`: URL of the Pfam family-to-clan table
+- `pfam_clan_desc_url`: URL of Pfam's clan file (`Pfam-C`), which gives the clan names and descriptions written in the clan lines of the GFF3
 - `dir_sqanti`: Directory containing SQANTI3 scripts
 
 ---
