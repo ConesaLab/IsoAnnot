@@ -479,3 +479,26 @@ def test_protein_id_fallbacks(run_script, tmp_path):
     assert result.returncode == 0, result.stderr
     cds = {row[0]: row[8] for row in read_tsv(output) if row[2] == "CDS"}
     assert cds == {"PB.1.1": "ID=Protein_PB.1.1", "PB:2,1": "ID=Protein_PB_2_1"}
+
+
+def test_t2go_empty_protein_association(run_script, tmp_path):
+    """
+    The association file is empty when no refProt is found in parsed_databases.json. t2go then uses
+    the refProt as protein ID instead of crashing with pandas EmptyDataError.
+    """
+    classification = write_classification(tmp_path / "classification.txt", [
+        ["ENST00000000001", "1", "+", 750, "protein_coding", "SYNA", "ENST00000000001", "coding", 150, 101, 550, "ENSP00000000001"],
+    ])
+    protein_assoc = tmp_path / "assoc.txt"
+    protein_assoc.write_text("")
+    exons = tmp_path / "exons.gtf"
+    exons.write_text("ENST00000000001\ttappAS\texon\t1001\t1750\t.\t+\t.\tChr=chr1\n")
+    output = tmp_path / "annotation.gff3"
+    result = run_script("t2goAnnotationFile.py", "--classification_file", classification,
+                        "--input_transcripts", exons, "--input_genomic", exons, "--input_protein", exons,
+                        "--protein_association", protein_assoc, "--output", output)
+    assert result.returncode == 0, result.stderr
+    assert {row[2]: row[8] for row in read_tsv(output) if row[2] in ("CDS", "protein")} == {
+        "CDS": "ID=ENSP00000000001", "protein": "ID=ENSP00000000001"}
+    assert ("WARNING:root:1 coding transcripts have no reference protein with the same sequence. "
+            "Their refProt from the classification file is used as protein ID.") in result.stderr.splitlines()
