@@ -143,7 +143,7 @@ cd IsoAnnot
 - `--species`: Species code in lowercase (first letter of genus + species, e.g., `hsapiens` for *Homo sapiens*)
 
 **Optional parameter:**
-- `--outputdir`: Output directory to store the results (working directory by default). A relative path is taken from the folder you run `isoannot.sh` in.
+- `--outputdir`: Output directory to store the results. By default, the IsoAnnot install folder (where `isoannot.sh` is). A relative path is taken from the folder you run `isoannot.sh` in.
 - `--config`: Additional configuration options (required for `mytranscripts`)
 
 **Supported databases:**
@@ -159,7 +159,7 @@ To generate *Homo sapiens* reference annotation from Ensembl:
 
 ```bash
 cd IsoAnnot
-./isoannot.sh --database ensembl --species hsapiens --ouputdir isoannot_results
+./isoannot.sh --database ensembl --species hsapiens --outputdir isoannot_results
 ```
 
 **Output location**: `isoannot_results/data/Hsapiens/human_tappas_ensembl_annotation_file.gff3`
@@ -170,7 +170,7 @@ To annotate your own transcripts (e.g., from PacBio sequencing):
 
 ```bash
 cd IsoAnnot
-./isoannot.sh --database mytranscripts --species stuberosum --ouputdir isoannot_results --config fasta_cdna=/path/to/my/fasta/potato.fasta
+./isoannot.sh --database mytranscripts --species stuberosum --outputdir isoannot_results --config fasta_cdna=/path/to/my/fasta/potato.fasta
 ```
 
 This example annotates potato (*Solanum tuberosum*) transcripts from a custom FASTA file.
@@ -181,7 +181,7 @@ This example annotates potato (*Solanum tuberosum*) transcripts from a custom FA
 |-----------|-------------|----------|--------|
 | `--database` | Database source | Yes | `ensembl`, `refseq`, `mytranscripts` |
 | `--species` | Species identifier | Yes | Lowercase species code (e.g., `hsapiens`, `mmusculus`) |
-| `--outputdir`| Output directory | No | Path to directory (working directory by default). A relative path is taken from the current folder |
+| `--outputdir`| Output directory | No | Path to directory (IsoAnnot install folder by default). A relative path is taken from the current folder |
 | `--config` | Override config values | Conditional* | `key=value` pairs |
 | `--configfile` | Custom config file path | No | Path to YAML file |
 | `--snakefile` | Custom snakefile path | No | Path to Snakefile |
