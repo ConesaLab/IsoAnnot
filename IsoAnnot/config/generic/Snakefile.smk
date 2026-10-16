@@ -960,15 +960,13 @@ rule layer_interproscan:
         t=rules.prepare_pfam_clan.input
     output:
        _output_layer_db("layer_interproscan", external_rule=rules.parse_interproscan.output)
-    params:
-        keep_version=config["transcript_versioned"]
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "layer_interproscan.log")
     shell:
         """
         (echo {input.t}
         echo {input.pfam}
-        scripts/layer_interproscan.py --interproscan_file {input.interproscan_file} --pfam_file {input.pfam} --classification_file {input.classification_file} --keep_version {params.keep_version} --output {output}) &> {log}
+        scripts/layer_interproscan.py --interproscan_file {input.interproscan_file} --pfam_file {input.pfam} --classification_file {input.classification_file} --output {output}) &> {log}
         """
 
 
@@ -1048,13 +1046,11 @@ rule layer_repeatmasker:
         classification_file=select_sqanti_classification
     output:
         _output_layer_db("layer_repeatmasker", external_rule=rules.run_repeatmasker.output)
-    params:
-        keep_version=config["transcript_versioned"]
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "layer_repeatmasker.log")
     shell:
         """
-        scripts/layer_repeatmasker.py --keep_version {params.keep_version} --repeatmasker_file {input.repeatmasker_file} --classification_file {input.classification_file} --output {output} &> {log}
+        scripts/layer_repeatmasker.py --repeatmasker_file {input.repeatmasker_file} --classification_file {input.classification_file} --output {output} &> {log}
         """
 
 rule layer_mirna_bs:
@@ -1090,13 +1086,11 @@ rule layer_utrscan:
         classification_file=select_sqanti_classification
     output:
         _output_layer_db("layer_utrscan", external_rule=rules.run_utrscan.output)
-    params:
-        keep_version=config.get("transcript_versioned", False)
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "layer_utrscan.log")
     shell:
         """
-        scripts/layer_utrscan.py --keep_version {params.keep_version} --utrscan_file {input.utrscan_file} --classification_file {input.classification_file} --output {output} &> {log}
+        scripts/layer_utrscan.py --utrscan_file {input.utrscan_file} --classification_file {input.classification_file} --output {output} &> {log}
         """
 
 rule layer_nls:

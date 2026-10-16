@@ -51,7 +51,6 @@ def main():
 
         parser = argparse.ArgumentParser(description='UTRScan')
         parser.add_argument('--utrscan_file', nargs=None, required=True)
-        parser.add_argument('--keep_version', nargs=None, default="False")
         parser.add_argument('--classification_file', nargs=None, required=True)
         parser.add_argument('--output', nargs=None, required=True)
 
@@ -68,8 +67,8 @@ def main():
             for transcript_utrscan in utrscan_info:
                 transcript_id = transcript_utrscan.get("transcript")
 
-                # Strip the version only when the exact ID is not in the classification. This does not
-                # depend on --keep_version, so a wrong transcript_versioned value cannot empty the layer.
+                # Strip the version only when the exact ID is not in the classification. transcript_versioned is
+                # not used here, so a wrong value in the config cannot empty the layer.
                 if transcript_id not in transcript_info:
                     transcript_id = normalize_id(transcript_id)
 

@@ -102,10 +102,9 @@ def write_classification(path, isoform, ref_prot):
     path.write_text("\n".join(lines) + "\n")
 
 
-@pytest.mark.parametrize("keep_version", ["False", "True"])
 @pytest.mark.parametrize("mode", ID_CASES)
-def test_layer_repeatmasker_ids(tmp_path, run_script, mode, keep_version):
-    """RefSeq and PacBio IDs were cut at the first dot with keep_version False, and Ensembl IDs never matched with True."""
+def test_layer_repeatmasker_ids(tmp_path, run_script, mode):
+    """RefSeq and PacBio IDs were cut at the first dot when transcript_versioned was False, and Ensembl IDs never matched when it was True."""
     isoform, ref_prot, transcript_id, _ = ID_CASES[mode]
     classification = tmp_path / "classification.txt"
     write_classification(classification, isoform, ref_prot)
@@ -117,17 +116,16 @@ def test_layer_repeatmasker_ids(tmp_path, run_script, mode, keep_version):
         + "".join(f"  463   1.3  0.6  1.7  {query}    1   155 (595) +  AluY  SINE/Alu  1  155 (0)  1\n"
                   for query in [transcript_id, PACBIO_UNMATCHED]))
     output = tmp_path / "layer_repeatmasker.gtf"
-    result = run_script("layer_repeatmasker.py", "--keep_version", keep_version, "--repeatmasker_file", repeatmasker_file,
+    result = run_script("layer_repeatmasker.py", "--repeatmasker_file", repeatmasker_file,
                         "--classification_file", classification, "--output", output)
     assert result.returncode == 0, result.stderr
     assert output.read_text().splitlines() == [
         f"{isoform}\tRepeatMasker\trepeat\t1\t155\t.\t+\t.\tID=SINE/Alu; Name=SINE/Alu; Desc=AluY"]
 
 
-@pytest.mark.parametrize("keep_version", ["False", "True"])
 @pytest.mark.parametrize("mode", ID_CASES)
-def test_layer_utrscan_ids(tmp_path, run_script, mode, keep_version):
-    """RefSeq and PacBio IDs were cut at the first dot with keep_version False, and Ensembl IDs never matched with True."""
+def test_layer_utrscan_ids(tmp_path, run_script, mode):
+    """RefSeq and PacBio IDs were cut at the first dot when transcript_versioned was False, and Ensembl IDs never matched when it was True."""
     isoform, ref_prot, transcript_id, _ = ID_CASES[mode]
     classification = tmp_path / "classification.txt"
     write_classification(classification, isoform, ref_prot)
@@ -136,17 +134,16 @@ def test_layer_utrscan_ids(tmp_path, run_script, mode, keep_version):
         "U0001 - uORF - Upstream Open Reading Frame\n"
         + "".join(f"{query} length=750 : uORF [20,40]\n" for query in [transcript_id, PACBIO_UNMATCHED]))
     output = tmp_path / "layer_utrscan.gtf"
-    result = run_script("layer_utrscan.py", "--keep_version", keep_version, "--utrscan_file", utrscan_file,
+    result = run_script("layer_utrscan.py", "--utrscan_file", utrscan_file,
                         "--classification_file", classification, "--output", output)
     assert result.returncode == 0, result.stderr
     assert output.read_text().splitlines() == [
         f"{isoform}\tUTRsite\tuORF\t20\t40\t.\t+\t.\tID=U0001; Name=uORF; Desc=Upstream Open Reading Frame"]
 
 
-@pytest.mark.parametrize("keep_version", ["False", "True"])
 @pytest.mark.parametrize("mode", ID_CASES)
-def test_layer_interproscan_ids(tmp_path, run_script, mode, keep_version):
-    """RefSeq and PacBio protein IDs were cut at the first dot with keep_version False, and Ensembl IDs never matched with True."""
+def test_layer_interproscan_ids(tmp_path, run_script, mode):
+    """RefSeq and PacBio protein IDs were cut at the first dot when transcript_versioned was False, and Ensembl IDs never matched when it was True."""
     isoform, ref_prot, _, protein_id = ID_CASES[mode]
     classification = tmp_path / "classification.txt"
     write_classification(classification, isoform, ref_prot)
@@ -156,7 +153,7 @@ def test_layer_interproscan_ids(tmp_path, run_script, mode, keep_version):
     pfam_file = tmp_path / "pfam.tsv"
     pfam_file.write_text("")
     output = tmp_path / "layer_interproscan.gtf"
-    result = run_script("layer_interproscan.py", "--keep_version", keep_version, "--interproscan_file", interproscan_file,
+    result = run_script("layer_interproscan.py", "--interproscan_file", interproscan_file,
                         "--pfam_file", pfam_file, "--classification_file", classification, "--output", output)
     assert result.returncode == 0, result.stderr
     assert output.read_text().splitlines() == [
