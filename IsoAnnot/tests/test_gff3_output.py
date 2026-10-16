@@ -52,9 +52,15 @@ def run_t2go(run_script, synthetic_dir, tmp_path, classification=None, protein_a
     return read_tsv(output)
 
 
-def test_reference_sqanti_orf_length_is_an_integer(synthetic_dir):
+def test_reference_sqanti_orf_length_is_an_integer(synthetic_dir, run_script, tmp_path):
     """referenceSQANTI.py writes ORF_length as an integer number of codons, not 150.0 (GitHub #10)."""
-    with open(synthetic_dir / "ensembl_sqanti_classification.txt") as handle:
+    classification = tmp_path / "classification.txt"
+    result = run_script("referenceSQANTI.py", "--gtf_file", synthetic_dir / "ensembl.gtf",
+                        "--reference_file", synthetic_dir / "genome.fa", "--chr_ref", synthetic_dir / "chr2acc",
+                        "--database", "ensembl", "--output_classification", classification,
+                        "--output_junctions", tmp_path / "junctions.txt", "--output_nmd", tmp_path / "nmd.txt")
+    assert result.returncode == 0, result.stderr
+    with open(classification) as handle:
         orf_length = {row["isoform"]: row["ORF_length"] for row in csv.DictReader(handle, delimiter="\t")}
     assert orf_length == {"ENST00000000001": "150", "ENST00000000002": "87", "ENST00000000003": "187",
                           "ENST00000000004": "187", "ENST00000000005": "NA", "ENST00000000006": "267"}
