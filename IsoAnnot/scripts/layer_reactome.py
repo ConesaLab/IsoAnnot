@@ -88,6 +88,9 @@ def main():
             gene_column = "ensembl_gene_id"
         else:
             gene_column = "gene_name"
+        # Reactome lists a gene-pathway pair once per evidence code (IEA, TAS), and a gene name can have
+        # several Ensembl IDs, so the same pathway was written several times for one transcript
+        reactome_info = reactome_info.drop_duplicates([gene_column, "reactome_ID"])
 
         # For each transcript, annotate Reactome entries linked to its associated gene 
         with open(args.output, "w") as output_file:

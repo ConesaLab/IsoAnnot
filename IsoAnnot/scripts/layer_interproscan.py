@@ -141,6 +141,10 @@ def main():
         with open(args.output, "w") as output_file:
             logging.info(f"Starting InterProScan conversion to GTF {args.output}")
             output_file_tsv = csv.writer(output_file, delimiter="\t")
+            # A protein with several domains of one family got the same clan line once per domain.
+            # Only exact repeats are dropped: the line carries the family's name, so two families of one
+            # clan still give two lines, until BIO-3 writes the clan's own name.
+            clans_written = set()
             
             # Get interproscan info
             for transcript_interproscan in interproscan_info:
@@ -171,10 +175,12 @@ def main():
                     ])
 
                     # Add additional rows for PFAM database
-                    if transcript_db == "PFAM" and transcript_its_id in pfam_classification:
+                    if transcript_db == "PFAM" and transcript_its_id in pfam_classification \
+                            and (transcript_id, transcript_its_id) not in clans_written:
                         pfam_id = pfam_classification.get(transcript_its_id).get("id")
                         pfam_name = pfam_classification.get(transcript_its_id).get("name")
                         pfam_desc = pfam_classification.get(transcript_its_id).get("desc")
+                        clans_written.add((transcript_id, transcript_its_id))
 
                         output_file_tsv.writerow([
                             transcript_id,  # seqname
