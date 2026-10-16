@@ -99,7 +99,39 @@ def test_dry_run_plain_uniprot_urls(dry_run, tmp_path, synthetic_dir):
     assert f"--uniprot_fasta {uniprot_dir}/UP1_9606.fasta --refseq_fasta " in planned_command(result.stdout, "uniprotPhosphosite_genomicCoordinates.py")
 
 
-def test_dry_run_mytranscripts_fasta(dry_run, synthetic_dir):
+def planned_command(output, script):
+    """The planned shell command (-p) that runs scripts/<script>, as one line."""
+    blocks = output.split("\n\n")
+    return next(" ".join(block.split()) for block in blocks if f"scripts/{script}" in block)
+
+
+@pytest.mark.parametrize("database", ["ensembl", "refseq"])
+def test_dry_run_reference_protein_ids(dry_run, database, tmp_path):
+    """Reference modes give t2goAnnotationFile.py the same-sequence protein IDs (GitHub #10)."""
+    result = dry_run(database)
+    assert result.returncode == 0, result.stdout + result.stderr
+    jobs = job_counts(result.stdout)
+    assert jobs["reference_protein_assoc"] == 1
+    assert jobs["parse_protein_databases"] == 1
+    assoc = tmp_path / "data" / "Hsapiens" / "output" / database / "reference_protein_assoc_data.txt"
+    assert f"--protein_association {assoc}" in planned_command(result.stdout, "t2goAnnotationFile.py")
+    assert f"--database {database} --output {assoc}" in planned_command(result.stdout, "reference_protein_assoc.py")
+
+
+def test_dry_run_tappas_annotation_keeps_line_order(dry_run, tmp_path):
+    """
+    The GFF3 keeps the order written by t2goAnnotationFile.py. sort -V -k1,1 -k4,4n moved GO, gene and
+    protein lines before the transcript line. tappAS needs the transcript line first in each block.
+    """
+    result = dry_run("ensembl")
+    assert result.returncode == 0, result.stdout + result.stderr
+    command = planned_command(result.stdout, "t2goAnnotationFile.py")
+    gff3 = tmp_path / "data" / "Hsapiens" / "human_tappas_ensembl_annotation_file.gff3"
+    assert command.endswith(f"mv {gff3}.tmp {gff3}")
+    assert "sort" not in command
+
+
+def test_dry_run_mytranscripts_fasta(dry_run, synthetic_dir, tmp_path):
     """mytranscripts with a FASTA input runs SQANTI3 with a GMAP index and transcript2reference."""
     cdna = synthetic_dir / "ensembl_cdna.fa"
     result = dry_run("mytranscripts", f"fasta_cdna={cdna}")
@@ -111,6 +143,10 @@ def test_dry_run_mytranscripts_fasta(dry_run, synthetic_dir):
     assert jobs["tappas_annotation"] == 1
     assert "run_refsqanti" not in jobs
     assert f"--isoforms {cdna}" in result.stdout
+    # Protein IDs come from transcript2reference.py, not reference_protein_assoc
+    assert "reference_protein_assoc" not in jobs
+    assoc = tmp_path / "data" / "Hsapiens" / "output" / "mytranscripts" / "protein_assoc_data.txt"
+    assert f"--protein_association {assoc}" in planned_command(result.stdout, "t2goAnnotationFile.py")
 
 
 @pytest.mark.parametrize("key, layer", [
@@ -171,11 +207,6 @@ def test_dry_run_repeat_masker_toggle(dry_run, config, enabled):
     assert ("run_repeatmasker" in jobs) == enabled
     assert ("layer_repeatmasker" in jobs) == enabled
     assert jobs["tappas_annotation"] == 1
-
-
-def planned_command(output, script):
-    """The planned shell line that runs scripts/<script>, from the -p output of a dry run, with single spaces."""
-    return next(" ".join(line.split()) for line in output.splitlines() if f"scripts/{script} " in line)
 
 
 @pytest.mark.parametrize("config, score_option", [

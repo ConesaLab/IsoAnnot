@@ -28,4 +28,7 @@ def select_nmd_file(wildcards):
 def select_prot_assoc(wildcards):
     return []
 
+def select_protein_ids(wildcards):
+    return rules.reference_protein_assoc.output
+
 include: "Snakefile.smk"

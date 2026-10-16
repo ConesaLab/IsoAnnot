@@ -289,6 +289,14 @@ def merge_fasta_dicts(fasta_files):
     return merged_fasta
 
 
+def natural_key(text):
+    """
+    Sort key that compares the numbers inside an ID as numbers: Q9HBE1-2 < Q9HBE1-10, PB.2.1 < PB.10.1.
+    Used to pick protein IDs in a fixed order (GitHub #10).
+    """
+    return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", text)]
+
+
 def get_consecutive_parts(position_list):
     """
     From a list of positions, it returns a list of consecutive positions

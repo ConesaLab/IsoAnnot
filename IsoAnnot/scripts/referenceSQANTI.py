@@ -64,7 +64,8 @@ class myTranscripts:
 				cds_len += CDS[1] - CDS[0] + 1
 			# cds_len = cdsEnd - cdsStart + 1
 
-			orf_length = cds_len/3
+			# Integer division: a float ORF length becomes a protein end like 180.0 in the GFF3 (GitHub #10)
+			orf_length = cds_len//3
 
 			return [cdsStart, cdsEnd, cds_len, orf_length]
 

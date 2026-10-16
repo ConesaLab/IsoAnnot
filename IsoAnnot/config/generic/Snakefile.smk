@@ -808,6 +808,23 @@ rule transcript_to_reference:
         --database {wildcards.db} --species_db {input.species_db} &> {log}    
         """
 
+# Same-sequence protein IDs of the reference transcripts, for the protein ID of the GFF3 (GitHub #10).
+# Only used in ensembl and refseq modes, through select_protein_ids.
+rule reference_protein_assoc:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        classification=select_sqanti_classification,
+        species_db=rules.parse_protein_databases.output
+    output:
+        os.path.join(path_output, "data", prefix, "output", "{db}", "reference_protein_assoc_data.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "reference_protein_assoc.log")
+    shell:
+        """
+        scripts/reference_protein_assoc.py --classification_file {input.classification} --species_db {input.species_db} --database {wildcards.db} --output {output} &> {log}
+        """
+
 rule filter_nls:
     conda:
         "../../envs/isoannotpy.yaml"
@@ -1140,18 +1157,20 @@ rule tappas_annotation:
         ] + config.get("protein_gtf", []),
         classification_file=select_sqanti_classification,
         gene_desc=[],
-        protein_assoc=select_prot_assoc
+        protein_assoc=select_protein_ids
     output:
         os.path.join(path_output, "data", prefix, f"{species_name}_tappas_{{db}}_annotation_file.gff3")
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "tappas_annotation.log")
+    # No re-sort: t2goAnnotationFile.py already writes each transcript's lines in the order of the legacy
+    # tappAS files, starting with the transcript line. Sorting on the start column moved GO, gene and
+    # protein lines before it. tappAS needs the transcript line first in each block.
     shell:
         """
         scripts/t2goAnnotationFile.py --classification_file {input.classification_file}  \
          --gene_desc_file {input.gene_desc} --input_transcripts {input.transcript_block} --input_genomic {input.genomic_block} \
          --input_protein  {input.protein_block} --output {output}.tmp --gene_desc_file {input.gene_desc} --protein_association {input.protein_assoc} &> {log}
-        sort -V -k1,1 -k4,4n {output}.tmp > {output}
-        rm {output}.tmp
+        mv {output}.tmp {output}
         """
 
 
