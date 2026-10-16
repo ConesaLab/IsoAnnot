@@ -23,7 +23,8 @@ nls_chunks = int(config.get("nls_chunks", 50))
 
 def is_feature_enabled(key, default=True):
     val = config.get(key, None)
-    if val is None:
+    # An empty value counts as not set: layer_go: "" and reactome: "" stayed off before
+    if val is None or val == "":
         return default
     if isinstance(val, bool):
         return val
@@ -37,7 +38,8 @@ def _output_layer_db(layer_name, external_rule=[], wildcards=None):
         return []
     if callable(external_rule):
         external_rule = external_rule({"prefix": prefix, "db": db })
-    if len(config.get(layer_name, [])) or len(external_rule):
+    # is_feature_enabled instead of len(): layer_go can be a YAML boolean
+    if is_feature_enabled(layer_name, False) or len(external_rule):
         return os.path.join(path_output, "data", prefix, "output", "{db}", "layers", f"{layer_name}.gtf")
     else:
         return []
@@ -58,9 +60,16 @@ def _remove_extension(config_value, all=False):
     if config_value.endswith("gz"):
         output_name = filename[:-7] if all else filename[:-3]
     elif all:
-        ouput_name = filename[:-4]
+        output_name = filename[:-4]
+    else:
+        # Plain (not gzipped) URLs keep their name
+        output_name = filename
 
     return output_name
+
+def _uniprot_files(config_key):
+    # Chosen by config list, not by the .dat.gz/.fasta.gz ending, so plain (not gzipped) URLs are kept too
+    return [os.path.join(path_output, "data", prefix, "config", "uniprot", os.path.basename(url)) for url in config[config_key]]
 
 def get_sqanti_extra_params(wildcards):
     if config.get("fasta_cdna"):
@@ -180,16 +189,18 @@ rule prepare_refseq_gtf:
         os.path.join(path_output, "data", prefix, "config", "refseq", f"{_remove_extension(config['refseq_gtf'], all=True)}_nopartial_nc.gtf")
     log:
         os.path.join(path_output, "logs", prefix, "prepare_refseq_gtf.log")
+    # zcat -f also reads a plain (not gzipped) GTF
     shell:
         """
-        zcat {input}|grep -v -F 'partial=true' | grep '^NC_' > {output} 2> {log}
+        zcat -f {input}|grep -v -F 'partial=true' | grep '^NC_' > {output} 2> {log}
         """
 
 
 rule get_ensembl_proteins:
     output:
         gz=os.path.join(path_output, "data", prefix, "config", "ensembl", os.path.basename(config["ensembl_proteins"])),
-        fa=os.path.join(path_output, "data", prefix, "config", "ensembl", _remove_extension(config["ensembl_proteins"]))
+        # A plain (not gzipped) URL would give fa the same name as the download, so it gets a fixed name
+        fa=os.path.join(path_output, "data", prefix, "config", "ensembl", _remove_extension(config["ensembl_proteins"]) if config["ensembl_proteins"].endswith("gz") else "ensembl_proteins.fa")
     params:
         URL=config["ensembl_proteins"]
     log:
@@ -197,7 +208,7 @@ rule get_ensembl_proteins:
     shell:
         """
         (wget -nv -P {path_output}/data/{prefix}/config/ensembl/ {params.URL}
-        gunzip -c {output.gz} > {output.fa}.tmp
+        gunzip -cf {output.gz} > {output.fa}.tmp
         sed s/\\*//g {output.fa}.tmp > {output.fa}
         rm {output.fa}.tmp) 2> {log}
         """
@@ -340,7 +351,7 @@ rule prepare_uniprot_data:
     conda:
         "../../envs/isoannotpy.yaml"
     input:
-        [file for file in rules.get_uniprot_data.output if file.endswith(".dat.gz")]
+        _uniprot_files("uniprot_dat")
     output:
         os.path.join(path_output, "data", prefix, "config", "uniprot", "uniprot_parsed.txt")
     log:
@@ -355,9 +366,11 @@ rule get_reactome:
     conda:
         "../../envs/isoannotpy.yaml" 
     output:
-        os.path.join(path_output, "data", "global", os.path.basename(config["reactome"]))
+        # str(): YAML reads "reactome: no" as False, which turns the layer off.
+        # .get(): a config without the key also has the layer off, instead of a KeyError
+        os.path.join(path_output, "data", "global", os.path.basename(str(config.get("reactome", ""))))
     params:
-        URL=config["reactome"]
+        URL=config.get("reactome", "")
     log:
         os.path.join(path_output, "logs", prefix, "get_reactome.log")
     shell:
@@ -590,14 +603,15 @@ rule filter_interactions:
     params:
         species_name=config["species"],
         mirbase="data/global/miRNA/miRNA.dat",
-        score=config.get("mirna_db_evidence_score_threshold")
+        # Left out when the key is missing, so filter_mirna_bs.py uses its default
+        score=_optional_param("mirna_db_evidence_score_threshold", "--score")
     output:
         os.path.join(path_output, "data", prefix, "config", "mirna", "filter_interactions.txt")
     log:
         os.path.join(path_output, "logs", prefix, "filter_interactions.log")
     shell:
         """
-        scripts/filter_mirna_bs.py --mirbase_file {params.mirbase} --mirwalk_file {input.mirwalk} --species {params.species_name:q} --score {params.score} --mirwalk_output {output} &> {log}
+        scripts/filter_mirna_bs.py --mirbase_file {params.mirbase} --mirwalk_file {input.mirwalk} --species {params.species_name:q} {params.score} --mirwalk_output {output} &> {log}
         """
  
 rule run_mirwalk2gen:
@@ -637,7 +651,11 @@ checkpoint run_interproscan:
 def gather_interproscan(wildcards):
     checkpoint_output=checkpoints.run_interproscan.get(**wildcards).output[0]
     fname_vals = glob_wildcards(os.path.join(checkpoint_output, "{filename}.xml")).filename
-    return expand(os.path.join(checkpoint_output, "{filename}.xml"), dir=checkpoint_output, filename=fname_vals)[0]
+    # Say what went wrong here, instead of an argparse error from parseInterproscanXml.py
+    if not fname_vals:
+        raise ValueError(f"InterProScan wrote no XML file in {checkpoint_output}. Please check run_interproscan.log in the logs folder.")
+    # All XML files, not only the first: parseInterproscanXml.py takes several
+    return expand(os.path.join(checkpoint_output, "{filename}.xml"), dir=checkpoint_output, filename=fname_vals)
 
 
 rule parse_interproscan:
@@ -692,7 +710,7 @@ rule get_genomic_coordinates:
     conda:
         "../../envs/isoannotpy.yaml"
     input:
-        uniprot_fasta = [file for file in rules.get_uniprot_data.output if file.endswith(".fasta.gz")],
+        uniprot_fasta = _uniprot_files("uniprot_fasta"),
         refseq_fasta = rules.prepare_refseq_proteins.output,
         ensembl_fasta = rules.get_ensembl_proteins.output.fa,
         phosphosite_files = [
@@ -747,7 +765,7 @@ rule parse_protein_databases:
     conda:
         "../../envs/isoannotpy.yaml"
     input:
-        uniprot_fasta = [file for file in rules.get_uniprot_data.output if file.endswith(".fasta.gz")],
+        uniprot_fasta = _uniprot_files("uniprot_fasta"),
         refseq_fasta=rules.prepare_refseq_proteins.output,
         ensembl_fasta=rules.get_ensembl_proteins.output.fa,
     output:
@@ -1101,8 +1119,9 @@ rule tappas_annotation:
             rules.layer_junctions.output,
         ] + config.get("genomic_gtf", []),
         protein_block = [
-            rules.layer_go.output if config.get("layer_go", "no") == "si" else [],
-            rules.layer_reactome.output if config.get("reactome") else [],
+            rules.layer_go.output if is_feature_enabled("layer_go", False) else [],
+            # reactome is a URL; reactome=no turns the layer off, as the BioMart error message says
+            rules.layer_reactome.output if is_feature_enabled("reactome", False) else [],
             rules.layer_interproscan.output,
             rules.layer_uniprot.output,
             rules.layer_nls.output if config.get("nls_model") else []

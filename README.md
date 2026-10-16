@@ -143,7 +143,7 @@ cd IsoAnnot
 - `--species`: Species code in lowercase (first letter of genus + species, e.g., `hsapiens` for *Homo sapiens*)
 
 **Optional parameter:**
-- `--outputdir`: Output directory to store the results (working directory by default)
+- `--outputdir`: Output directory to store the results. By default, the IsoAnnot install folder (where `isoannot.sh` is). A relative path is taken from the folder you run `isoannot.sh` in.
 - `--config`: Additional configuration options (required for `mytranscripts`)
 
 **Supported databases:**
@@ -159,7 +159,7 @@ To generate *Homo sapiens* reference annotation from Ensembl:
 
 ```bash
 cd IsoAnnot
-./isoannot.sh --database ensembl --species hsapiens --ouputdir isoannot_results
+./isoannot.sh --database ensembl --species hsapiens --outputdir isoannot_results
 ```
 
 **Output location**: `isoannot_results/data/Hsapiens/human_tappas_ensembl_annotation_file.gff3`
@@ -170,7 +170,7 @@ To annotate your own transcripts (e.g., from PacBio sequencing):
 
 ```bash
 cd IsoAnnot
-./isoannot.sh --database mytranscripts --species stuberosum --ouputdir isoannot_results --config fasta_cdna=/path/to/my/fasta/potato.fasta
+./isoannot.sh --database mytranscripts --species stuberosum --outputdir isoannot_results --config fasta_cdna=/path/to/my/fasta/potato.fasta
 ```
 
 This example annotates potato (*Solanum tuberosum*) transcripts from a custom FASTA file.
@@ -181,7 +181,7 @@ This example annotates potato (*Solanum tuberosum*) transcripts from a custom FA
 |-----------|-------------|----------|--------|
 | `--database` | Database source | Yes | `ensembl`, `refseq`, `mytranscripts` |
 | `--species` | Species identifier | Yes | Lowercase species code (e.g., `hsapiens`, `mmusculus`) |
-| `--outputdir`| Output directory | No | Path to directory (working directory by default) |
+| `--outputdir`| Output directory | No | Path to directory (IsoAnnot install folder by default). A relative path is taken from the current folder |
 | `--config` | Override config values | Conditional* | `key=value` pairs |
 | `--configfile` | Custom config file path | No | Path to YAML file |
 | `--snakefile` | Custom snakefile path | No | Path to Snakefile |
@@ -402,8 +402,9 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
 | `refseq_gtf` | RefSeq GTF annotation file URL | URL to .gtf.gz file |
 | `uniprot_fasta` | UniProt FASTA file URLs (list) | List of URLs |
 | `uniprot_dat` | UniProt DAT file URLs (list) | List of URLs |
-| `reactome` | Reactome pathway mapping file URL | URL or pathway-specific URL |
-| `layer_go` | Include Gene Ontology layer | `si` (yes) or omit |
+| `reactome` | Reactome pathway mapping file URL | URL or pathway-specific URL; `no` to skip the layer |
+| `layer_go` | Include Gene Ontology layer | `si`, `yes` or `true` to include; `no`, `false` or omit to skip |
+| `repeat_masker` | Include the RepeatMasker layer | `False` by default; `True` to include (needs a Dfam library, see note 5) |
 
 **Important notes**:
 
@@ -424,6 +425,10 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
 4. **Reactome URLs**:
    - Animals: `https://reactome.org/download/current/Ensembl2Reactome_All_Levels.txt`
    - Plants: `https://plantreactome.gramene.org/download/current/Ensembl2PlantReactome_All_Levels.txt`
+
+5. **RepeatMasker**:
+   - It is off by default, because the `repeats` conda environment comes with an empty Dfam library and RepeatMasker can't run with it.
+   - To turn it on, install in that environment a Dfam library its RepeatMasker can read (RepeatMasker 4.1.5 can't read the Dfam 4.0 files), then add `repeat_masker=True` to `--config`.
 
 ---
 

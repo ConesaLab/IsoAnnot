@@ -1,6 +1,8 @@
 #! /usr/bin/env bash
 
 POSITIONAL=()
+# Empty, so a CONFIG variable from the environment is not passed to snakemake
+CONFIG=""
 while [[ $# -gt 0 ]]
 do
 key="$1"
@@ -32,8 +34,20 @@ case $key in
     shift # past value
     ;;
     --config)
-    CONFIG="$2"
     shift # past argument
+    # Take every key=value up to the next --option, so --config a=1 b=2 keeps b=2 too.
+    # The quoted form --config "a=1 b=2" still works because $CONFIG is word-split below.
+    # Other words (-n, a stray value) are not passed on: snakemake would read them as options or reject them
+    while [[ $# -gt 0 && "$1" != --* ]]
+    do
+        if [[ "$1" == *=* ]]
+        then
+            CONFIG="$CONFIG $1"
+        else
+            echo "Warning: --config only takes key=value pairs. Ignoring: $1" >&2
+        fi
+        shift # past value
+    done
     ;;
     --default)
     DEFAULT=YES
@@ -68,6 +82,14 @@ then
     OUTPUTDIR="$DIR"
 fi
 
+# run_nucimport and run_repeatmasker cd before using their paths, so a relative
+# --outputdir has to be made absolute. It is taken from the current folder; before,
+# snakemake resolved it from the install folder ($DIR) because of --directory
+if [[ "$OUTPUTDIR" != /* ]]
+then
+    OUTPUTDIR="$PWD/$OUTPUTDIR"
+fi
+
 if [ -z "$SNAKEFILE" ]
 then
     SNAKEFILE="$DIR/config/${DATABASE}/${SPECIES}/Snakefile.smk"
@@ -87,6 +109,6 @@ fi
 # TODO ASK the user the directory where they want to store the final annotation. Connect with isoannot.sh script
 
 
-exec snakemake -p --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE path_output=$OUTPUTDIR $CONFIG --directory $DIR --cores ${SLURM_CPUS_PER_TASK:-8} all --rerun-incomplete --nolock --resources n_downloads=1 #-n
+exec snakemake -p --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE "path_output=$OUTPUTDIR" $CONFIG --directory $DIR --cores ${SLURM_CPUS_PER_TASK:-8} all --rerun-incomplete --nolock --resources n_downloads=1 #-n
 #exec snakemake -p --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE $CONFIG --directory $DIR --cores 8 all  --rerun-incomplete --nolock --summary
 #exec snakemake -p --nolock --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE $CONFIG --directory $DIR --cores 8 all --rerun-incomplete --dag | dot -Tsvg > dag.svg

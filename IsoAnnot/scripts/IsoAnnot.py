@@ -181,10 +181,12 @@ def query_biomart_with_retry(dataset, attributes, layer_name="biomart", max_retr
             return dataset.query(attributes=attributes)
         except Exception as err:
             if attempt == max_retries:
+                # The Reactome layer is turned off with the reactome key; layer_reactome=no has no effect
+                config_key = "reactome" if layer_name == "layer_reactome" else layer_name
                 raise RuntimeError(
                     f"Fatal Error in '{layer_name}': BioMart query failed after {max_retries} attempts due to server/network error ({err}). "
-                    f"To run IsoAnnot without BioMart, deactivate this layer by passing '--config {layer_name}=no' to isoannot.sh, "
-                    f"or set '{layer_name}: no' in your species config.yaml."
+                    f"To run IsoAnnot without BioMart, deactivate this layer by passing '--config {config_key}=no' to isoannot.sh, "
+                    f"or set '{config_key}: no' in your species config.yaml."
                 )
             delay = initial_delay * (2 ** (attempt - 1))
             logging.warning(f"[{layer_name}] BioMart attempt {attempt}/{max_retries} failed ({err}). Retrying in {delay}s...")

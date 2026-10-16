@@ -38,3 +38,16 @@ def test_query_biomart_retry_fatal_failure_after_max_retries():
     assert "Fatal Error in 'test_layer': BioMart query failed after 5 attempts" in str(exc_info.value)
     assert "deactivate this layer by passing '--config test_layer=no'" in str(exc_info.value)
     assert mock_dataset.query.call_count == 5
+
+
+def test_query_biomart_retry_reactome_advice_uses_reactome_key():
+    """Reactome is turned off with the reactome key, not layer_reactome, so the advice must name it."""
+    mock_dataset = MagicMock()
+    mock_dataset.query.side_effect = ConnectionError("504 Gateway Timeout")
+
+    with pytest.raises(RuntimeError) as exc_info:
+        query_biomart_with_retry(mock_dataset, attributes=["gene_id"], layer_name="layer_reactome", max_retries=2, initial_delay=0.01)
+
+    assert "Fatal Error in 'layer_reactome'" in str(exc_info.value)
+    assert "passing '--config reactome=no' to isoannot.sh, or set 'reactome: no' in your species config.yaml" in str(exc_info.value)
+    assert "layer_reactome=no" not in str(exc_info.value)
