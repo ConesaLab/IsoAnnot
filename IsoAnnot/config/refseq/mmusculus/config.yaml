@@ -11,7 +11,7 @@ ensembl_reference: https://ftp.ensembl.org/pub/release-115/fasta/mus_musculus/dn
 
 prefix: Mmusculus
 db: refseq
-transcript_versioned: False
+transcript_versioned: True
 
 refseq_proteins: https://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Mus_musculus/all_assembly_versions/GCF_000001635.27_GRCm39/GCF_000001635.27_GRCm39_protein.faa.gz
 refseq_cdna: https://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Mus_musculus/all_assembly_versions/GCF_000001635.27_GRCm39/GCF_000001635.27_GRCm39_rna.fna.gz

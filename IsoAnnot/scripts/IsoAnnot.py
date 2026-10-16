@@ -2,7 +2,7 @@
 IsoAnnot functions
 Modified by Alessandra Martinez
 """
-import gzip, itertools
+import gzip, itertools, re
 from collections import defaultdict
 from operator import itemgetter
 
@@ -42,6 +42,20 @@ def openfile(filename, mode='r'):
         #return gzip.open(filename, mode, encoding="utf-8")
     else:
         return open(filename, mode)
+
+
+# Ensembl (ENST00000000233.5), FlyBase (FBtr0070000.1) and RefSeq (NM_000005.3) accessions end in a version.
+# In other IDs the last number is part of the ID: PacBio (PB.1.1), StringTie (STRG.9.1) or TAIR (AT1G01010.1).
+VERSIONED_ID_REGEX = re.compile(r"^(ENS[A-Z]*\d+|FB[a-z]{2}\d+|[A-Z]{2}_\d+)\.\d+$")
+
+
+def normalize_id(identifier):
+    """
+    Removes the version from Ensembl, FlyBase and RefSeq accessions (ENSP00000495982.2 -> ENSP00000495982).
+    Any other ID is returned unchanged, so PB.1.1 does not become PB.
+    """
+    match = VERSIONED_ID_REGEX.match(identifier)
+    return match.group(1) if match else identifier
 
 
 class ChromosomeMap:
