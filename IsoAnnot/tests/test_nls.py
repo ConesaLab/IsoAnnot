@@ -9,7 +9,8 @@ main_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scrip
 sys.path.insert(0, main_path)
 
 ISOANNOT_DIR = os.path.dirname(main_path)
-SNAKEMAKE = os.environ.get("ISOANNOT_SNAKEMAKE", "/media/pabloati/HDD1/conda/envs/snakemake/bin/snakemake")
+# ISOANNOT_SNAKEMAKE, or snakemake on PATH
+SNAKEMAKE = os.environ.get("ISOANNOT_SNAKEMAKE") or shutil.which("snakemake")
 
 # First two lines of every NucImport output, as NucImportMay2012.jar writes them
 NUCIMPORT_HEADER = ("Protein ID\tImport Probability\t cNLS probability\tPredicted Most probable cNLS\t"
@@ -30,8 +31,8 @@ def run_rule(tmp_path):
     Only the given rule is allowed, so its input files are used as they are and nothing upstream runs.
     Scripts run with the test interpreter (first python3 on PATH). Returns the CompletedProcess.
     """
-    if not os.path.isfile(SNAKEMAKE):
-        pytest.skip(f"Snakemake not found at {SNAKEMAKE} (set ISOANNOT_SNAKEMAKE to use another one)")
+    if not SNAKEMAKE or not os.path.isfile(SNAKEMAKE):
+        pytest.skip("Snakemake not found (set ISOANNOT_SNAKEMAKE or put snakemake on PATH)")
 
     def _run(rule, targets, *config, dry_run=False):
         config_dir = os.path.join(ISOANNOT_DIR, "config", "ensembl", "hsapiens")
