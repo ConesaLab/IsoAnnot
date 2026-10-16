@@ -272,6 +272,7 @@ The generic configuration file (`config/generic/config.yaml`) contains global se
 ```yaml
 interproscan_path: "software/interproscan/interproscan.sh"
 pfam_clan_url: ftp://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-A.clans.tsv.gz
+pfam_clan_desc_url: https://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-C.gz
 dir_sqanti: "scripts/sqanti3/"
 nls_chunks: 50
 nls_java_memory: 2g
@@ -279,7 +280,8 @@ nls_java_memory: 2g
 
 **Key parameters**:
 - `interproscan_path`: Path to InterProScan executable
-- `pfam_clan_url`: URL for Pfam clan database
+- `pfam_clan_url`: URL of the Pfam family-to-clan table
+- `pfam_clan_desc_url`: URL of Pfam's clan file (`Pfam-C`), which gives the clan names and descriptions written in the clan lines of the GFF3
 - `dir_sqanti`: Directory containing SQANTI3 scripts
 - `nls_chunks`: Number of chunks the proteins are split into for NucImport. The chunks run in parallel.
 - `nls_java_memory`: Maximum Java heap of each NucImport run (`-Xmx`). NucImport needs 2g. Each chunk is a separate Java process, so plan for this amount times the number of cores.

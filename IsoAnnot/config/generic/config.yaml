@@ -1,5 +1,6 @@
 interproscan_path: "software/interproscan/interproscan.sh"
 pfam_clan_url: ftp://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-A.clans.tsv.gz
+pfam_clan_desc_url: https://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-C.gz
 nls_chunks: 50
 nls_java_memory: 2g
 # RepeatMasker needs a Dfam library that the repeats conda env does not provide. Turn it on with repeat_masker=True

@@ -324,6 +324,19 @@ rule get_pfam_clan:
         wget -nv -P {path_output}/data/global/pfam/ {params.URL} &> {log}
         """
 
+# Pfam's clan file, for the clan descriptions of the InterProScan layer
+rule get_pfam_clan_desc:
+    output:
+        os.path.join(path_output, "data", "global", "pfam", os.path.basename(config["pfam_clan_desc_url"]))
+    params:
+        URL=config["pfam_clan_desc_url"]
+    log:
+        os.path.join(path_output, "logs", prefix, "get_pfam_clan_desc.log")
+    shell:
+        """
+        wget -nv -P {path_output}/data/global/pfam/ {params.URL} &> {log}
+        """
+
 rule prepare_pfam_clan: 
     conda:
         "../../envs/isoannotpy.yaml"
@@ -975,6 +988,7 @@ rule layer_interproscan:
     input:
         interproscan_file=rules.parse_interproscan.output,
         pfam=rules.prepare_pfam_clan.output,
+        clan_desc=rules.get_pfam_clan_desc.output,
         classification_file=select_sqanti_classification,
         t=rules.prepare_pfam_clan.input
     output:
@@ -985,7 +999,7 @@ rule layer_interproscan:
         """
         (echo {input.t}
         echo {input.pfam}
-        scripts/layer_interproscan.py --interproscan_file {input.interproscan_file} --pfam_file {input.pfam} --classification_file {input.classification_file} --output {output}) &> {log}
+        scripts/layer_interproscan.py --interproscan_file {input.interproscan_file} --pfam_file {input.pfam} --pfam_clan_desc {input.clan_desc} --classification_file {input.classification_file} --output {output}) &> {log}
         """
 
 
