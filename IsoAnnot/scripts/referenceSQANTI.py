@@ -11,7 +11,7 @@ Important: check that your chromosomes are called equal in gtf and fasta file!
 For refseq we use the gff3 but after removing partial alignments!!! Why? becuase they don't fit when transfering uniprot motifs
 '''
 
-import argparse, gzip
+import argparse, gzip, logging, os
 from IsoAnnot import openfile, argparse_nullable, read_chr_ref_acc
 
 # TODO: adapt SQANTI to python3 and use those definitions from IsoAnnot
@@ -64,7 +64,8 @@ class myTranscripts:
 				cds_len += CDS[1] - CDS[0] + 1
 			# cds_len = cdsEnd - cdsStart + 1
 
-			orf_length = cds_len/3
+			# Integer division: a float ORF length becomes a protein end like 180.0 in the GFF3 (GitHub #10)
+			orf_length = cds_len//3
 
 			return [cdsStart, cdsEnd, cds_len, orf_length]
 
@@ -367,17 +368,13 @@ def main():
 	output_NMD_file = args.output_nmd
 
 	genome_dicc = fasta_parser(genome)
-	refseqChrom = read_chr_ref_acc(args.chr_ref, leading_db=ref_type)
+	# The genome is always the Ensembl one, also in refseq mode, so chromosomes are translated to Ensembl
+	# names and must exist in the genome. Translating to RefSeq names wrote an empty table.
+	refseqChrom = read_chr_ref_acc(args.chr_ref, target_db="ensembl", target_names=genome_dicc)
 
 	transcript_dicc = gtf_parsing(gtf_file, ref_type, refseqChrom)
 
-	if hasattr(refseqChrom, 'total_queries') and refseqChrom.total_queries > 0:
-		failure_rate = len(refseqChrom.unmapped_log) / refseqChrom.total_queries
-		if failure_rate > 0.50:
-			raise RuntimeError(
-				f"Critical Error in referenceSQANTI.py: {len(refseqChrom.unmapped_log)}/{refseqChrom.total_queries} "
-				f"chromosome lookups failed using mapping file '{args.chr_ref}'. Halting execution to prevent silent data loss."
-			)
+	refseqChrom.check_unmapped("referenceSQANTI.py")
 
 
 	output_NMD = open(output_NMD_file, "w")
@@ -396,8 +393,11 @@ def main():
 				output_NMD.write("\n")
 
 	sites =  ["ATAC", "GCAG", "GTAG"]
+	n_ambiguous_sites = 0
 
-	output_junc = open(output_junc_file, "w")
+	# Written to a .tmp file and renamed at the end, so a run that stops early never leaves a truncated
+	# junctions file that looks complete
+	output_junc = open(f"{output_junc_file}.tmp", "w")
 	output_junc.write("isoform\tjunction_number\tchrom\tstrand\tgenomic_start_coord\tgenomic_end_coord\ttranscript_coord\tjunction_category\tstart_site_category\tend_site_category\tdiff_to_Ref_start_site\tdiff_to_Ref_end_site\tbite\tsplice_site\tcanonical\tindel_near_junct\ttotal_coverage\n")
 
 	for transcript in transcript_dicc:
@@ -416,14 +416,14 @@ def main():
 
 			for i in range(len(junctions_s)):
 				site = genome_dicc[chrom][(junctions_s[i]-1):(junctions_s[i]+1)] + genome_dicc[chrom][(junctions_e[i]-2):junctions_e[i]]
+				site = site.upper()
+				# IUPAC codes (R, Y...) in the genome are read as N, so the junction is non-canonical. Stopping
+				# here left the junctions file truncated with exit code 0.
+				if any(base not in "ACGTN" for base in site):
+					n_ambiguous_sites += 1
+					site = "".join(base if base in "ACGTN" else "N" for base in site)
 				if strand =="-":
 					site = ReverseComplement(site)
-				else:
-					site = site.upper()
-					if any([base not in ["A","T","C","G","N"] for base in site]):
-						print("Error: NOT a DNA sequence")
-						return None
-						break
 
 				if site in sites:
 					canonical = "canonical"
@@ -435,6 +435,11 @@ def main():
 				output_junc.write("%s\tjunction_%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (transcript, str(juncN), chrom, strand, str(junctions_s[i]), str(junctions_e[i]), ".", "known", "known", "known", "0", "0", "NA", site, canonical, "NA", "NA"))
 
 	output_junc.close()
+	os.replace(f"{output_junc_file}.tmp", output_junc_file)
+
+	if n_ambiguous_sites:
+		logging.warning(f"{n_ambiguous_sites} splice sites have bases other than A, C, G, T or N in the genome. "
+						f"They were read as N and are non_canonical in {output_junc_file}.")
 
 if __name__ == "__main__":
 	main()

@@ -83,7 +83,8 @@ def genip(files, outFilepath):
 													endpos = location.get('end')
 													name = signature.get('name')
 													desc = 'Coiled coil'
-													ac = 'Coiled coil'
+													# The signature accession (Coil): tappAS refuses IDs with spaces, as in 'Coiled coil'
+													ac = signature.get('ac')
 												
 												fout.write(idvalue+"\t"+library+"\t"+"DOMAIN"+"\t"+ac+"\t"+name+"\t"+desc+"\t"+strpos+"\t"+endpos+"\t"+evalue+"\t"+score+"\n")
 

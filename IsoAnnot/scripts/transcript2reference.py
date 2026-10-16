@@ -11,7 +11,7 @@ proteins associated to each sequenced transcript.
 from collections import defaultdict
 import argparse, sys, os, csv, logging, re, traceback, json
 import pandas as pd
-from IsoAnnot import strand_table, get_summary_parts, read_chr_ref_acc
+from IsoAnnot import strand_table, get_summary_parts, read_chr_ref_acc, natural_key
 from Bio.SeqFeature import FeatureLocation, SeqFeature
 from uniprotPhosphosite_genomicCoordinates import get_fasta_sequences
 from layer_exons import get_gtf_exons
@@ -128,6 +128,27 @@ def _retrieve_pacbio_id(fasta_data):
     return cleaned_dict
 
 
+def get_novel_protein_ids(isoform_proteins, all_proteins):
+    '''
+    ORFs with no exact match in the reference proteins get the IsoAnnotLite ID Protein_<isoform>,
+    instead of one "Novel" ID that tappAS would treat as a single protein (GitHub #10).
+    Isoforms with the same ORF share the ID of the first of them in natural order, so tappAS groups
+    them as one protein. Characters that tappAS does not accept in IDs become '_'.
+    '''
+    novel_isoforms = defaultdict(list)
+    for isoform_id, isoform_seq in isoform_proteins.items():
+        if isoform_seq not in all_proteins:
+            novel_isoforms[isoform_seq].append(isoform_id)
+
+    novel_protein_ids = {}
+    for isoform_ids in novel_isoforms.values():
+        protein_id = "Protein_" + re.sub(r"[^A-Za-z0-9_.\-]", "_", min(isoform_ids, key=natural_key))
+        for isoform_id in isoform_ids:
+            novel_protein_ids[isoform_id] = protein_id
+
+    return novel_protein_ids
+
+
 def read_genomic_cds_from_gtf_group_chr(gtf_file, chr_ref={}):
     '''
     Gets CDS genomic positions 
@@ -194,20 +215,14 @@ def main():
         # Get chromosome Ensembl-RefSeq IDs equivalence if we
         # are using GTF data
         if args.refseq_gtf:
-            chrom_ref = read_chr_ref_acc(args.chr_ref, leading_db="ensembl")
+            chrom_ref = read_chr_ref_acc(args.chr_ref, target_db="ensembl")
 
         # Get Ensembl and RefSeq CDS info
         cds_ensembl = read_genomic_cds_from_gtf_group_chr(args.ensembl_gtf)
         if args.refseq_gtf:
             cds_refseq = read_genomic_cds_from_gtf_group_chr(args.refseq_gtf,
                                       chrom_ref)
-            if hasattr(chrom_ref, 'total_queries') and chrom_ref.total_queries > 0:
-                failure_rate = len(chrom_ref.unmapped_log) / chrom_ref.total_queries
-                if failure_rate > 0.50:
-                    raise RuntimeError(
-                        f"Critical Error in transcript2reference.py: {len(chrom_ref.unmapped_log)}/{chrom_ref.total_queries} "
-                        f"chromosome lookups failed using mapping file '{args.chr_ref}'. Halting execution to prevent silent data loss."
-                    )
+            chrom_ref.check_unmapped("transcript2reference.py")
             
         # Get isoforms exon locations and predicted proteins of sequenced transcriptome
         # using SQANTI outputs
@@ -222,9 +237,14 @@ def main():
         # In the previous step we needed the original fasta headers to extract useful info (ie. cds positions
         # for Pacbio). Now we clean the data by keeping only the transcript id.
         corrected_fasta_proteins = _retrieve_pacbio_id(corrected_fasta_proteins)
+        # SQANTI3 ORFs end with the stop codon (*) and the reference proteins don't, so no ORF matched.
+        # The * is only dropped here: the CDS end above, and so the NMD call, includes the stop codon.
+        corrected_fasta_proteins = {isoform: seq.rstrip("*") for isoform, seq in corrected_fasta_proteins.items()}
+        novel_protein_ids = get_novel_protein_ids(corrected_fasta_proteins, all_proteins)
 
-        # 2 output files: associated proteins and NMD
-        with open(args.output_assoc, "w") as output_file_assoc, open(args.output_nmd, "w") as output_file_nmd:
+        # 2 output files: associated proteins and NMD. Both go to .tmp first, so a failed run leaves no
+        # partial file that Snakemake would reuse.
+        with open(args.output_assoc + ".tmp", "w") as output_file_assoc, open(args.output_nmd + ".tmp", "w") as output_file_nmd:
             output_assoc_tsv = csv.writer(output_file_assoc, delimiter="\t")
             output_nmd_tsv = csv.writer(output_file_nmd, delimiter="\t")
 
@@ -244,6 +264,8 @@ def main():
                         for protein in protein_ids:
                             associated_prots.append(protein)
                             output_assoc_tsv.writerow([isoform_id, protein, source_tag, "sequence"])
+                    if isoform_id in novel_protein_ids:
+                        output_assoc_tsv.writerow([isoform_id, novel_protein_ids[isoform_id], "novel", "sequence"])
 
                     # # Compare CDSs between Pacbio and reference transcripts and keep proteins that match CDS coordinates
                     # transcript_starts = isoform_info.get('start')
@@ -260,6 +282,9 @@ def main():
                     #     for cds_ref, cds_props in chr_refseq.items():
                     #         if cds_props.get("start") == transcript_starts and cds_props.get("end") == transcript_ends:
                     #             output_assoc_tsv.writerow([isoform_id, cds_ref, "refseq", "coord"])
+
+        os.replace(args.output_assoc + ".tmp", args.output_assoc)
+        os.replace(args.output_nmd + ".tmp", args.output_nmd)
 
     except Exception as ex:
         logging.error(str(ex), exc_info=True)

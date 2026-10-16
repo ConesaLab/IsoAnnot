@@ -13,7 +13,7 @@ from operator import itemgetter
 from collections import defaultdict
 from Bio.SeqIO.FastaIO import SimpleFastaParser
 from Bio.SeqFeature import FeatureLocation, CompoundLocation, SeqFeature
-from IsoAnnot import openfile, get_consecutive_parts, read_chr_ref_acc
+from IsoAnnot import openfile, get_consecutive_parts, read_chr_ref_acc, normalize_id
 from CoordinateMapper.CoordinateMapper import CoordinateMapper
 from CoordinateMapper.MapPositions import ProteinPosition, ProteinPositionError
 
@@ -52,8 +52,9 @@ def get_fasta_sequences(fasta_files, matching_regex, keep_version="False", filte
                 # Extract name from the FASTA identifier
                 # Regex must contain only one group
                 id_name = capture_regex.match(record[0]).group(1) 
+                # normalize_id keeps mytranscripts ORF IDs whole: split(".") turned PB.1.1 and PB.1.2 into one PB key
                 if keep_version.upper()=="FALSE":
-                    id_name = id_name.split(".")[0]
+                    id_name = normalize_id(id_name)
 
                 if not reversed:
                     output_results[id_name] = record[1]
@@ -337,7 +338,7 @@ def main():
         # Refseq chromosomes
         if args.chr_ref:
             logging.info(f"Reading chr accession table {args.chr_ref}")
-            refseqChrom = read_chr_ref_acc(args.chr_ref, leading_db="ensembl")
+            refseqChrom = read_chr_ref_acc(args.chr_ref, target_db="ensembl")
             logging.info(f"chr_conversion loaded with {len(refseqChrom)} entries")
 
         # Compile 3 databases in one dictionary containing protein identifiers and the sequence.

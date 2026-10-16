@@ -12,9 +12,8 @@ Reactome entries).
 
 import argparse, sys, os, logging, csv
 import pandas as pd
-from IsoAnnot import openfile, query_biomart_with_retry
+from IsoAnnot import openfile, query_biomart_with_retry, read_biomart_table
 from t2goAnnotationFile import get_structural_classification_df
-from pybiomart import Dataset
 
 
 def get_reactome_info(filename):
@@ -57,6 +56,7 @@ def main():
         parser.add_argument('--biomart_dataset', nargs=None, required=True)
         parser.add_argument('--species', nargs=None, required=True)
         parser.add_argument('--db', nargs=None, required=True)
+        parser.add_argument('--biomart_table', default=None, help='Table written by save_biomart_tables.py, read instead of querying BioMart')
 
         args = parser.parse_args()
 
@@ -73,12 +73,18 @@ def main():
 
         # Get ENSG-Gene_name conversion with Biomart and connect it with
         # the reactome dataframe
-        dataset = Dataset(name=args.biomart_dataset, host=args.biomart_host, virtual_schema=biomart_schema)
-        gene_name_table = query_biomart_with_retry(
-            dataset=dataset,
-            attributes=['ensembl_gene_id', 'external_gene_name'],
-            layer_name="layer_reactome"
-        )
+        if args.biomart_table:
+            # Same rows as the query below: BioMart returns unique rows for the attributes asked for
+            gene_name_table = read_biomart_table(args.biomart_table, "layer_reactome")[['Gene stable ID', 'Gene name']].drop_duplicates()
+        else:
+            # Imported here: a run with a saved BioMart table does not need pybiomart
+            from pybiomart import Dataset
+            dataset = Dataset(name=args.biomart_dataset, host=args.biomart_host, virtual_schema=biomart_schema)
+            gene_name_table = query_biomart_with_retry(
+                dataset=dataset,
+                attributes=['ensembl_gene_id', 'external_gene_name'],
+                layer_name="layer_reactome"
+            )
         gene_name_table.rename(columns={'Gene stable ID': 'ensembl_gene_id', 'Gene name': 'gene_name'}, inplace=True)
         gene_name_table = gene_name_table.dropna()
         reactome_info = pd.merge(reactome_info, gene_name_table, how='inner', on='ensembl_gene_id')
@@ -88,6 +94,9 @@ def main():
             gene_column = "ensembl_gene_id"
         else:
             gene_column = "gene_name"
+        # Reactome lists a gene-pathway pair once per evidence code (IEA, TAS), and a gene name can have
+        # several Ensembl IDs, so the same pathway was written several times for one transcript
+        reactome_info = reactome_info.drop_duplicates([gene_column, "reactome_ID"])
 
         # For each transcript, annotate Reactome entries linked to its associated gene 
         with open(args.output, "w") as output_file:

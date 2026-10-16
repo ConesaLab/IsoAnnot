@@ -1,0 +1,14 @@
+isoform	junction_number	chrom	strand	genomic_start_coord	genomic_end_coord	transcript_coord	junction_category	start_site_category	end_site_category	diff_to_Ref_start_site	diff_to_Ref_end_site	bite	splice_site	canonical	indel_near_junct	total_coverage
+ENST00000000001	junction_1	1	+	1201	2000	.	known	known	known	0	0	NA	GTAG	canonical	NA	NA
+ENST00000000001	junction_2	1	+	2151	3000	.	known	known	known	0	0	NA	GTAG	canonical	NA	NA
+ENST00000000002	junction_1	1	+	1201	2000	.	known	known	known	0	0	NA	GTAG	canonical	NA	NA
+ENST00000000002	junction_2	1	+	2151	2500	.	known	known	known	0	0	NA	GTAG	canonical	NA	NA
+ENST00000000002	junction_3	1	+	2601	3000	.	known	known	known	0	0	NA	GTAG	canonical	NA	NA
+ENST00000000003	junction_1	1	-	6301	7000	.	known	known	known	0	0	NA	GTAG	canonical	NA	NA
+ENST00000000003	junction_2	1	-	7121	8000	.	known	known	known	0	0	NA	GTAG	canonical	NA	NA
+ENST00000000003	junction_3	1	-	8091	9500	.	known	known	known	0	0	NA	GTAG	canonical	NA	NA
+ENST00000000004	junction_1	1	-	6301	7000	.	known	known	known	0	0	NA	GTAG	canonical	NA	NA
+ENST00000000004	junction_2	1	-	7121	8000	.	known	known	known	0	0	NA	GTAG	canonical	NA	NA
+ENST00000000004	junction_3	1	-	8091	9500	.	known	known	known	0	0	NA	GTAG	canonical	NA	NA
+ENST00000000004	junction_4	1	-	9661	10500	.	known	known	known	0	0	NA	GTAG	canonical	NA	NA
+ENST00000000005	junction_1	1	+	12401	13000	.	known	known	known	0	0	NA	GTAG	canonical	NA	NA

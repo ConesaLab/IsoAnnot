@@ -2,7 +2,7 @@
 IsoAnnot functions
 Modified by Alessandra Martinez
 """
-import gzip, itertools
+import gzip, itertools, re
 from collections import defaultdict
 from operator import itemgetter
 
@@ -44,20 +44,41 @@ def openfile(filename, mode='r'):
         return open(filename, mode)
 
 
+# Ensembl (ENST00000000233.5), FlyBase (FBtr0070000.1) and RefSeq (NM_000005.3) accessions end in a version.
+# In other IDs the last number is part of the ID: PacBio (PB.1.1), StringTie (STRG.9.1) or TAIR (AT1G01010.1).
+VERSIONED_ID_REGEX = re.compile(r"^(ENS[A-Z]*\d+|FB[a-z]{2}\d+|[A-Z]{2}_\d+)\.\d+$")
+
+
+def normalize_id(identifier):
+    """
+    Removes the version from Ensembl, FlyBase and RefSeq accessions (ENSP00000495982.2 -> ENSP00000495982).
+    Any other ID is returned unchanged, so PB.1.1 does not become PB.
+    """
+    match = VERSIONED_ID_REGEX.match(identifier)
+    return match.group(1) if match else identifier
+
+
 class ChromosomeMap:
     """
     Bi-directional, case-insensitive, version-safe chromosome mapper.
-    Supports Ensembl-leading (default), RefSeq-leading, or identity mapping mode.
+    Every name is translated to the naming of target_db ("ensembl" or "refseq"), which must be the naming of
+    the genome FASTA the output is compared with. The pipeline always uses the Ensembl genome
+    (prepare_ensembl_reference), also in refseq mode. target_names, when given, is the set of names
+    that genome has: a translation that is not in it counts as unmapped, so the callers' 50% abort fires
+    instead of writing an empty output.
     """
     NCBI_ACCESSION_PREFIXES = ("NC_", "NW_", "NT_", "AC_", "NZ_")
 
-    def __init__(self, mapping_file=None, leading_db="ensembl"):
-        self.leading_db = (leading_db or "ensembl").lower()
+    def __init__(self, mapping_file=None, target_db="ensembl", target_names=None):
+        self.target_db = (target_db or "ensembl").lower()
+        self.target_names = set(target_names) if target_names is not None else None
         self.forward_map = {}  # Ensembl -> RefSeq
         self.reverse_map = {}  # RefSeq -> Ensembl
         self.norm_map = {}     # normalized_key -> target_canonical
         self.unmapped_log = set()
         self.total_queries = 0
+        self.unmapped_queries = 0
+        self.mapping_file = mapping_file
 
         if mapping_file:
             self._load_mapping_file(mapping_file)
@@ -87,7 +108,7 @@ class ChromosomeMap:
                     self.forward_map[ensembl] = refseq
                     self.reverse_map[refseq] = ensembl
                     
-                    target = refseq if self.leading_db == "refseq" else ensembl
+                    target = refseq if self.target_db == "refseq" else ensembl
                     
                     for val in (ensembl, refseq):
                         self.norm_map[self._normalize_key(val)] = target
@@ -99,41 +120,66 @@ class ChromosomeMap:
             return default
 
         q = str(query_chr).strip()
-        self.total_queries += 1
-
-        # Tier 1: Direct directional lookup
-        if self.leading_db == "refseq" and q in self.forward_map:
-            return self.forward_map[q]
-        if self.leading_db == "ensembl" and q in self.reverse_map:
-            return self.reverse_map[q]
-
-        # Tier 2: Normalized lookup
-        norm_q = self._normalize_key(q)
-        if norm_q in self.norm_map:
-            return self.norm_map[norm_q]
-
-        # Tier 3: Version-stripped normalized lookup
-        stripped_q = self._normalize_key(self._strip_version(q))
-        if stripped_q in self.norm_map:
-            return self.norm_map[stripped_q]
+        res = self._count(q)
+        if res is not None:
+            return res
 
         # Unmapped contig fallback
-        self.unmapped_log.add(q)
         return default if default is not None else q
 
+    def _count(self, q):
+        """Looks q up and records the result in the failure stats that check_unmapped uses."""
+        res = self._lookup(q)
+        self.total_queries += 1
+        if res is None:
+            self.unmapped_queries += 1
+            self.unmapped_log.add(q)
+        return res
+
+    def _lookup(self, q):
+        """Returns the target name of q, or None if it has none."""
+        norm_q = self._normalize_key(q)
+        # Tier 1: Direct directional lookup
+        if self.target_db == "refseq" and q in self.forward_map:
+            res = self.forward_map[q]
+        elif self.target_db == "ensembl" and q in self.reverse_map:
+            res = self.reverse_map[q]
+        # Tier 2: Normalized lookup
+        elif norm_q in self.norm_map:
+            res = self.norm_map[norm_q]
+        # Tier 3: Version-stripped normalized lookup
+        else:
+            res = self.norm_map.get(self._normalize_key(self._strip_version(q)))
+
+        # A name the genome FASTA does not have is as good as unmapped
+        if self.target_names is not None and res not in self.target_names:
+            return None
+        return res
+
     def __getitem__(self, key):
-        res = self.get(key, default=None)
-        if res is None and key not in self.norm_map:
+        # Not counted: callers check "in" first, and that lookup was counted already
+        res = self._lookup(str(key).strip())
+        if res is None:
             raise KeyError(key)
         return res
 
     def __contains__(self, key):
         if not key:
             return False
-        q = str(key).strip()
-        return (q in self.forward_map or q in self.reverse_map or
-                self._normalize_key(q) in self.norm_map or
-                self._normalize_key(self._strip_version(q)) in self.norm_map)
+        return self._count(str(key).strip()) is not None
+
+    def check_unmapped(self, caller, max_rate=0.5):
+        """
+        Stops the run when more than max_rate of the lookups found no name: the chromosome names of the input,
+        the mapping table and the genome do not match, and the output would be empty or nearly so.
+        Every lookup counts, not every distinct name, so one unmapped chromosome on most lines stops it.
+        """
+        if self.total_queries and self.unmapped_queries / self.total_queries > max_rate:
+            raise RuntimeError(
+                f"Critical Error in {caller}: {self.unmapped_queries}/{self.total_queries} chromosome lookups failed "
+                f"using mapping file '{self.mapping_file}' (unmapped names: {', '.join(sorted(self.unmapped_log)[:10])}). "
+                f"Halting execution to prevent silent data loss."
+            )
 
     def __len__(self):
         return len(self.norm_map)
@@ -157,20 +203,23 @@ class ChromosomeMap:
         return [(k, self.get(k)) for k in self.keys()]
 
 
-def read_chr_ref_acc(filename, leading_db="ensembl"):
+def read_chr_ref_acc(filename, target_db="ensembl", target_names=None):
     """
     Reads a file containing Refseq chromosome accessions and Ensembl identifiers.
-    Returns a ChromosomeMap instance.
+    Returns a ChromosomeMap that translates names to the naming of target_db.
     """
     if not filename:
-        return ChromosomeMap(leading_db=leading_db)
-    return ChromosomeMap(mapping_file=filename, leading_db=leading_db)
+        return ChromosomeMap(target_db=target_db, target_names=target_names)
+    return ChromosomeMap(mapping_file=filename, target_db=target_db, target_names=target_names)
 
 
-def query_biomart_with_retry(dataset, attributes, layer_name="biomart", max_retries=5, initial_delay=5):
+def query_biomart_with_retry(dataset, attributes, layer_name="biomart", max_retries=5, initial_delay=5, disable_hint=True):
     """
     Queries pybiomart Dataset with up to max_retries attempts using exponential backoff.
-    If all attempts fail, raises RuntimeError with explicit instructions on how to disable the layer.
+    If all attempts fail, raises RuntimeError with explicit instructions on how to disable the layer,
+    or a saved table can be used instead.
+
+    :param disable_hint: add the advice on turning the layer off; False when the caller is not a layer.
     """
     import time
     import logging
@@ -178,17 +227,49 @@ def query_biomart_with_retry(dataset, attributes, layer_name="biomart", max_retr
     for attempt in range(1, max_retries + 1):
         try:
             logging.info(f"[{layer_name}] Querying BioMart (Attempt {attempt}/{max_retries})...")
-            return dataset.query(attributes=attributes)
+            result = dataset.query(attributes=attributes)
+            # When Ensembl is down, pybiomart reads its "Service unavailable" HTML page as a one-column
+            # table instead of raising. Check the columns so that page is retried like any error.
+            if result.shape[1] != len(attributes):
+                raise ValueError(f"BioMart answered with {result.shape[1]} column(s) instead of {len(attributes)}, "
+                                 f"probably an error page: {str(result.columns[0])[:80]}")
+            return result
         except Exception as err:
             if attempt == max_retries:
-                raise RuntimeError(
-                    f"Fatal Error in '{layer_name}': BioMart query failed after {max_retries} attempts due to server/network error ({err}). "
-                    f"To run IsoAnnot without BioMart, deactivate this layer by passing '--config {layer_name}=no' to isoannot.sh, "
-                    f"or set '{layer_name}: no' in your species config.yaml."
-                )
+                # The Reactome layer is turned off with the reactome key; layer_reactome=no has no effect
+                config_key = "reactome" if layer_name == "layer_reactome" else layer_name
+                message = f"Fatal Error in '{layer_name}': BioMart query failed after {max_retries} attempts due to server/network error ({err})."
+                if disable_hint:
+                    message += (f" To run IsoAnnot without BioMart, deactivate this layer by passing '--config {config_key}=no' to isoannot.sh, "
+                                f"or set '{config_key}: no' in your species config.yaml.")
+                raise RuntimeError(message)
             delay = initial_delay * (2 ** (attempt - 1))
             logging.warning(f"[{layer_name}] BioMart attempt {attempt}/{max_retries} failed ({err}). Retrying in {delay}s...")
             time.sleep(delay)
+
+
+# BioMart attributes saved by save_biomart_tables.py, and the column names BioMart gives them.
+# layer_go uses the GO columns and layer_reactome the gene ID and name pairs.
+BIOMART_TABLE_ATTRIBUTES = ["ensembl_gene_id", "external_gene_name", "go_id", "name_1006", "namespace_1003"]
+BIOMART_TABLE_COLUMNS = ["Gene stable ID", "Gene name", "GO term accession", "GO term name", "GO domain"]
+
+
+def read_biomart_table(filename, layer_name="biomart"):
+    """
+    Reads a table written by save_biomart_tables.py. The layers use it instead of querying BioMart when
+    the biomart_table config key is set, so a run works offline and stays tied to one Ensembl release.
+    Empty cells become NA, as in a BioMart answer.
+    """
+    import logging
+    import pandas as pd
+
+    table = pd.read_csv(filename, sep="\t", dtype=str, keep_default_na=False, na_values=[""])
+    missing = [col for col in BIOMART_TABLE_COLUMNS if col not in table.columns]
+    if missing:
+        raise ValueError(f"{filename} is not a saved BioMart table: columns {', '.join(missing)} are missing. "
+                         f"Write it with scripts/save_biomart_tables.py.")
+    logging.info(f"[{layer_name}] Using the saved BioMart table {filename} ({len(table)} rows) instead of querying BioMart")
+    return table
 
 
 def merge_fasta_dicts(fasta_files):
@@ -206,6 +287,14 @@ def merge_fasta_dicts(fasta_files):
         for fasta_key, fasta_value in fasta_file.items():
             merged_fasta[fasta_key][tag].extend(fasta_value)
     return merged_fasta
+
+
+def natural_key(text):
+    """
+    Sort key that compares the numbers inside an ID as numbers: Q9HBE1-2 < Q9HBE1-10, PB.2.1 < PB.10.1.
+    Used to pick protein IDs in a fixed order (GitHub #10).
+    """
+    return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", text)]
 
 
 def get_consecutive_parts(position_list):

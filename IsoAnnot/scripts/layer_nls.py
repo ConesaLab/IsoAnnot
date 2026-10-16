@@ -8,7 +8,7 @@ SQANTI3 to link protein-level predictions with their parent isoforms.
 """
 
 import argparse, csv, sys, logging
-from IsoAnnot import openfile
+from IsoAnnot import openfile, normalize_id
 
 def get_structural_classification_prot(classification_filename):
     """
@@ -66,7 +66,11 @@ def main():
 
         for row in reader:
             prot_id = row['ID']
-            
+            # NucImport IDs come from the protein FASTA headers, which are versioned in Ensembl
+            # (ENSP00000495982.2), but refProt in the classification is not.
+            if prot_id not in transcript_info:
+                prot_id = normalize_id(prot_id)
+
             # Map protein prediction back to its parent isoform
             if prot_id in transcript_info:
                 iso_id = transcript_info[prot_id]['isoform']

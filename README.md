@@ -143,7 +143,7 @@ cd IsoAnnot
 - `--species`: Species code in lowercase (first letter of genus + species, e.g., `hsapiens` for *Homo sapiens*)
 
 **Optional parameter:**
-- `--outputdir`: Output directory to store the results (working directory by default)
+- `--outputdir`: Output directory to store the results. By default, the IsoAnnot install folder (where `isoannot.sh` is). A relative path is taken from the folder you run `isoannot.sh` in.
 - `--config`: Additional configuration options (required for `mytranscripts`)
 
 **Supported databases:**
@@ -159,7 +159,7 @@ To generate *Homo sapiens* reference annotation from Ensembl:
 
 ```bash
 cd IsoAnnot
-./isoannot.sh --database ensembl --species hsapiens --ouputdir isoannot_results
+./isoannot.sh --database ensembl --species hsapiens --outputdir isoannot_results
 ```
 
 **Output location**: `isoannot_results/data/Hsapiens/human_tappas_ensembl_annotation_file.gff3`
@@ -170,7 +170,7 @@ To annotate your own transcripts (e.g., from PacBio sequencing):
 
 ```bash
 cd IsoAnnot
-./isoannot.sh --database mytranscripts --species stuberosum --ouputdir isoannot_results --config fasta_cdna=/path/to/my/fasta/potato.fasta
+./isoannot.sh --database mytranscripts --species stuberosum --outputdir isoannot_results --config fasta_cdna=/path/to/my/fasta/potato.fasta
 ```
 
 This example annotates potato (*Solanum tuberosum*) transcripts from a custom FASTA file.
@@ -181,7 +181,7 @@ This example annotates potato (*Solanum tuberosum*) transcripts from a custom FA
 |-----------|-------------|----------|--------|
 | `--database` | Database source | Yes | `ensembl`, `refseq`, `mytranscripts` |
 | `--species` | Species identifier | Yes | Lowercase species code (e.g., `hsapiens`, `mmusculus`) |
-| `--outputdir`| Output directory | No | Path to directory (working directory by default) |
+| `--outputdir`| Output directory | No | Path to directory (IsoAnnot install folder by default). A relative path is taken from the current folder |
 | `--config` | Override config values | Conditional* | `key=value` pairs |
 | `--configfile` | Custom config file path | No | Path to YAML file |
 | `--snakefile` | Custom snakefile path | No | Path to Snakefile |
@@ -272,13 +272,19 @@ The generic configuration file (`config/generic/config.yaml`) contains global se
 ```yaml
 interproscan_path: "software/interproscan/interproscan.sh"
 pfam_clan_url: ftp://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-A.clans.tsv.gz
+pfam_clan_desc_url: https://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-C.gz
 dir_sqanti: "scripts/sqanti3/"
+nls_chunks: 50
+nls_java_memory: 2g
 ```
 
 **Key parameters**:
 - `interproscan_path`: Path to InterProScan executable
-- `pfam_clan_url`: URL for Pfam clan database
+- `pfam_clan_url`: URL of the Pfam family-to-clan table
+- `pfam_clan_desc_url`: URL of Pfam's clan file (`Pfam-C`), which gives the clan names and descriptions written in the clan lines of the GFF3
 - `dir_sqanti`: Directory containing SQANTI3 scripts
+- `nls_chunks`: Number of chunks the proteins are split into for NucImport. The chunks run in parallel.
+- `nls_java_memory`: Maximum Java heap of each NucImport run (`-Xmx`). NucImport needs 2g. Each chunk is a separate Java process, so plan for this amount times the number of cores.
 
 ---
 
@@ -402,8 +408,10 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
 | `refseq_gtf` | RefSeq GTF annotation file URL | URL to .gtf.gz file |
 | `uniprot_fasta` | UniProt FASTA file URLs (list) | List of URLs |
 | `uniprot_dat` | UniProt DAT file URLs (list) | List of URLs |
-| `reactome` | Reactome pathway mapping file URL | URL or pathway-specific URL |
-| `layer_go` | Include Gene Ontology layer | `si` (yes) or omit |
+| `reactome` | Reactome pathway mapping file URL | URL or pathway-specific URL; `no` to skip the layer |
+| `layer_go` | Include Gene Ontology layer | `si`, `yes` or `true` to include; `no`, `false` or omit to skip |
+| `repeat_masker` | Include the RepeatMasker layer | `False` by default; `True` to include (needs a Dfam library, see note 5) |
+| `biomart_table` | Saved BioMart table for the GO and Reactome layers, read instead of querying BioMart (optional) | `/abs/path/hsapiens_e115_biomart.tsv` |
 
 **Important notes**:
 
@@ -424,6 +432,18 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
 4. **Reactome URLs**:
    - Animals: `https://reactome.org/download/current/Ensembl2Reactome_All_Levels.txt`
    - Plants: `https://plantreactome.gramene.org/download/current/Ensembl2PlantReactome_All_Levels.txt`
+
+5. **RepeatMasker**:
+   - It is off by default, because the `repeats` conda environment comes with an empty Dfam library and RepeatMasker can't run with it.
+   - To turn it on, install in that environment a Dfam library its RepeatMasker can read (RepeatMasker 4.1.5 can't read the Dfam 4.0 files), then add `repeat_masker=True` to `--config`.
+
+6. **`biomart_table`**: the GO and Reactome layers ask BioMart for gene names and GO terms while the pipeline runs. `www.ensembl.org` always serves the newest Ensembl release, which may not be the release of your GTF, and the run fails if BioMart is down. To avoid both, save the answer once with the archive host of your release and point `biomart_table` to it (absolute path):
+   ```bash
+   cd IsoAnnot/scripts
+   ./save_biomart_tables.py --biomart_host sep2025.archive.ensembl.org \
+       --biomart_dataset hsapiens_gene_ensembl --output /abs/path/hsapiens_e115_biomart.tsv
+   ```
+   The archive host of each release is listed at https://www.ensembl.org/info/website/archives/. Run it in the `isoannotpy` environment, which has `pybiomart`.
 
 ---
 
@@ -506,10 +526,25 @@ The output GFF3 file integrates information from multiple sources:
 - Phosphorylation sites
 - Other PTMs from PhosphoSitePlus
 
-**Example GFF3 attributes**:
+**Protein IDs**: the `CDS` and `protein` lines of a coding transcript have the same attributes, for example `ID=Q9HBE1-4; Desc=ENSP00000215919`.
+* `ID` is one identifier of the protein sequence of the transcript. IsoAnnot looks for proteins with exactly the same sequence and picks SwissProt first, then TrEMBL, then Ensembl (`ensembl` mode) or RefSeq (`refseq` mode). In `mytranscripts` mode, Ensembl comes before RefSeq.
+* `Desc` lists the other identifiers of that sequence, separated by commas. It is left out when there are none.
+* All transcripts that encode the same protein get the same `ID` and `Desc`, so tappAS treats them as one protein.
+* When the reference protein is not found in `parsed_databases.json`, `ID` is the reference protein of the transcript (`ensembl` and `refseq` modes). In `mytranscripts` mode, an ORF with no protein of the same sequence in `parsed_databases.json` gets `Protein_<isoform>`.
+* Ensembl and RefSeq IDs found through the sequence are written without their version (`NP_000005`), as in `parsed_databases.json`. The reference protein used when there is no match is written as in the classification file, so in `refseq` mode it keeps its version (`NP_000005.3`). In Ensembl Plants, where protein IDs are transcript IDs, an ID without version looks like the gene ID (`AT1G01020`).
+
+The lines of each transcript start with its `transcript` line, followed by the transcript, genomic and protein features, as in the legacy tappAS files. tappAS needs the `transcript` line first in each block.
+
+**Example lines** of a `.gff3_mod` file, for one transcript of the small test dataset (some exon and junction lines left out). The columns are tab-separated: seqid, source, feature, start, end, score, strand, phase and attributes. The `.gff3` file has the same lines without `PosType`.
 ```
-gene_id=ENSG00000000003;transcript_id=ENST00000000003;GO=GO:0005515,GO:0003824;
-InterPro=IPR001478,IPR015421;Reactome=R-HSA-112316;UniProt=P12345
+ENST00000000001	tappAS	transcript	1	750	.	+	.	ID=ENST00000000001; primary_class=protein_coding; PosType=T
+ENST00000000001	tappAS	gene	1	750	.	+	.	ID=SYNA; Name=SYNA; PosType=T
+ENST00000000001	tappAS	CDS	101	550	.	+	.	ID=P0SYA1; Desc=ENSP00000000001; PosType=T
+ENST00000000001	tappAS	genomic	1	1	.	+	.	Chr=chr1; PosType=G
+ENST00000000001	tappAS	exon	1001	1200	.	+	.	Chr=chr1; PosType=G
+ENST00000000001	tappAS	splice_junction	1201	2000	.	+	.	ID=known_canonical; Chr=chr1; PosType=G
+ENST00000000001	tappAS	protein	1	150	.	+	.	ID=P0SYA1; Desc=ENSP00000000001; PosType=P
+ENST00000000001	GeneOntology	C	.	.	.	.	.	ID=GO:0005737; Name=cytoplasm; PosType=N
 ```
 
 **Using the output**:

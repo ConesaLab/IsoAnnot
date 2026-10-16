@@ -132,7 +132,6 @@ def main():
     parser.add_argument("--isoform_fasta", required=True, help="FASTA file of isoforms")
     parser.add_argument("--mirwalk_genomic", required=True, help="miRWalk file with genomic coordinates")
     parser.add_argument("--output", required=True, help="Final output TSV/GTF")
-    parser.add_argument("--db", nargs=None, required=True, help="Database type (ensembl/refseq)")
     parser.add_argument("--chr_ref", required=False, help="Refseq-Ensembl chromosome mapping table")
     args = parser.parse_args()
 
@@ -140,16 +139,12 @@ def main():
         # Step 1: Handle chromosome accessions mapping for RefSeq
         refseqChrom = {}
         if args.chr_ref:
-            refseqChrom = read_chr_ref_acc(args.chr_ref, leading_db=args.db)
-            logging.info(f"Using chromosome accessions mapping (leading DB: {args.db}).")
+            # The miRWalk sites have Ensembl genome names (mirna_bs_genomic_coord.py), so the isoforms
+            # are translated to Ensembl names in every mode.
+            refseqChrom = read_chr_ref_acc(args.chr_ref, target_db="ensembl")
+            logging.info("Using chromosome accessions mapping (target: Ensembl names).")
             isoforms_by_chr, exons_by_chr = load_genepred(args.genepred, refseqChrom)
-            if hasattr(refseqChrom, 'total_queries') and refseqChrom.total_queries > 0:
-                failure_rate = len(refseqChrom.unmapped_log) / refseqChrom.total_queries
-                if failure_rate > 0.50:
-                    raise RuntimeError(
-                        f"Critical Error in get_mirna_bs_annotation.py: {len(refseqChrom.unmapped_log)}/{refseqChrom.total_queries} "
-                        f"chromosome lookups failed using mapping file '{args.chr_ref}'. Halting execution to prevent silent data loss."
-                    )
+            refseqChrom.check_unmapped("get_mirna_bs_annotation.py")
         else:
             logging.info("Using original chromosome accessions.")
             isoforms_by_chr, exons_by_chr = load_genepred(args.genepred)

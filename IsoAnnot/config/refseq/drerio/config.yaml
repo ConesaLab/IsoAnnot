@@ -13,10 +13,12 @@ prefix: Drerio
 db: refseq
 transcript_versioned: True
 
-refseq_proteins: https://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_other/Danio_rerio/all_assembly_versions/GCF_049306965.1_GRCz12tu/GCF_049306965.1_GRCz12tu_protein.faa.gz
-refseq_cdna: https://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_other/Danio_rerio/all_assembly_versions/GCF_049306965.1_GRCz12tu/GCF_049306965.1_GRCz12tu_rna.fna.gz
-refseq_gtf: https://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_other/Danio_rerio/all_assembly_versions/GCF_049306965.1_GRCz12tu/GCF_049306965.1_GRCz12tu_genomic.gtf.gz
-refseq_chr_accessions: https://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_other/Danio_rerio/all_assembly_versions/GCF_049306965.1_GRCz12tu/GCF_049306965.1_GRCz12tu_assembly_structure/Primary_Assembly/assembled_chromosomes/chr2acc
+# RefSeq annotation GCF_000002035.6-RS_2024_08 on GRCz11, the assembly of the Ensembl genome above
+# From genomes/all/, which keeps the same path when NCBI suppresses an assembly
+refseq_proteins: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/002/035/GCF_000002035.6_GRCz11/GCF_000002035.6_GRCz11_protein.faa.gz
+refseq_cdna: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/002/035/GCF_000002035.6_GRCz11/GCF_000002035.6_GRCz11_rna.fna.gz
+refseq_gtf: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/002/035/GCF_000002035.6_GRCz11/GCF_000002035.6_GRCz11_genomic.gtf.gz
+refseq_chr_accessions: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/002/035/GCF_000002035.6_GRCz11/GCF_000002035.6_GRCz11_assembly_structure/Primary_Assembly/assembled_chromosomes/chr2acc
 
 uniprot_fasta:
   - https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/Eukaryota/UP000000437/UP000000437_7955.fasta.gz
