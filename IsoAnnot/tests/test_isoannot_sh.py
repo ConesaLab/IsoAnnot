@@ -15,7 +15,8 @@ LAUNCHER = os.path.join(ISOANNOT_DIR, "isoannot.sh")
 def launch(tmp_path):
     """
     Runs isoannot.sh from tmp_path/work with a fake "snakemake" first on PATH that prints its arguments,
-    one per line. Returns the list of arguments isoannot.sh passed to snakemake.
+    one per line. Returns the list of arguments isoannot.sh passed to snakemake. The stderr of the last
+    run is kept in launch.stderr.
     """
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -31,6 +32,7 @@ def launch(tmp_path):
         result = subprocess.run(["bash", LAUNCHER, *args], cwd=cwd, env=dict(env, **extra_env),
                                 capture_output=True, text=True)
         assert result.returncode == 0, result.stdout + result.stderr
+        _run.stderr = result.stderr
         return result.stdout.splitlines()
     return _run
 
@@ -59,6 +61,17 @@ def test_config_stops_at_next_option(launch):
                   "--outputdir", "/abs/out")
     assert config_tokens(argv) == ["db=ensembl", "path_output=/abs/out", "layer_go=no", "reactome=no"]
     assert argv[argv.index("--snakefile") + 1] == os.path.join(ISOANNOT_DIR, "config", "ensembl", "hsapiens", "Snakefile.smk")
+
+
+def test_config_drops_words_without_equals(launch):
+    """Only key=value tokens after --config reach snakemake. -n or a stray word are dropped with a warning."""
+    argv = launch("--database", "ensembl", "--species", "hsapiens", "--outputdir", "/abs/out",
+                  "--config", "layer_go=no", "extra", "-n", "reactome=no")
+    assert config_tokens(argv) == ["db=ensembl", "path_output=/abs/out", "layer_go=no", "reactome=no"]
+    assert "-n" not in argv
+    assert "extra" not in argv
+    assert launch.stderr.splitlines() == ["Warning: --config only takes key=value pairs. Ignoring: extra",
+                                          "Warning: --config only takes key=value pairs. Ignoring: -n"]
 
 
 def test_config_ignores_environment(launch):

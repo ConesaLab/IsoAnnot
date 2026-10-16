@@ -36,10 +36,16 @@ case $key in
     --config)
     shift # past argument
     # Take every key=value up to the next --option, so --config a=1 b=2 keeps b=2 too.
-    # The quoted form --config "a=1 b=2" still works because $CONFIG is word-split below
+    # The quoted form --config "a=1 b=2" still works because $CONFIG is word-split below.
+    # Other words (-n, a stray value) are not passed on: snakemake would read them as options or reject them
     while [[ $# -gt 0 && "$1" != --* ]]
     do
-        CONFIG="$CONFIG $1"
+        if [[ "$1" == *=* ]]
+        then
+            CONFIG="$CONFIG $1"
+        else
+            echo "Warning: --config only takes key=value pairs. Ignoring: $1" >&2
+        fi
         shift # past value
     done
     ;;
