@@ -1,0 +1,7 @@
+isoform	chrom	strand	length	exons	structural_category	associated_gene	associated_transcript	ref_length	ref_exons	diff_to_TSS	diff_to_TTS	subcategory	RTS_stage	all_canonical	min_cov	min_cov_pos	sd_cov	FL	n_indels	n_indels_junc	bite	iso_exp	gene_exp	ratio_exp	FSM_class	coding	ORF_length	CDS_length	CDS_start	CDS_end	refProt
+ENST00000000001	1	+	750	3	protein_coding	SYNA	ENST00000000001	750	3	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	coding	150.0	450	101	550	ENSP00000000001
+ENST00000000002	1	+	850	4	nonsense_mediated_decay	SYNA	ENST00000000002	850	4	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	coding	87.0	261	101	361	ENSP00000000002
+ENST00000000003	1	-	710	4	protein_coding	SYNB	ENST00000000003	710	4	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	coding	187.0	561	51	611	ENSP00000000003
+ENST00000000004	1	-	770	5	protein_coding	SYNB	ENST00000000004	770	5	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	coding	187.0	561	111	671	ENSP00000000004
+ENST00000000005	1	+	700	2	lncRNA	SYNC	ENST00000000005	700	2	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	non_coding	NA	NA	NA	NA	NA
+ENST00000000006	1	+	1100	1	protein_coding	SYND	ENST00000000006	1100	1	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	NA	coding	267.0	801	101	901	ENSP00000000006
