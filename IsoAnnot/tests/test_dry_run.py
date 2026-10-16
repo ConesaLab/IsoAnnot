@@ -143,6 +143,20 @@ def test_dry_run_reactome_toggle(dry_run, value, enabled):
     assert ("get_reactome" in jobs) == enabled
 
 
+@pytest.mark.parametrize("config, enabled", [
+    ([], False),
+    (["repeat_masker=True"], True),
+])
+def test_dry_run_repeat_masker_toggle(dry_run, config, enabled):
+    """RepeatMasker is off unless repeat_masker=True: the repeats conda env has no Dfam library to run it with."""
+    result = dry_run("ensembl", *config)
+    assert result.returncode == 0, result.stdout + result.stderr
+    jobs = job_counts(result.stdout)
+    assert ("run_repeatmasker" in jobs) == enabled
+    assert ("layer_repeatmasker" in jobs) == enabled
+    assert jobs["tappas_annotation"] == 1
+
+
 def planned_command(output, script):
     """The planned shell line that runs scripts/<script>, from the -p output of a dry run, with single spaces."""
     return next(" ".join(line.split()) for line in output.splitlines() if f"scripts/{script} " in line)

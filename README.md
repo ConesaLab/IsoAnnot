@@ -404,6 +404,7 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
 | `uniprot_dat` | UniProt DAT file URLs (list) | List of URLs |
 | `reactome` | Reactome pathway mapping file URL | URL or pathway-specific URL; `no` to skip the layer |
 | `layer_go` | Include Gene Ontology layer | `si`, `yes` or `true` to include; `no`, `false` or omit to skip |
+| `repeat_masker` | Include the RepeatMasker layer | `False` by default; `True` to include (needs a Dfam library, see note 5) |
 
 **Important notes**:
 
@@ -424,6 +425,10 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
 4. **Reactome URLs**:
    - Animals: `https://reactome.org/download/current/Ensembl2Reactome_All_Levels.txt`
    - Plants: `https://plantreactome.gramene.org/download/current/Ensembl2PlantReactome_All_Levels.txt`
+
+5. **RepeatMasker**:
+   - It is off by default, because the `repeats` conda environment comes with an empty Dfam library and RepeatMasker can't run with it.
+   - To turn it on, install in that environment a Dfam library its RepeatMasker can read (RepeatMasker 4.1.5 can't read the Dfam 4.0 files), then add `repeat_masker=True` to `--config`.
 
 ---
 
