@@ -175,14 +175,17 @@ rule get_refseq_gtf:
 
 rule prepare_refseq_gtf:
     input:
-        rules.get_refseq_gtf.output
+        gtf=rules.get_refseq_gtf.output,
+        chr_ref=rules.get_refseq_acc.output
     output:
         os.path.join(path_output, "data", prefix, "config", "refseq", f"{_remove_extension(config['refseq_gtf'], all=True)}_nopartial_nc.gtf")
     log:
         os.path.join(path_output, "logs", prefix, "prepare_refseq_gtf.log")
+    # Keep the chromosomes listed in chr2acc as well as the NC_ ones: the fruit-fly arms 2L/2R/3L/3R are NT_
+    # accessions and were dropped. Alt loci, patches and scaffolds (NT_/NW_ not in chr2acc) stay out, as before.
     shell:
         """
-        zcat {input}|grep -v -F 'partial=true' | grep '^NC_' > {output} 2> {log}
+        zcat {input.gtf} | grep -v -F 'partial=true' | awk -F'\\t' 'NR==FNR {{ if ($1 !~ /^#/) keep[$2]; next }} $1 ~ /^NC_/ || ($1 in keep)' {input.chr_ref} - > {output} 2> {log}
         """
 
 
