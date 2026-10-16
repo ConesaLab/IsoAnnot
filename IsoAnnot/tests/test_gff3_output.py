@@ -231,6 +231,31 @@ def test_transcript2reference_writes_novel_rows(synthetic_dir, run_script, tmp_p
     assert sorted(os.listdir(tmp_path)) == ["corrected.faa", "corrected.gtf", "nmd.txt", "protein_assoc_data.txt"]
 
 
+def test_transcript2reference_orfs_with_stop_codon(synthetic_dir, run_script, tmp_path):
+    """SQANTI3 ORFs end with *, the reference proteins don't: they must still match, so long-read
+    proteins get their UniProt/Ensembl/RefSeq IDs, the same as for an ORF written without the *."""
+    with open(synthetic_dir / "parsed_databases.json") as handle:
+        p0sya1 = next(seq for seq, dbs in json.load(handle).items() if dbs.get("swissprot") == ["P0SYA1"])
+    corrected_gtf = tmp_path / "corrected.gtf"
+    corrected_gtf.write_text('1\tPacBio\texon\t1001\t2000\t.\t+\t.\ttranscript_id "PB.3.1"; gene_id "PB.1";\n')
+    outputs = {}
+    for name, stop in (("with_stop", "*"), ("without_stop", "")):
+        orfs = tmp_path / f"{name}.faa"
+        orfs.write_text(f">PB.3.1 GeneMark.hmm|150_aa|+|11|460\n{p0sya1}{stop}\n")
+        result = run_script("transcript2reference.py", "--ensembl_gtf", synthetic_dir / "ensembl.gtf",
+                            "--corrected_gtf", corrected_gtf, "--corrected_fasta_proteins", orfs,
+                            "--database", "mytranscripts", "--species_db", synthetic_dir / "parsed_databases.json",
+                            "--output_assoc", tmp_path / f"{name}_assoc.txt", "--output_nmd", tmp_path / f"{name}_nmd.txt")
+        assert result.returncode == 0, result.stderr
+        outputs[name] = (tmp_path / f"{name}_assoc.txt").read_text()
+    assert [line.split("\t") for line in outputs["with_stop"].splitlines()] == [
+        ["PB.3.1", "P0SYA1", "swissprot", "sequence"],
+        ["PB.3.1", "NP_900001", "refseq", "sequence"],
+        ["PB.3.1", "ENSP00000000001", "ensembl", "sequence"],
+    ]
+    assert outputs["with_stop"] == outputs["without_stop"]
+
+
 def test_full_protein_ids_and_desc(synthetic_dir, run_script, tmp_path):
     """
     CDS and protein lines carry the full UniProt ID, with the other same-sequence IDs in Desc, instead of

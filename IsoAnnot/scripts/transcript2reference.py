@@ -243,6 +243,9 @@ def main():
         # In the previous step we needed the original fasta headers to extract useful info (ie. cds positions
         # for Pacbio). Now we clean the data by keeping only the transcript id.
         corrected_fasta_proteins = _retrieve_pacbio_id(corrected_fasta_proteins)
+        # SQANTI3 ORFs end with the stop codon (*) and the reference proteins don't, so no ORF matched.
+        # The * is only dropped here: the CDS end above, and so the NMD call, includes the stop codon.
+        corrected_fasta_proteins = {isoform: seq.rstrip("*") for isoform, seq in corrected_fasta_proteins.items()}
         novel_protein_ids = get_novel_protein_ids(corrected_fasta_proteins, all_proteins)
 
         # 2 output files: associated proteins and NMD. Both go to .tmp first, so a failed run leaves no
