@@ -54,17 +54,23 @@ def test_layer_nls_versioned_ensembl_proteins(tmp_path, synthetic_dir, run_scrip
     assert output.read_text().splitlines() == [nls_row("ENST00000000001"), nls_row("ENST00000000006")]
 
 
+# PB and PB.1 are decoy classification rows. PB.1.2 is in the tool output but not in the classification, so
+# its line must be dropped. A naive version strip (at the first or the last dot) would match it to a decoy.
+PACBIO_DECOYS = ["PB", "PB.1"]
+PACBIO_UNMATCHED = "PB.1.2"
+
+
 def test_layer_nls_keeps_pacbio_ids(tmp_path, run_script):
-    """The version fallback must not cut PacBio ORF IDs (PB.1.1) at the first dot."""
+    """The version fallback must not cut a PacBio ORF ID (PB.1.2) at a dot and give its NLS to another isoform."""
     classification = tmp_path / "classification.txt"
-    classification.write_text("isoform\tcoding\nPB.1.1\tcoding\nPB.12.3\tcoding\n")
+    classification.write_text("isoform\tcoding\n" + "".join(f"{isoform}\tcoding\n" for isoform in ["PB.1.1"] + PACBIO_DECOYS))
     nls_file = tmp_path / "nls_final_expanded.tsv"
-    write_nls_file(nls_file, ["PB.1.1", "PB.12.3"])
+    write_nls_file(nls_file, ["PB.1.1", PACBIO_UNMATCHED])
     output = tmp_path / "layer_nls.gtf"
     result = run_script("layer_nls.py", "--nls_file", nls_file, "--classification_file", classification,
                         "--output", output)
     assert result.returncode == 0, result.stderr
-    assert output.read_text().splitlines() == [nls_row("PB.1.1"), nls_row("PB.12.3")]
+    assert output.read_text().splitlines() == [nls_row("PB.1.1")]
 
 
 CONFIG_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config"))
@@ -78,15 +84,22 @@ ID_CASES = {
 
 
 def write_classification(path, isoform, ref_prot):
-    """One coding transcript, with a refProt column only when there is a reference protein (as in SQANTI3)."""
+    """
+    One coding transcript plus the PacBio decoy rows, with a refProt column only when there is a reference
+    protein (as in SQANTI3). A decoy uses its own name as refProt, so the protein lookup can hit it too.
+    """
     header = ["isoform", "chrom", "strand", "length", "structural_category", "associated_gene",
               "associated_transcript", "RTS_stage", "coding", "ORF_length", "CDS_start", "CDS_end"]
-    values = [isoform, "1", "+", "750", "full-splice_match", "SYNA", "ENST00000000001", "FALSE", "coding",
-              "150", "101", "550"]
     if ref_prot:
         header.append("refProt")
-        values.append(ref_prot)
-    path.write_text("\t".join(header) + "\n" + "\t".join(values) + "\n")
+    lines = ["\t".join(header)]
+    for row_isoform, row_prot in [(isoform, ref_prot)] + [(decoy, decoy) for decoy in PACBIO_DECOYS]:
+        values = [row_isoform, "1", "+", "750", "full-splice_match", "SYNA", "ENST00000000001", "FALSE", "coding",
+                  "150", "101", "550"]
+        if ref_prot:
+            values.append(row_prot)
+        lines.append("\t".join(values))
+    path.write_text("\n".join(lines) + "\n")
 
 
 @pytest.mark.parametrize("keep_version", ["False", "True"])
@@ -101,7 +114,8 @@ def test_layer_repeatmasker_ids(tmp_path, run_script, mode, keep_version):
         "   SW   perc perc perc  query      position in query    matching  repeat\n"
         "score   div. del. ins.  sequence   begin  end  (left)   repeat    class/family\n"
         "\n"
-        f"  463   1.3  0.6  1.7  {transcript_id}    1   155 (595) +  AluY  SINE/Alu  1  155 (0)  1\n")
+        + "".join(f"  463   1.3  0.6  1.7  {query}    1   155 (595) +  AluY  SINE/Alu  1  155 (0)  1\n"
+                  for query in [transcript_id, PACBIO_UNMATCHED]))
     output = tmp_path / "layer_repeatmasker.gtf"
     result = run_script("layer_repeatmasker.py", "--keep_version", keep_version, "--repeatmasker_file", repeatmasker_file,
                         "--classification_file", classification, "--output", output)
@@ -120,7 +134,7 @@ def test_layer_utrscan_ids(tmp_path, run_script, mode, keep_version):
     utrscan_file = tmp_path / "utrscan.txt"
     utrscan_file.write_text(
         "U0001 - uORF - Upstream Open Reading Frame\n"
-        f"{transcript_id} length=750 : uORF [20,40]\n")
+        + "".join(f"{query} length=750 : uORF [20,40]\n" for query in [transcript_id, PACBIO_UNMATCHED]))
     output = tmp_path / "layer_utrscan.gtf"
     result = run_script("layer_utrscan.py", "--keep_version", keep_version, "--utrscan_file", utrscan_file,
                         "--classification_file", classification, "--output", output)
@@ -137,7 +151,8 @@ def test_layer_interproscan_ids(tmp_path, run_script, mode, keep_version):
     classification = tmp_path / "classification.txt"
     write_classification(classification, isoform, ref_prot)
     interproscan_file = tmp_path / "interproscan.tsv"
-    interproscan_file.write_text(f"{protein_id}\tPfam\tx\tPF00001\t7tm_1\t7 transmembrane receptor\t10\t50\n")
+    interproscan_file.write_text("".join(f"{query}\tPfam\tx\tPF00001\t7tm_1\t7 transmembrane receptor\t10\t50\n"
+                                         for query in [protein_id, PACBIO_UNMATCHED]))
     pfam_file = tmp_path / "pfam.tsv"
     pfam_file.write_text("")
     output = tmp_path / "layer_interproscan.gtf"
