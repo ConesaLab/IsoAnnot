@@ -287,7 +287,8 @@ def block_letter(row):
 def test_end_to_end_gff3(synthetic_dir, run_script, tmp_path):
     """
     t2goAnnotationFile.py and renameFeatures.py on the fixture, as rules tappas_annotation and renameFeatures
-    run them, give the layout of the legacy tappAS files: each transcript starts with its transcript line,
+    run them, give the layout of the legacy tappAS files: each transcript starts with its transcript line
+    (tappAS needs it first),
     then the transcript, genomic and protein blocks; full protein IDs and integer coordinates
     (GitHub #10).
     """

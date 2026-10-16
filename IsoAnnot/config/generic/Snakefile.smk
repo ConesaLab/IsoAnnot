@@ -1165,7 +1165,7 @@ rule tappas_annotation:
         os.path.join(path_output, "logs", prefix, "{db}", "tappas_annotation.log")
     # No re-sort: t2goAnnotationFile.py already writes each transcript's lines in the order of the legacy
     # tappAS files, starting with the transcript line. Sorting on the start column moved GO, gene and
-    # protein lines before it. Whether tappAS needs this order has not been checked.
+    # protein lines before it. tappAS needs the transcript line first in each block.
     shell:
         """
         scripts/t2goAnnotationFile.py --classification_file {input.classification_file}  \

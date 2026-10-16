@@ -82,7 +82,7 @@ def test_dry_run_reference_protein_ids(dry_run, database, tmp_path):
 def test_dry_run_tappas_annotation_keeps_line_order(dry_run, tmp_path):
     """
     The GFF3 keeps the order written by t2goAnnotationFile.py. sort -V -k1,1 -k4,4n moved GO, gene and
-    protein lines before the transcript line, unlike the legacy tappAS files.
+    protein lines before the transcript line. tappAS needs the transcript line first in each block.
     """
     result = dry_run("ensembl")
     assert result.returncode == 0, result.stdout + result.stderr
