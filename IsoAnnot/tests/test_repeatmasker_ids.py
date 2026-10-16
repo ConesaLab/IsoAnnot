@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import sys
 
@@ -10,17 +11,20 @@ sys.path.insert(0, main_path)
 from repeatmasker_ids import shorten_fasta_ids, restore_out_ids
 
 ISOANNOT_DIR = os.path.dirname(main_path)
-SNAKEMAKE = os.environ.get("ISOANNOT_SNAKEMAKE", "/media/pabloati/HDD1/conda/envs/snakemake/bin/snakemake")
+# ISOANNOT_SNAKEMAKE, or snakemake on PATH
+SNAKEMAKE = os.environ.get("ISOANNOT_SNAKEMAKE") or shutil.which("snakemake")
 
 LONG_ID = "PB.1.1|chr1:1000-5000(+)|transcript/1234|full_length_coverage=10|length=4000"
 SHORT_ID = "ENST00000000001.4"
 
 # Stand-in for RepeatMasker: it stops on IDs longer than 50 characters, as the real one does, and writes
-# one .out hit per sequence, with the 3 header lines and the column layout of a real .out file.
+# one .out hit per sequence, with the 3 header lines and the column layout of a real .out file. It also
+# saves the LD_LIBRARY_PATH it was run with.
 FAKE_REPEATMASKER = f"""#!{sys.executable}
 import os, sys
 fasta = sys.argv[1]
 out_dir = sys.argv[sys.argv.index("-dir") + 1]
+open(os.path.join(out_dir, "ld_library_path.txt"), "w").write(os.environ.get("LD_LIBRARY_PATH", ""))
 ids = [line[1:].split()[0] for line in open(fasta) if line.startswith(">")]
 if any(len(i) > 50 for i in ids):
     sys.exit("FastaDB::_cleanIDs: Fasta file contains a sequence identifier which is too long ( max id length = 50 )")
@@ -91,8 +95,8 @@ def test_short_ids_and_no_repeats(tmp_path, synthetic_dir):
 
 def test_run_repeatmasker_rule(tmp_path):
     """run_repeatmasker runs end to end and the .out file keeps the original long IDs."""
-    if not os.path.isfile(SNAKEMAKE):
-        pytest.skip(f"Snakemake not found at {SNAKEMAKE} (set ISOANNOT_SNAKEMAKE to use another one)")
+    if not SNAKEMAKE or not os.path.isfile(SNAKEMAKE):
+        pytest.skip("Snakemake not found (set ISOANNOT_SNAKEMAKE or put snakemake on PATH)")
 
     out_dir = tmp_path / "out"
     cdna = out_dir / "data" / "Hsapiens" / "config" / "ensembl" / "Homo_sapiens.GRCh38.cdna.all.fa"
@@ -121,3 +125,5 @@ def test_run_repeatmasker_rule(tmp_path):
 
     rows = [line.split() for line in target.read_text().splitlines()[3:]]
     assert [row[4] for row in rows] == [SHORT_ID, LONG_ID]
+    # No empty entry, which the loader would read as the current folder
+    assert (target.parent / "ld_library_path.txt").read_text() == str(tmp_path / "conda" / "lib")

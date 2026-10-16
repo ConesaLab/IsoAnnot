@@ -575,7 +575,7 @@ rule run_repeatmasker:
         if [ ! -e "$LIBDIR/libnsl.so.1" ]; then
             ln -sf "$LIBDIR/libnsl.so.3" "$LIBDIR/libnsl.so.1"  #A symbolic link is created; there is no version that installs the required dependency
         fi
-        export LD_LIBRARY_PATH="$LIBDIR:${{LD_LIBRARY_PATH:-}}"  # may be unset, and Snakemake runs bash with set -u
+        export LD_LIBRARY_PATH="$LIBDIR${{LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}}"
 
         # RepeatMasker stops on FASTA IDs longer than 50 characters: run it on a copy with those IDs hashed,
         # then put the original IDs back in the .out file
