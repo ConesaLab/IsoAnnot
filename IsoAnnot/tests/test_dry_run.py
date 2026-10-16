@@ -176,3 +176,21 @@ def test_dry_run_mirna_score_threshold_missing(dry_run, tmp_path):
     command = planned_command(result.stdout, "filter_mirna_bs.py")
     assert "--species 'Homo sapiens' --mirwalk_output " in command
     assert "None" not in command
+
+
+def test_dry_run_biomart_table(dry_run, tmp_path):
+    """With biomart_table set, layer_go and layer_reactome get the saved table instead of querying BioMart."""
+    table = tmp_path / "biomart_table.tsv"
+    table.write_text("Gene stable ID\tGene name\tGO term accession\tGO term name\tGO domain\n")
+    result = dry_run("ensembl", f"biomart_table={table}")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert f"--db ensembl --biomart_table {table} " in planned_command(result.stdout, "layer_go.py")
+    assert f"--db ensembl --biomart_table {table} --output " in planned_command(result.stdout, "layer_reactome.py")
+
+
+def test_dry_run_without_biomart_table(dry_run):
+    """Without biomart_table the layers query BioMart as before."""
+    result = dry_run("ensembl")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "--biomart_table" not in planned_command(result.stdout, "layer_go.py")
+    assert "--biomart_table" not in planned_command(result.stdout, "layer_reactome.py")

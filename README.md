@@ -404,6 +404,7 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
 | `uniprot_dat` | UniProt DAT file URLs (list) | List of URLs |
 | `reactome` | Reactome pathway mapping file URL | URL or pathway-specific URL; `no` to skip the layer |
 | `layer_go` | Include Gene Ontology layer | `si`, `yes` or `true` to include; `no`, `false` or omit to skip |
+| `biomart_table` | Saved BioMart table for the GO and Reactome layers, read instead of querying BioMart (optional) | `/abs/path/hsapiens_e115_biomart.tsv` |
 
 **Important notes**:
 
@@ -424,6 +425,14 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
 4. **Reactome URLs**:
    - Animals: `https://reactome.org/download/current/Ensembl2Reactome_All_Levels.txt`
    - Plants: `https://plantreactome.gramene.org/download/current/Ensembl2PlantReactome_All_Levels.txt`
+
+5. **`biomart_table`**: the GO and Reactome layers ask BioMart for gene names and GO terms while the pipeline runs. `www.ensembl.org` always serves the newest Ensembl release, which may not be the release of your GTF, and the run fails if BioMart is down. To avoid both, save the answer once with the archive host of your release and point `biomart_table` to it (absolute path):
+   ```bash
+   cd IsoAnnot/scripts
+   ./save_biomart_tables.py --biomart_host sep2025.archive.ensembl.org \
+       --biomart_dataset hsapiens_gene_ensembl --output /abs/path/hsapiens_e115_biomart.tsv
+   ```
+   The archive host of each release is listed at https://www.ensembl.org/info/website/archives/. Run it in the `isoannotpy` environment, which has `pybiomart`.
 
 ---
 
