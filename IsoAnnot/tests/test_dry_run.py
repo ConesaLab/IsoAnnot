@@ -207,6 +207,7 @@ def test_dry_run_repeat_masker_toggle(dry_run, config, enabled):
     assert ("run_repeatmasker" in jobs) == enabled
     assert ("layer_repeatmasker" in jobs) == enabled
     assert ("get_dfam" in jobs) == enabled
+    assert ("install_repeatmasker" in jobs) == enabled
     assert jobs["tappas_annotation"] == 1
 
 
@@ -223,8 +224,13 @@ def test_dry_run_repeatmasker_dfam(dry_run, tmp_path, config, dfam_files, uncura
     assert jobs["get_dfam"] == len(dfam_files)
     for dfam_file in dfam_files:
         assert f"{tmp_path}/data/global/dfam/{dfam_file}" in result.stdout
-    repeatmasker_command = next(line for line in result.stdout.splitlines() if line.strip().startswith("RepeatMasker "))
+    # The command is split over two lines in the rule
+    lines = result.stdout.splitlines()
+    n = next(i for i, line in enumerate(lines) if line.strip().startswith(f"{tmp_path}/data/global/repeatmasker/RepeatMasker "))
+    repeatmasker_command = lines[n] + lines[n + 1]
     assert ("-uncurated" in repeatmasker_command) == uncurated
+    assert f"-famdb_data_dir {tmp_path}/data/global/dfam " in repeatmasker_command
+    assert f"-cache_dir {tmp_path}/data/global/dfam/cache " in repeatmasker_command
     assert "-pa 2" in repeatmasker_command  # 8 cores in the dry run, 4 per RMBlast job
 
 

@@ -382,6 +382,34 @@ rule get_dfam:
         rm {wildcards.dfam_file}.h5.gz.md5
         """
 
+# RepeatMasker comes from its GitHub release, because bioconda only has 4.2.4 and 4.2.6 adds -famdb_data_dir and
+# -cache_dir. configure writes the paths of the repeats env into the install, so each output folder builds its own
+rule install_repeatmasker:
+    conda:
+        "../../envs/repeats.yaml"
+    resources:
+        n_downloads=1
+    output:
+        os.path.join(path_output, "data", "global", "repeatmasker", "RepeatMasker")
+    params:
+        URL=config["repeatmasker_url"],
+        sha256=config["repeatmasker_sha256"],
+        outdir=os.path.join(path_output, "data", "global", "repeatmasker")
+    log:
+        os.path.join(path_output, "logs", prefix, "install_repeatmasker.log")
+    shell:
+        """
+        rm -rf {params.outdir}
+        mkdir -p {params.outdir}
+        cd {params.outdir}
+        wget -nv -O repeatmasker.tar.gz {params.URL} &> {log}
+        echo "{params.sha256}  repeatmasker.tar.gz" | sha256sum -c &>> {log}
+        tar xzf repeatmasker.tar.gz --strip-components=1 &>> {log}
+        rm repeatmasker.tar.gz
+        perl ./configure -perlbin "$CONDA_PREFIX/bin/perl" -trf_prgm "$CONDA_PREFIX/bin/trf" -rmblast_dir "$CONDA_PREFIX/bin" \
+            -hmmer_dir "$CONDA_PREFIX/bin" -default_search_engine rmblast -famdb_dir "$(ls -d $CONDA_PREFIX/share/famdb-*)" < /dev/null &>> {log}
+        """
+
 
 rule get_uniprot_data: 
     resources:
@@ -618,7 +646,8 @@ rule run_repeatmasker:
         "../../envs/repeats.yaml"
     input:
         fasta=select_fasta_cdna,
-        dfam=select_dfam_files
+        dfam=select_dfam_files,
+        repeatmasker=rules.install_repeatmasker.output
     output:
         os.path.join(path_output, "data", prefix, "output", "{db}", "repeat_masker", f"{os.path.basename(select_fasta_cdna(config))}.out")
     threads: 16
@@ -627,7 +656,9 @@ rule run_repeatmasker:
         outdir=os.path.join(path_output, "data", prefix, "output", "{db}", "repeat_masker/"),
         ids_script=os.path.abspath("scripts/repeatmasker_ids.py"),  # absolute: the rule cd's into outdir
         dfam_dir=os.path.join(path_output, "data", "global", "dfam"),
-        dfam_mode=repeatmasker_dfam,
+        # The species libraries RepeatMasker builds from Dfam. Their names say the species and whether uncurated
+        # families are in, and runs can share the folder
+        cache_dir=os.path.join(path_output, "data", "global", "dfam", "cache"),
         uncurated="-uncurated" if repeatmasker_dfam == "all" else "",
         # Each RepeatMasker job runs RMBlast with 4 threads
         parallel_jobs=lambda wildcards, threads: max(1, threads // 4)
@@ -638,25 +669,11 @@ rule run_repeatmasker:
         mkdir -p {params.outdir}
         cd {params.outdir}
 
-        # RepeatMasker runs $FAMDB_DIR/famdb.py without saying where the Dfam files are. This wrapper adds -i,
-        # so they can stay in the output folder instead of the conda env
-        mkdir -p famdb_wrapper
-        printf '#!/bin/sh\nexec "%s" -i "%s" "$@"\n' "$(command -v famdb.py)" "{params.dfam_dir}" > famdb_wrapper/famdb.py
-        chmod +x famdb_wrapper/famdb.py
-        export FAMDB_DIR="$PWD/famdb_wrapper"
-
-        # RepeatMasker 4.2.4 caches the species libraries in the env under the Dfam release only, so after a change
-        # of repeatmasker_dfam it would reuse the old ones. Clear them when it changes (4.2.6 fixes it with -cache_dir)
-        CACHE="$CONDA_PREFIX/share/RepeatMasker/Libraries"
-        if [ "$(cat "$CACHE/isoannot_dfam_mode" 2> /dev/null)" != "{params.dfam_mode}" ]; then
-            rm -rf "$CACHE"/CONS-Dfam_*
-            echo "{params.dfam_mode}" > "$CACHE/isoannot_dfam_mode"
-        fi
-
         # RepeatMasker stops on FASTA IDs longer than 50 characters: run it on a copy with those IDs hashed,
         # then put the original IDs back in the .out file
         {params.ids_script} shorten --fasta {input.fasta} --output tmp_hashed.fasta --mapping id_mapping.tsv &> {log}
-        RepeatMasker tmp_hashed.fasta -species "{params.species}" {params.uncurated} -pa {params.parallel_jobs} -dir . &>> {log}
+        {input.repeatmasker} tmp_hashed.fasta -species "{params.species}" {params.uncurated} -famdb_data_dir {params.dfam_dir} \
+            -cache_dir {params.cache_dir} -pa {params.parallel_jobs} -dir . &>> {log}
         {params.ids_script} restore --repeatmasker_file tmp_hashed.fasta.out --mapping id_mapping.tsv --output {output} &>> {log}
         """
 

@@ -436,7 +436,7 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
 
 5. **RepeatMasker**:
    - It is off by default for now. Add `repeat_masker=True` to `--config` to turn it on.
-   - IsoAnnot downloads the Dfam 4.0 library to `{outputdir}/data/global/dfam/`: 90 MB for the curated families (the default), 4.2 GB with `repeatmasker_dfam=all`, which adds the uncurated ones.
+   - IsoAnnot installs RepeatMasker 4.2.6 from its [GitHub release](https://github.com/Dfam-consortium/RepeatMasker/releases) and downloads the Dfam 4.0 library, both into `{outputdir}/data/global/`. The curated families (the default) are a 90 MB download and take 600 MB on disk. `repeatmasker_dfam=all` adds the uncurated ones: a 4.2 GB download (about 40 minutes on our cluster) that takes 25 GB on disk.
    - Curated families cover human, mouse and zebrafish well (about 1,400 to 2,000 each) but plants hardly at all: Dfam 4.0 has only 9 curated families for *Arabidopsis thaliana*, and 503 uncurated ones. For plants use `repeatmasker_dfam=all`.
 
 6. **`biomart_table`**: the GO and Reactome layers ask BioMart for gene names and GO terms while the pipeline runs. `www.ensembl.org` always serves the newest Ensembl release, which may not be the release of your GTF, and the run fails if BioMart is down. To avoid both, save the answer once with the archive host of your release and point `biomart_table` to it (absolute path):
