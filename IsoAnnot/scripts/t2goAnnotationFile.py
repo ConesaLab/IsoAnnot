@@ -187,7 +187,7 @@ def get_primary_dfs(classification_file, gene_desc_file, protein_assoc_info, ext
                                   ".", t_prop.get("strand"), ".", "; ".join(cds_attributes)])
 
     if n_ref_protein_fallback:
-        logging.warning(f"{n_ref_protein_fallback} coding transcripts have no reference protein with the same sequence. "
+        logging.warning(f"{n_ref_protein_fallback} coding transcripts have a refProt that is not in parsed_databases.json. "
                         f"Their refProt from the classification file is used as protein ID.")
 
     output_dfs = {

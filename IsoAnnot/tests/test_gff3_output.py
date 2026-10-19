@@ -464,7 +464,7 @@ def test_protein_id_fallbacks(run_script, tmp_path):
     assert result.returncode == 0, result.stderr
     cds = {row[0]: row[8] for row in read_tsv(output) if row[2] == "CDS"}
     assert cds == {"ENST00000000001": "ID=P0SYA1", "ENST00000000006": "ID=ENSP00000000006"}
-    assert ("WARNING:root:1 coding transcripts have no reference protein with the same sequence. "
+    assert ("WARNING:root:1 coding transcripts have a refProt that is not in parsed_databases.json. "
             "Their refProt from the classification file is used as protein ID.") in result.stderr.splitlines()
 
     # mytranscripts: SQANTI3 classifications have no refProt column
@@ -500,5 +500,5 @@ def test_t2go_empty_protein_association(run_script, tmp_path):
     assert result.returncode == 0, result.stderr
     assert {row[2]: row[8] for row in read_tsv(output) if row[2] in ("CDS", "protein")} == {
         "CDS": "ID=ENSP00000000001", "protein": "ID=ENSP00000000001"}
-    assert ("WARNING:root:1 coding transcripts have no reference protein with the same sequence. "
+    assert ("WARNING:root:1 coding transcripts have a refProt that is not in parsed_databases.json. "
             "Their refProt from the classification file is used as protein ID.") in result.stderr.splitlines()
