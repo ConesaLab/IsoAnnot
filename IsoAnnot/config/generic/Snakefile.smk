@@ -20,6 +20,7 @@ path_output = config["path_output"]
 nls_model = config.get("nls_model", None)
 nls_chunks = int(config.get("nls_chunks", 50))
 nls_java_memory = config.get("nls_java_memory", "2g")
+repeatmasker_dfam = str(config.get("repeatmasker_dfam", "curated")).lower()
 
 
 def is_feature_enabled(key, default=True):
@@ -71,6 +72,15 @@ def _remove_extension(config_value, all=False):
 def _uniprot_files(config_key):
     # Chosen by config list, not by the .dat.gz/.fasta.gz ending, so plain (not gzipped) URLs are kept too
     return [os.path.join(path_output, "data", prefix, "config", "uniprot", os.path.basename(url)) for url in config[config_key]]
+
+def select_dfam_files(wildcards):
+    # The root file holds the taxonomy and is always needed. The uncurated files (partitions 0 and 1 in Dfam 4.0)
+    # are only read by RepeatMasker -uncurated, so they are downloaded only with repeatmasker_dfam: all
+    dfam_parts = {"curated": ["0", "curated.consensus.0"],
+                  "all": ["0", "curated.consensus.0", "uncurated.consensus.0", "uncurated.consensus.1"]}
+    if repeatmasker_dfam not in dfam_parts:
+        raise ValueError(f"repeatmasker_dfam must be curated or all, not '{config['repeatmasker_dfam']}'.")
+    return [os.path.join(path_output, "data", "global", "dfam", f"{config['dfam_prefix']}.{part}.h5") for part in dfam_parts[repeatmasker_dfam]]
 
 def get_sqanti_extra_params(wildcards):
     if config.get("fasta_cdna"):
@@ -351,6 +361,27 @@ rule prepare_pfam_clan:
         gunzip -k {input} &> {log}
         """
 
+# One Dfam file per job, checked against the md5 that Dfam publishes next to it
+rule get_dfam:
+    resources:
+        n_downloads=1
+    output:
+        os.path.join(path_output, "data", "global", "dfam", "{dfam_file}.h5")
+    params:
+        URL=config["dfam_url"],
+        outdir=os.path.join(path_output, "data", "global", "dfam")
+    log:
+        os.path.join(path_output, "logs", prefix, "get_dfam", "{dfam_file}.log")
+    shell:
+        """
+        cd {params.outdir}
+        wget -nv -O {wildcards.dfam_file}.h5.gz {params.URL}/{wildcards.dfam_file}.h5.gz &> {log}
+        wget -nv -O {wildcards.dfam_file}.h5.gz.md5 {params.URL}/{wildcards.dfam_file}.h5.gz.md5 &>> {log}
+        md5sum -c {wildcards.dfam_file}.h5.gz.md5 &>> {log}
+        gunzip -f {wildcards.dfam_file}.h5.gz &>> {log}
+        rm {wildcards.dfam_file}.h5.gz.md5
+        """
+
 
 rule get_uniprot_data: 
     resources:
@@ -586,13 +617,20 @@ rule run_repeatmasker:
     conda:
         "../../envs/repeats.yaml"
     input:
-        select_fasta_cdna
+        fasta=select_fasta_cdna,
+        dfam=select_dfam_files
     output:
         os.path.join(path_output, "data", prefix, "output", "{db}", "repeat_masker", f"{os.path.basename(select_fasta_cdna(config))}.out")
+    threads: 16
     params:
         species=config["species"],
         outdir=os.path.join(path_output, "data", prefix, "output", "{db}", "repeat_masker/"),
         ids_script=os.path.abspath("scripts/repeatmasker_ids.py"),  # absolute: the rule cd's into outdir
+        dfam_dir=os.path.join(path_output, "data", "global", "dfam"),
+        dfam_mode=repeatmasker_dfam,
+        uncurated="-uncurated" if repeatmasker_dfam == "all" else "",
+        # Each RepeatMasker job runs RMBlast with 4 threads
+        parallel_jobs=lambda wildcards, threads: max(1, threads // 4)
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "run_repeatmasker.log")
     shell:
@@ -600,17 +638,25 @@ rule run_repeatmasker:
         mkdir -p {params.outdir}
         cd {params.outdir}
 
-        # Prepare libraries
-        LIBDIR="$CONDA_PREFIX/lib"
-        if [ ! -e "$LIBDIR/libnsl.so.1" ]; then
-            ln -sf "$LIBDIR/libnsl.so.3" "$LIBDIR/libnsl.so.1"  #A symbolic link is created; there is no version that installs the required dependency
+        # RepeatMasker runs $FAMDB_DIR/famdb.py without saying where the Dfam files are. This wrapper adds -i,
+        # so they can stay in the output folder instead of the conda env
+        mkdir -p famdb_wrapper
+        printf '#!/bin/sh\nexec "%s" -i "%s" "$@"\n' "$(command -v famdb.py)" "{params.dfam_dir}" > famdb_wrapper/famdb.py
+        chmod +x famdb_wrapper/famdb.py
+        export FAMDB_DIR="$PWD/famdb_wrapper"
+
+        # RepeatMasker 4.2.4 caches the species libraries in the env under the Dfam release only, so after a change
+        # of repeatmasker_dfam it would reuse the old ones. Clear them when it changes (4.2.6 fixes it with -cache_dir)
+        CACHE="$CONDA_PREFIX/share/RepeatMasker/Libraries"
+        if [ "$(cat "$CACHE/isoannot_dfam_mode" 2> /dev/null)" != "{params.dfam_mode}" ]; then
+            rm -rf "$CACHE"/CONS-Dfam_*
+            echo "{params.dfam_mode}" > "$CACHE/isoannot_dfam_mode"
         fi
-        export LD_LIBRARY_PATH="$LIBDIR${{LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}}"
 
         # RepeatMasker stops on FASTA IDs longer than 50 characters: run it on a copy with those IDs hashed,
         # then put the original IDs back in the .out file
-        {params.ids_script} shorten --fasta {input} --output tmp_hashed.fasta --mapping id_mapping.tsv &> {log}
-        RepeatMasker tmp_hashed.fasta -species "{params.species}" -dir . &>> {log}
+        {params.ids_script} shorten --fasta {input.fasta} --output tmp_hashed.fasta --mapping id_mapping.tsv &> {log}
+        RepeatMasker tmp_hashed.fasta -species "{params.species}" {params.uncurated} -pa {params.parallel_jobs} -dir . &>> {log}
         {params.ids_script} restore --repeatmasker_file tmp_hashed.fasta.out --mapping id_mapping.tsv --output {output} &>> {log}
         """
 

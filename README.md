@@ -410,7 +410,8 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
 | `uniprot_dat` | UniProt DAT file URLs (list) | List of URLs |
 | `reactome` | Reactome pathway mapping file URL | URL or pathway-specific URL; `no` to skip the layer |
 | `layer_go` | Include Gene Ontology layer | `si`, `yes` or `true` to include; `no`, `false` or omit to skip |
-| `repeat_masker` | Include the RepeatMasker layer | `False` by default; `True` to include (needs a Dfam library, see note 5) |
+| `repeat_masker` | Include the RepeatMasker layer | `False` by default; `True` to include (see note 5) |
+| `repeatmasker_dfam` | Dfam repeat families RepeatMasker searches | `curated` (default) or `all` for curated and uncurated (see note 5) |
 | `biomart_table` | Saved BioMart table for the GO and Reactome layers, read instead of querying BioMart (optional) | `/abs/path/hsapiens_e115_biomart.tsv` |
 
 **Important notes**:
@@ -434,8 +435,9 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
    - Plants: `https://plantreactome.gramene.org/download/current/Ensembl2PlantReactome_All_Levels.txt`
 
 5. **RepeatMasker**:
-   - It is off by default, because the `repeats` conda environment comes with an empty Dfam library and RepeatMasker can't run with it.
-   - To turn it on, install in that environment a Dfam library its RepeatMasker can read (RepeatMasker 4.1.5 can't read the Dfam 4.0 files), then add `repeat_masker=True` to `--config`.
+   - It is off by default for now. Add `repeat_masker=True` to `--config` to turn it on.
+   - IsoAnnot downloads the Dfam 4.0 library to `{outputdir}/data/global/dfam/`: 90 MB for the curated families (the default), 4.2 GB with `repeatmasker_dfam=all`, which adds the uncurated ones.
+   - Curated families cover human, mouse and zebrafish well (about 1,400 to 2,000 each) but plants hardly at all: Dfam 4.0 has only 9 curated families for *Arabidopsis thaliana*, and 503 uncurated ones. For plants use `repeatmasker_dfam=all`.
 
 6. **`biomart_table`**: the GO and Reactome layers ask BioMart for gene names and GO terms while the pipeline runs. `www.ensembl.org` always serves the newest Ensembl release, which may not be the release of your GTF, and the run fails if BioMart is down. To avoid both, save the answer once with the archive host of your release and point `biomart_table` to it (absolute path):
    ```bash

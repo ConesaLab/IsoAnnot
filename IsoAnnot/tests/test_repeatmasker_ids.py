@@ -18,13 +18,14 @@ LONG_ID = "PB.1.1|chr1:1000-5000(+)|transcript/1234|full_length_coverage=10|leng
 SHORT_ID = "ENST00000000001.4"
 
 # Stand-in for RepeatMasker: it stops on IDs longer than 50 characters, as the real one does, and writes
-# one .out hit per sequence, with the 3 header lines and the column layout of a real .out file. It also
-# saves the LD_LIBRARY_PATH it was run with.
+# one .out hit per sequence, with the 3 header lines and the column layout of a real .out file. Like the
+# real one it runs $FAMDB_DIR/famdb.py, and saves what that printed.
 FAKE_REPEATMASKER = f"""#!{sys.executable}
-import os, sys
+import os, subprocess, sys
 fasta = sys.argv[1]
 out_dir = sys.argv[sys.argv.index("-dir") + 1]
-open(os.path.join(out_dir, "ld_library_path.txt"), "w").write(os.environ.get("LD_LIBRARY_PATH", ""))
+famdb = subprocess.run([os.path.join(os.environ["FAMDB_DIR"], "famdb.py"), "info"], capture_output=True, text=True)
+open(os.path.join(out_dir, "famdb_call.txt"), "w").write(famdb.stdout)
 ids = [line[1:].split()[0] for line in open(fasta) if line.startswith(">")]
 if any(len(i) > 50 for i in ids):
     sys.exit("FastaDB::_cleanIDs: Fasta file contains a sequence identifier which is too long ( max id length = 50 )")
@@ -94,7 +95,11 @@ def test_short_ids_and_no_repeats(tmp_path, synthetic_dir):
 
 
 def test_run_repeatmasker_rule(tmp_path):
-    """run_repeatmasker runs end to end and the .out file keeps the original long IDs."""
+    """
+    run_repeatmasker runs end to end and the .out file keeps the original long IDs. RepeatMasker finds the
+    Dfam files of the output folder through the famdb.py wrapper, and a species library cached with the
+    other repeatmasker_dfam choice is removed.
+    """
     if not SNAKEMAKE or not os.path.isfile(SNAKEMAKE):
         pytest.skip("Snakemake not found (set ISOANNOT_SNAKEMAKE or put snakemake on PATH)")
 
@@ -102,16 +107,23 @@ def test_run_repeatmasker_rule(tmp_path):
     cdna = out_dir / "data" / "Hsapiens" / "config" / "ensembl" / "Homo_sapiens.GRCh38.cdna.all.fa"
     cdna.parent.mkdir(parents=True)
     cdna.write_text(f">{SHORT_ID} cdna\nACGTACGT\n>{LONG_ID}\nGGGGCCCC\n")
+    # Already downloaded, so get_dfam does not run
+    dfam_dir = out_dir / "data" / "global" / "dfam"
+    dfam_dir.mkdir(parents=True)
+    for dfam_file in ["dfam40.0.h5", "dfam40.curated.consensus.0.h5"]:
+        (dfam_dir / dfam_file).write_text("")
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     (bin_dir / "RepeatMasker").write_text(FAKE_REPEATMASKER)
     (bin_dir / "RepeatMasker").chmod(0o755)
-    # The rule links libnsl into $CONDA_PREFIX/lib; point it at a scratch folder instead of a real env.
-    (tmp_path / "conda" / "lib").mkdir(parents=True)
+    (bin_dir / "famdb.py").write_text('#!/bin/sh\necho "$@"\n')
+    (bin_dir / "famdb.py").chmod(0o755)
+    # A species library cached by an earlier run with repeatmasker_dfam: all, in a scratch folder instead of a real env
+    libraries = tmp_path / "conda" / "share" / "RepeatMasker" / "Libraries"
+    (libraries / "CONS-Dfam_4.0" / "homo_sapiens").mkdir(parents=True)
+    (libraries / "isoannot_dfam_mode").write_text("all\n")
     env = dict(os.environ, CONDA_PREFIX=str(tmp_path / "conda"),
                PATH=f"{bin_dir}:{os.path.dirname(sys.executable)}:{os.environ['PATH']}")
-    # Conda activation does not set LD_LIBRARY_PATH, and the rule must work without it
-    env.pop("LD_LIBRARY_PATH", None)
 
     config_dir = os.path.join(ISOANNOT_DIR, "config", "ensembl", "hsapiens")
     target = out_dir / "data" / "Hsapiens" / "output" / "ensembl" / "repeat_masker" / f"{cdna.name}.out"
@@ -125,5 +137,6 @@ def test_run_repeatmasker_rule(tmp_path):
 
     rows = [line.split() for line in target.read_text().splitlines()[3:]]
     assert [row[4] for row in rows] == [SHORT_ID, LONG_ID]
-    # No empty entry, which the loader would read as the current folder
-    assert (target.parent / "ld_library_path.txt").read_text() == str(tmp_path / "conda" / "lib")
+    assert (target.parent / "famdb_call.txt").read_text() == f"-i {dfam_dir} info\n"
+    assert not (libraries / "CONS-Dfam_4.0").exists()
+    assert (libraries / "isoannot_dfam_mode").read_text() == "curated\n"

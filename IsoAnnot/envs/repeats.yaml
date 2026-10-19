@@ -6,9 +6,8 @@ channels:
 dependencies:
   - python=3.10    
   - perl=5.32      
-  - blast=2.16.0
-  - repeatmasker=4.1.5 
-  - rmblast=2.14.1
+  - repeatmasker=4.2.4
+  - rmblast=2.17.0
   - trf=4.09.1     
   - hmmer=3.4
   - pandas
