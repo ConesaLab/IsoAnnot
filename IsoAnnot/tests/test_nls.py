@@ -185,3 +185,36 @@ def test_expand_nls_writes_log(run_rule, tmp_path, nls_dir):
     assert result.returncode == 0, result.stdout + result.stderr
     log = tmp_path / "logs" / "Hsapiens" / "ensembl" / "expand_nls.log"
     assert log.read_text().splitlines()[-1] == "INFO: Expansion complete. Total annotations generated: 2"
+
+
+@pytest.mark.parametrize("merged_text", ["", nucimport_output()])
+def test_parse_nls_no_results(run_rule, tmp_path, nls_dir, merged_text):
+    """No protein reached NucImport (all shorter than 30 aa): parse_nls stopped the run instead of giving an empty layer."""
+    nls_dir.mkdir(parents=True)
+    (nls_dir / "output_merged.txt").write_text(merged_text)
+    parsed = nls_dir / "nls_parsed.tsv"
+    result = run_rule("parse_nls", [parsed])
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert parsed.read_text() == "ID\tImpProb\tcNLSProb\tSeq\tClass\tPos\n"
+    log = (tmp_path / "logs" / "Hsapiens" / "ensembl" / "parse_nls.log").read_text()
+    assert "WARNING: NucImport returned no results, so the NLS layer will be empty." in log
+
+
+def test_expand_nls_no_results(run_rule, nls_dir):
+    """The empty table of parse_nls gives an empty expanded table."""
+    nls_dir.mkdir(parents=True)
+    (nls_dir / "nls_parsed.tsv").write_text("ID\tImpProb\tcNLSProb\tSeq\tClass\tPos\n")
+    (nls_dir / "protein_mapping.tsv").write_text("UniqueID\tOriginalIDs\nP1\tP1,P2\n")
+    result = run_rule("expand_nls", [nls_dir / "nls_final_expanded.tsv"])
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (nls_dir / "nls_final_expanded.tsv").read_text() == "ID\tImpProb\tcNLSProb\tSeq\tClass\tPos\n"
+
+
+def test_nls_deduplicate_no_proteins(run_rule, nls_dir):
+    """No protein of 30 aa or longer: the redundancy percentage divided by zero."""
+    nls_dir.mkdir(parents=True)
+    (nls_dir / "nls_filtered_proteins.fa").write_text("")
+    result = run_rule("nls_deduplicate", [nls_dir / "unique_proteins.fa"])
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (nls_dir / "unique_proteins.fa").read_text() == ""
+    assert (nls_dir / "protein_mapping.tsv").read_text() == "UniqueID\tOriginalIDs\n"

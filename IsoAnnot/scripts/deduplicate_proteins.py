@@ -80,7 +80,9 @@ def main():
     logging.info("Deduplication complete.")
     logging.info(f"Original proteins processed: {original_count}")
     logging.info(f"Unique representative proteins: {unique_count}")
-    logging.info(f"Redundancy reduced by: {((original_count - unique_count) / original_count * 100):.2f}%")
+    # No protein when none is 30 aa or longer
+    if original_count:
+        logging.info(f"Redundancy reduced by: {((original_count - unique_count) / original_count * 100):.2f}%")
 
 if __name__ == "__main__":
     # Configure logging to output to stderr with clean formatting
