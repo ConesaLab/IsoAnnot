@@ -903,11 +903,17 @@ rule run_nucimport:
         # NucImport reads its model files from the current folder and also writes its results to aout.txt there.
         # Each chunk runs in its own folder with links to the model files, so parallel runs do not share aout.txt.
         # Link only the files the jar reads: a glob would also link an aout.txt left in software/NucImport by older runs.
-        rm -rf {params.work_dir}
-        mkdir -p {params.work_dir}
-        ln -s {params.jar_dir}/{params.jar_name} {params.jar_dir}/*.mod {params.jar_dir}/HomologFinal*.txt {params.jar_dir}/Int*.txt {params.work_dir}/
-        (cd {params.work_dir} && java -Xmx{nls_java_memory} -jar {params.jar_name} {input} {nls_model} Mouse ID=F > {output} 2> {log})
-        rm -rf {params.work_dir}
+        # An empty chunk (fewer proteins than nls_chunks) gets an empty output: starting Java for it takes about 6 s for nothing.
+        if [ ! -s {input} ]; then
+            : > {output}
+            echo "Empty chunk: NucImport not run" > {log}
+        else
+            rm -rf {params.work_dir}
+            mkdir -p {params.work_dir}
+            ln -s {params.jar_dir}/{params.jar_name} {params.jar_dir}/*.mod {params.jar_dir}/HomologFinal*.txt {params.jar_dir}/Int*.txt {params.work_dir}/
+            (cd {params.work_dir} && java -Xmx{nls_java_memory} -jar {params.jar_name} {input} {nls_model} Mouse ID=F > {output} 2> {log})
+            rm -rf {params.work_dir}
+        fi
         """
 
 rule merge_nls_chunks:

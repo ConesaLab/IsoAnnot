@@ -82,13 +82,17 @@ def test_split_proteins_fewer_proteins_than_chunks(run_rule, nls_dir):
     assert records == [[">P1", "MSPKKKRKVEDPAAAALLLL"], [">P2", "MAAAAGGGGLLLLVVVVSSSS"], [], []]
 
 
-def test_merge_nls_chunks_empty_chunks(run_rule, nls_dir):
-    """Empty chunks give a NucImport output with only the two header lines; the pattern-based merge keeps one header."""
+@pytest.mark.parametrize("empty_output", ["", nucimport_output()])
+def test_merge_nls_chunks_empty_chunks(run_rule, nls_dir, empty_output):
+    """
+    Empty chunks give an empty output (run_nucimport skips Java), or only the two header lines when NucImport
+    ran on them. The pattern-based merge keeps one header in both cases.
+    """
     chunk_dir = nls_dir / "tmp"
     chunk_dir.mkdir(parents=True)
-    (chunk_dir / "output_chunk_0.txt").write_text(nucimport_output())
+    (chunk_dir / "output_chunk_0.txt").write_text(empty_output)
     (chunk_dir / "output_chunk_1.txt").write_text(nucimport_output("P1"))
-    (chunk_dir / "output_chunk_2.txt").write_text(nucimport_output())
+    (chunk_dir / "output_chunk_2.txt").write_text(empty_output)
     merged = nls_dir / "output_merged.txt"
     result = run_rule("merge_nls_chunks", [merged], "nls_chunks=3")
     assert result.returncode == 0, result.stdout + result.stderr
@@ -117,7 +121,7 @@ def leftover_aout():
 
 
 def test_run_nucimport_own_folder(run_rule, nls_dir, leftover_aout):
-    """Parallel NucImport runs all wrote aout.txt into software/NucImport; each chunk now runs in its own folder, also when an old aout.txt is there. Empty chunks give a header-only output."""
+    """Parallel NucImport runs all wrote aout.txt into software/NucImport; each chunk now runs in its own folder, also when an old aout.txt is there. Empty chunks give an empty output."""
     if shutil.which("java") is None:
         pytest.skip("java not found on PATH")
     chunk_dir = nls_dir / "chunks_temp"
@@ -142,7 +146,21 @@ def test_run_nucimport_own_folder(run_rule, nls_dir, leftover_aout):
     assert [[r[0], r[3], r[4], r[5]] for r in rows] == [["P1", "AALLLLKRKRRSPPKKKRKV", "Class1", "15"],
                                                          ["P3", "PRGRPKKKRKVLLAAAPEDK", "Class1", "4"]]
     assert [float(r[1]) for r in rows] == pytest.approx([0.99499797, 0.99333969])
-    assert outputs[1].read_text() == nucimport_output()
+    assert outputs[1].read_text() == ""
+
+
+def test_run_nucimport_empty_chunk(run_rule, tmp_path, nls_dir):
+    """An empty chunk gets an empty output without starting Java, which took about 6 s per chunk."""
+    chunk_dir = nls_dir / "chunks_temp"
+    chunk_dir.mkdir(parents=True)
+    (chunk_dir / "chunk_0.fa").write_text("")
+    output = nls_dir / "tmp" / "output_chunk_0.txt"
+    result = run_rule("run_nucimport", [output], "nls_chunks=1")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert output.read_text() == ""
+    log = tmp_path / "logs" / "Hsapiens" / "ensembl" / "run_nucimport" / "run_nucimport_chunk_0.log"
+    assert log.read_text() == "Empty chunk: NucImport not run\n"
+    assert not (nls_dir / "tmp" / "nucimport_chunk_0").exists()
 
 
 @pytest.mark.parametrize("config, xmx", [((), "-Xmx2g"), (("nls_java_memory=6g",), "-Xmx6g")])
