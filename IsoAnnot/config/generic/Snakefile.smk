@@ -280,6 +280,24 @@ rule prepare_ensembl_reference:
         gunzip -k {input} &> {log}
         """
 
+# RefSeq transcript sequences spliced from the genome and the RefSeq GTF. NCBI's rna.fna can differ from the
+# genome (poly(A) tails, insertions), which shifted the UtrScan and RepeatMasker positions against the GFF3 exons
+rule prepare_refseq_transcripts:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        gtf=rules.prepare_refseq_gtf.output,
+        reference=rules.prepare_ensembl_reference.output,
+        chr_ref=rules.get_refseq_acc.output
+    output:
+        fa=os.path.join(path_output, "data", prefix, "config", "refseq", "refseq_transcripts.fa")
+    log:
+        os.path.join(path_output, "logs", prefix, "prepare_refseq_transcripts.log")
+    shell:
+        """
+        scripts/transcripts_from_genome.py --gtf {input.gtf} --genome {input.reference} --chr_ref {input.chr_ref} --output {output.fa} &> {log}
+        """
+
 rule get_ensembl_gtf:
     output:
         os.path.join(path_output, "data", prefix, "config", "ensembl", os.path.basename(config["ensembl_gtf"]))

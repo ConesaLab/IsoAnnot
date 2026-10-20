@@ -447,6 +447,8 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
    ```
    The archive host of each release is listed at https://www.ensembl.org/info/website/archives/. Run it in the `isoannotpy` environment, which has `pybiomart`.
 
+7. **RefSeq transcript sequences**: in refseq mode, UTRScan, RepeatMasker and the miRNA layer read the RefSeq transcripts spliced from the genome (`ensembl_reference`) with the exons of `refseq_gtf`, not NCBI's `rna.fna`. Some `rna.fna` sequences differ from the genome (a poly(A) tail, or bases the genome does not have), and their positions did not match the exons of the GFF3. The positions now match, but differences of the RefSeq mRNA from the genome are not annotated. The `refseq_cdna` key is no longer used.
+
 ---
 
 ## Output
