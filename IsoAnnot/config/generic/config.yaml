@@ -3,6 +3,8 @@ pfam_clan_url: ftp://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-A.cla
 pfam_clan_desc_url: https://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-C.gz
 nls_chunks: 50
 nls_java_memory: 2g
+# Reuse NucImport results of earlier runs in this output folder (data/global/nucimport_cache), keyed by protein sequence
+nls_cache: True
 # RepeatMasker needs a Dfam library that the repeats conda env does not provide. Turn it on with repeat_masker=True
 # once Dfam is installed in that env (see the README).
 repeat_masker: False

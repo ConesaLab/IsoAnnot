@@ -274,3 +274,18 @@ def test_dry_run_without_biomart_table(dry_run):
     assert result.returncode == 0, result.stdout + result.stderr
     assert "--biomart_table" not in planned_command(result.stdout, "layer_go.py")
     assert "--biomart_table" not in planned_command(result.stdout, "layer_reactome.py")
+
+
+@pytest.mark.parametrize("config, cache_option", [
+    ([], "--cache_dir {}/data/global/nucimport_cache "),
+    (["nls_cache=False"], "--no_cache "),
+])
+def test_dry_run_nls_cache_toggle(dry_run, tmp_path, config, cache_option):
+    """The NucImport cache is on by default and kept in data/global; nls_cache=False sends every protein to NucImport."""
+    result = dry_run("ensembl", *config)
+    assert result.returncode == 0, result.stdout + result.stderr
+    jobs = job_counts(result.stdout)
+    assert jobs["nls_cache_lookup"] == 1
+    assert jobs["nls_cache_store"] == 1
+    assert cache_option.format(tmp_path) in planned_command(result.stdout, "nls_cache.py lookup")
+    assert cache_option.format(tmp_path) in planned_command(result.stdout, "nls_cache.py store")

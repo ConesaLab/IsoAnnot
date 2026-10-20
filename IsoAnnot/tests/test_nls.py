@@ -62,6 +62,7 @@ def test_merge_nls_chunks_keeps_first_protein(run_rule, nls_dir):
     """The merge skipped 3 lines of every chunk after the first, so it lost their first protein."""
     chunk_dir = nls_dir / "tmp"
     chunk_dir.mkdir(parents=True)
+    (nls_dir / "cached_results.txt").write_text(nucimport_output())
     (chunk_dir / "output_chunk_0.txt").write_text(nucimport_output("P1", "P4"))
     (chunk_dir / "output_chunk_1.txt").write_text(nucimport_output("P2", "P5"))
     (chunk_dir / "output_chunk_2.txt").write_text(nucimport_output("P3"))
@@ -71,10 +72,23 @@ def test_merge_nls_chunks_keeps_first_protein(run_rule, nls_dir):
     assert merged.read_text() == nucimport_output("P1", "P4", "P2", "P5", "P3")
 
 
+def test_merge_nls_chunks_with_cached(run_rule, nls_dir):
+    """The cached results come first, then the new ones; with every chunk empty the header still comes from the cached file."""
+    chunk_dir = nls_dir / "tmp"
+    chunk_dir.mkdir(parents=True)
+    (nls_dir / "cached_results.txt").write_text(nucimport_output("P1", "P2"))
+    (chunk_dir / "output_chunk_0.txt").write_text(nucimport_output("P3"))
+    (chunk_dir / "output_chunk_1.txt").write_text("")
+    merged = nls_dir / "output_merged.txt"
+    result = run_rule("merge_nls_chunks", [merged], "nls_chunks=2")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert merged.read_text() == nucimport_output("P1", "P2", "P3")
+
+
 def test_split_proteins_fewer_proteins_than_chunks(run_rule, nls_dir):
     """With fewer proteins than nls_chunks, awk did not create the extra chunks and Snakemake stopped with MissingOutputException."""
     nls_dir.mkdir(parents=True)
-    (nls_dir / "unique_proteins.fa").write_text(">P1\nMSPKKKRKVEDPAAAALLLL\n>P2\nMAAAAGGGGLLLLVVVVSSSS\n")
+    (nls_dir / "to_predict.fa").write_text(">P1\nMSPKKKRKVEDPAAAALLLL\n>P2\nMAAAAGGGGLLLLVVVVSSSS\n")
     chunks = [nls_dir / "chunks_temp" / f"chunk_{n}.fa" for n in range(4)]
     result = run_rule("split_proteins", chunks, "nls_chunks=4")
     assert result.returncode == 0, result.stdout + result.stderr
@@ -90,6 +104,7 @@ def test_merge_nls_chunks_empty_chunks(run_rule, nls_dir, empty_output):
     """
     chunk_dir = nls_dir / "tmp"
     chunk_dir.mkdir(parents=True)
+    (nls_dir / "cached_results.txt").write_text(nucimport_output())
     (chunk_dir / "output_chunk_0.txt").write_text(empty_output)
     (chunk_dir / "output_chunk_1.txt").write_text(nucimport_output("P1"))
     (chunk_dir / "output_chunk_2.txt").write_text(empty_output)
@@ -181,6 +196,7 @@ def test_expand_nls_writes_log(run_rule, tmp_path, nls_dir):
     (nls_dir / "nls_parsed.tsv").write_text("ID\tImpProb\tcNLSProb\tSeq\tClass\tPos\n"
                                             "P1\t0.995\t0.806\tAALLLLKRKRRSPPKKKRKV\tClass1\t15\n")
     (nls_dir / "protein_mapping.tsv").write_text("UniqueID\tOriginalIDs\nP1\tP1,P2\nP3\tP3\n")
+    (nls_dir / "nucimport_missing.txt").write_text("")
     result = run_rule("expand_nls", [nls_dir / "nls_final_expanded.tsv"])
     assert result.returncode == 0, result.stdout + result.stderr
     log = tmp_path / "logs" / "Hsapiens" / "ensembl" / "expand_nls.log"
@@ -205,6 +221,7 @@ def test_expand_nls_no_results(run_rule, nls_dir):
     nls_dir.mkdir(parents=True)
     (nls_dir / "nls_parsed.tsv").write_text("ID\tImpProb\tcNLSProb\tSeq\tClass\tPos\n")
     (nls_dir / "protein_mapping.tsv").write_text("UniqueID\tOriginalIDs\nP1\tP1,P2\n")
+    (nls_dir / "nucimport_missing.txt").write_text("")
     result = run_rule("expand_nls", [nls_dir / "nls_final_expanded.tsv"])
     assert result.returncode == 0, result.stdout + result.stderr
     assert (nls_dir / "nls_final_expanded.tsv").read_text() == "ID\tImpProb\tcNLSProb\tSeq\tClass\tPos\n"

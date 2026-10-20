@@ -838,6 +838,15 @@ rule reference_protein_assoc:
         scripts/reference_protein_assoc.py --classification_file {input.classification} --species_db {input.species_db} --database {wildcards.db} --output {output} &> {log}
         """
 
+# NucImport always runs with the mouse model and ID=F (no ID lookups). Its result then depends only on the
+# protein sequence, so results are kept in a store shared by the runs of this output folder (nls_cache)
+nucimport_jar = os.path.abspath("software/NucImport/NucImportMay2012.jar")
+nucimport_organism = "Mouse"
+nucimport_id_flag = "ID=F"
+nls_cache_option = (f"--cache_dir {os.path.join(path_output, 'data', 'global', 'nucimport_cache')}"
+                    if is_feature_enabled("nls_cache", True) else "--no_cache")
+nucimport_options = f"--model {nls_model} --organism {nucimport_organism} --id_flag {nucimport_id_flag} --jar {nucimport_jar} {nls_cache_option}"
+
 rule filter_nls:
     conda:
         "../../envs/isoannotpy.yaml"
@@ -868,9 +877,25 @@ rule nls_deduplicate:
             --output_fasta {output.fasta} --output_mapping {output.mapping} &> {log}
         """
 
+rule nls_cache_lookup:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        rules.nls_deduplicate.output.fasta
+    output:
+        to_predict = os.path.join(path_output,"data",prefix,"output","{db}","nls","to_predict.fa"),
+        cached = os.path.join(path_output,"data",prefix,"output","{db}","nls","cached_results.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "nls_cache_lookup.log")
+    shell:
+        """
+        scripts/nls_cache.py lookup --fasta {input} {nucimport_options} \
+            --to_predict {output.to_predict} --cached {output.cached} &> {log}
+        """
+
 rule split_proteins:
     input: 
-        rules.nls_deduplicate.output.fasta
+        rules.nls_cache_lookup.output.to_predict
     output: 
         expand(os.path.join(path_output,"data",prefix,"output","{{db}}","nls", "chunks_temp", "chunk_{n}.fa"), n=range(nls_chunks))
     log:
@@ -895,8 +920,8 @@ rule run_nucimport:
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "run_nucimport", "run_nucimport_chunk_{n}.log")
     params:
-        jar_dir = os.path.abspath("software/NucImport"),
-        jar_name = "NucImportMay2012.jar",
+        jar_dir = os.path.dirname(nucimport_jar),
+        jar_name = os.path.basename(nucimport_jar),
         work_dir = os.path.join(path_output, "data", prefix, "output", "{db}", "nls", "tmp", "nucimport_chunk_{n}")
     shell:
         """
@@ -911,14 +936,16 @@ rule run_nucimport:
             rm -rf {params.work_dir}
             mkdir -p {params.work_dir}
             ln -s {params.jar_dir}/{params.jar_name} {params.jar_dir}/*.mod {params.jar_dir}/HomologFinal*.txt {params.jar_dir}/Int*.txt {params.work_dir}/
-            (cd {params.work_dir} && java -Xmx{nls_java_memory} -jar {params.jar_name} {input} {nls_model} Mouse ID=F > {output} 2> {log})
+            (cd {params.work_dir} && java -Xmx{nls_java_memory} -jar {params.jar_name} {input} {nls_model} {nucimport_organism} {nucimport_id_flag} > {output} 2> {log})
             rm -rf {params.work_dir}
         fi
         """
 
 rule merge_nls_chunks:
     input: 
-        expand(os.path.join(path_output,"data",prefix,"output","{{db}}","nls","tmp", "output_chunk_{n}.txt"), n=range(nls_chunks))
+        # The cached results go first: they always start with the header, even when every chunk is empty
+        cached = rules.nls_cache_lookup.output.cached,
+        chunks = expand(os.path.join(path_output,"data",prefix,"output","{{db}}","nls","tmp", "output_chunk_{n}.txt"), n=range(nls_chunks))
     output: 
         os.path.join(path_output,"data",prefix,"output","{db}","nls","output_merged.txt")
     log:
@@ -927,7 +954,25 @@ rule merge_nls_chunks:
         """
         # Each chunk starts with a header line and a line of stars. Keep them once and match them by
         # pattern: skipping a fixed number of lines lost the first protein of every chunk but the first.
-        awk '/^Protein ID\\t/ {{ if (!header++) print; next }} /^\\*+$/ {{ if (!stars++) print; next }} {{ print }}' {input} > {output} 2> {log}
+        awk '/^Protein ID\\t/ {{ if (!header++) print; next }} /^\\*+$/ {{ if (!stars++) print; next }} {{ print }}' {input.cached} {input.chunks} > {output} 2> {log}
+        """
+
+rule nls_cache_store:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        fasta = rules.nls_cache_lookup.output.to_predict,
+        results = rules.merge_nls_chunks.input.chunks
+    output:
+        missing = os.path.join(path_output,"data",prefix,"output","{db}","nls","nucimport_missing.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "nls_cache_store.log")
+    params:
+        name = lambda wildcards: f"{prefix}_{wildcards.db}"
+    shell:
+        """
+        scripts/nls_cache.py store --fasta {input.fasta} {nucimport_options} \
+            --results {input.results} --name {params.name} --missing {output.missing} &> {log}
         """
 
 rule parse_nls:
@@ -954,7 +999,9 @@ rule expand_nls:
         "../../envs/isoannotpy.yaml"
     input:
         parsed_tsv = rules.parse_nls.output,
-        mapping = rules.nls_deduplicate.output.mapping
+        mapping = rules.nls_deduplicate.output.mapping,
+        # Not read: makes the run store the new results and stop when most proteins got none
+        missing = rules.nls_cache_store.output.missing
     output:
         os.path.join(path_output,"data",prefix,"output","{db}","nls","nls_final_expanded.tsv")
     log:
