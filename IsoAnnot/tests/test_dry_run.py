@@ -209,6 +209,23 @@ def test_dry_run_repeat_masker_toggle(dry_run, config, enabled):
     assert jobs["tappas_annotation"] == 1
 
 
+def test_dry_run_refseq_transcripts_from_genome(dry_run, tmp_path):
+    """
+    RefSeq mode gives UtrScan, RepeatMasker and the miRNA layer the transcripts spliced from the genome, not
+    NCBI's rna.fna, whose poly(A) tails and insertions shifted the positions against the GFF3 exons.
+    """
+    result = dry_run("refseq", "repeat_masker=True")
+    assert result.returncode == 0, result.stdout + result.stderr
+    jobs = job_counts(result.stdout)
+    assert jobs["prepare_refseq_transcripts"] == 1
+    assert "get_refseq_cdna" not in jobs
+    transcripts = tmp_path / "data" / "Hsapiens" / "config" / "refseq" / "refseq_transcripts.fa"
+    utrscan = next(" ".join(block.split()) for block in result.stdout.split("\n\n") if "UtrScan -SIGNALLIST" in block)
+    assert f"-INPUT={transcripts} " in utrscan
+    assert f"shorten --fasta {transcripts} " in planned_command(result.stdout, "repeatmasker_ids.py")
+    assert f"--isoform_fasta {transcripts} " in planned_command(result.stdout, "get_mirna_bs_annotation.py")
+
+
 @pytest.mark.parametrize("config, score_option", [
     ([], "--score 0.95 "),
     (["mirna_db_evidence_score_threshold="], ""),
