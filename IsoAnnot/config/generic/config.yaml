@@ -3,8 +3,8 @@ pfam_clan_url: ftp://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-A.cla
 pfam_clan_desc_url: https://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-C.gz
 nls_chunks: 50
 nls_java_memory: 2g
-# Off until its run time is measured on a full run. Turn it on with repeat_masker=True
-repeat_masker: False
+# RepeatMasker layer. Turn it off with repeat_masker=False
+repeat_masker: True
 # Dfam families RepeatMasker searches: curated (90 MB download, 600 MB on disk) or all, curated and uncurated
 # (4.2 GB download, 25 GB on disk)
 repeatmasker_dfam: curated

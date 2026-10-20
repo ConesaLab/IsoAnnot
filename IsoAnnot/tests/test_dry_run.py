@@ -196,11 +196,11 @@ def test_dry_run_reactome_toggle(dry_run, value, enabled):
 
 
 @pytest.mark.parametrize("config, enabled", [
-    ([], False),
-    (["repeat_masker=True"], True),
+    ([], True),
+    (["repeat_masker=False"], False),
 ])
 def test_dry_run_repeat_masker_toggle(dry_run, config, enabled):
-    """RepeatMasker is off unless repeat_masker=True, and Dfam is only downloaded when it is on."""
+    """RepeatMasker is on unless repeat_masker=False, and Dfam is only downloaded when it is on."""
     result = dry_run("ensembl", *config)
     assert result.returncode == 0, result.stdout + result.stderr
     jobs = job_counts(result.stdout)

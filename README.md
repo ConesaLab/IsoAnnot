@@ -410,7 +410,7 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
 | `uniprot_dat` | UniProt DAT file URLs (list) | List of URLs |
 | `reactome` | Reactome pathway mapping file URL | URL or pathway-specific URL; `no` to skip the layer |
 | `layer_go` | Include Gene Ontology layer | `si`, `yes` or `true` to include; `no`, `false` or omit to skip |
-| `repeat_masker` | Include the RepeatMasker layer | `False` by default; `True` to include (see note 5) |
+| `repeat_masker` | Include the RepeatMasker layer | `True` by default; `False` to leave it out (see note 5) |
 | `repeatmasker_dfam` | Dfam repeat families RepeatMasker searches | `curated` (default) or `all` for curated and uncurated (see note 5) |
 | `biomart_table` | Saved BioMart table for the GO and Reactome layers, read instead of querying BioMart (optional) | `/abs/path/hsapiens_e115_biomart.tsv` |
 
@@ -435,7 +435,7 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
    - Plants: `https://plantreactome.gramene.org/download/current/Ensembl2PlantReactome_All_Levels.txt`
 
 5. **RepeatMasker**:
-   - It is off by default for now. Add `repeat_masker=True` to `--config` to turn it on.
+   - It is on by default. Add `repeat_masker=False` to `--config` to leave it out.
    - IsoAnnot installs RepeatMasker 4.2.6 from its [GitHub release](https://github.com/Dfam-consortium/RepeatMasker/releases) and downloads the Dfam 4.0 library, both into `{outputdir}/data/global/`. The curated families (the default) are a 90 MB download and take 600 MB on disk. `repeatmasker_dfam=all` adds the uncurated ones: a 4.2 GB download (about 40 minutes on our cluster) that takes 25 GB on disk.
    - Curated families cover human, mouse and zebrafish well (about 1,400 to 2,000 each) but plants hardly at all: Dfam 4.0 has only 9 curated families for *Arabidopsis thaliana*, and 503 uncurated ones. For plants use `repeatmasker_dfam=all`.
 
