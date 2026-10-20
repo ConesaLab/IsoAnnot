@@ -276,6 +276,7 @@ pfam_clan_desc_url: https://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfa
 dir_sqanti: "scripts/sqanti3/"
 nls_chunks: 50
 nls_java_memory: 2g
+nls_cache: True
 ```
 
 **Key parameters**:
@@ -285,6 +286,7 @@ nls_java_memory: 2g
 - `dir_sqanti`: Directory containing SQANTI3 scripts
 - `nls_chunks`: Number of chunks the proteins are split into for NucImport. The chunks run in parallel.
 - `nls_java_memory`: Maximum Java heap of each NucImport run (`-Xmx`). NucImport needs 2g. Each chunk is a separate Java process, so plan for this amount times the number of cores.
+- `nls_cache`: Reuse NucImport results from earlier runs (`True` by default). NucImport is the longest step of a run (about 5 days for human Ensembl on 32 cores), and its result depends only on the protein sequence. Each run adds its new results to `<outputdir>/data/global/nucimport_cache/`, and later runs in the same output folder only predict the sequences that are not there yet: another Ensembl release, the RefSeq proteins, or `mytranscripts` ORFs identical to a reference protein. The store files can be copied to another output folder's `data/global/nucimport_cache/` to share them. A result is only reused with the same `nls_model` and the same NucImport jar. Set `nls_cache=False` to predict every protein.
 
 ---
 
