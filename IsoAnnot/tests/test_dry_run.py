@@ -196,17 +196,49 @@ def test_dry_run_reactome_toggle(dry_run, value, enabled):
 
 
 @pytest.mark.parametrize("config, enabled", [
-    ([], False),
-    (["repeat_masker=True"], True),
+    ([], True),
+    (["repeat_masker=False"], False),
 ])
 def test_dry_run_repeat_masker_toggle(dry_run, config, enabled):
-    """RepeatMasker is off unless repeat_masker=True: the repeats conda env has no Dfam library to run it with."""
+    """RepeatMasker is on unless repeat_masker=False, and Dfam is only downloaded when it is on."""
     result = dry_run("ensembl", *config)
     assert result.returncode == 0, result.stdout + result.stderr
     jobs = job_counts(result.stdout)
     assert ("run_repeatmasker" in jobs) == enabled
     assert ("layer_repeatmasker" in jobs) == enabled
+    assert ("get_dfam" in jobs) == enabled
+    assert ("install_repeatmasker" in jobs) == enabled
     assert jobs["tappas_annotation"] == 1
+
+
+@pytest.mark.parametrize("config, dfam_files, uncurated", [
+    ([], ["dfam40.0.h5", "dfam40.curated.consensus.0.h5"], False),
+    (["repeatmasker_dfam=all"], ["dfam40.0.h5", "dfam40.curated.consensus.0.h5",
+                                 "dfam40.uncurated.consensus.0.h5", "dfam40.uncurated.consensus.1.h5"], True),
+])
+def test_dry_run_repeatmasker_dfam(dry_run, tmp_path, config, dfam_files, uncurated):
+    """The curated Dfam files by default; repeatmasker_dfam=all adds the uncurated ones and RepeatMasker -uncurated."""
+    result = dry_run("ensembl", "repeat_masker=True", *config)
+    assert result.returncode == 0, result.stdout + result.stderr
+    jobs = job_counts(result.stdout)
+    assert jobs["get_dfam"] == len(dfam_files)
+    for dfam_file in dfam_files:
+        assert f"{tmp_path}/data/global/dfam/{dfam_file}" in result.stdout
+    # The command is split over two lines in the rule
+    lines = result.stdout.splitlines()
+    n = next(i for i, line in enumerate(lines) if line.strip().startswith(f"{tmp_path}/data/global/repeatmasker/RepeatMasker "))
+    repeatmasker_command = lines[n] + lines[n + 1]
+    assert ("-uncurated" in repeatmasker_command) == uncurated
+    assert f"-famdb_data_dir {tmp_path}/data/global/dfam " in repeatmasker_command
+    assert f"-cache_dir {tmp_path}/data/global/dfam/cache " in repeatmasker_command
+    assert "-pa 2" in repeatmasker_command  # 8 cores in the dry run, 4 per RMBlast job
+
+
+def test_dry_run_repeatmasker_dfam_invalid(dry_run):
+    """A repeatmasker_dfam value other than curated or all stops the run and names the valid values."""
+    result = dry_run("ensembl", "repeat_masker=True", "repeatmasker_dfam=uncurated")
+    assert result.returncode != 0
+    assert "repeatmasker_dfam must be curated or all, not 'uncurated'." in result.stdout + result.stderr
 
 
 @pytest.mark.parametrize("config, score_option", [

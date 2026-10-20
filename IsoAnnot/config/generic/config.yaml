@@ -3,7 +3,14 @@ pfam_clan_url: ftp://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-A.cla
 pfam_clan_desc_url: https://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-C.gz
 nls_chunks: 50
 nls_java_memory: 2g
-# RepeatMasker needs a Dfam library that the repeats conda env does not provide. Turn it on with repeat_masker=True
-# once Dfam is installed in that env (see the README).
-repeat_masker: False
+# RepeatMasker layer. Turn it off with repeat_masker=False
+repeat_masker: True
+# Dfam families RepeatMasker searches: curated (90 MB download, 600 MB on disk) or all, curated and uncurated
+# (4.2 GB download, 25 GB on disk)
+repeatmasker_dfam: curated
+# A fixed Dfam release, so results do not change when Dfam publishes a new one. dfam_prefix is the start of its file names
+dfam_url: https://www.dfam.org/releases/Dfam_4.0/families/FamDB
+dfam_prefix: dfam40
+repeatmasker_url: https://github.com/Dfam-consortium/RepeatMasker/archive/refs/tags/v4.2.6.tar.gz
+repeatmasker_sha256: 05e1ac50a8918de9b7dea6a298ca08702d518ec399489e7ae32d6b10addec1cf
 

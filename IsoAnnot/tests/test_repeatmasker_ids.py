@@ -19,12 +19,12 @@ SHORT_ID = "ENST00000000001.4"
 
 # Stand-in for RepeatMasker: it stops on IDs longer than 50 characters, as the real one does, and writes
 # one .out hit per sequence, with the 3 header lines and the column layout of a real .out file. It also
-# saves the LD_LIBRARY_PATH it was run with.
+# saves the options it was run with.
 FAKE_REPEATMASKER = f"""#!{sys.executable}
 import os, sys
 fasta = sys.argv[1]
 out_dir = sys.argv[sys.argv.index("-dir") + 1]
-open(os.path.join(out_dir, "ld_library_path.txt"), "w").write(os.environ.get("LD_LIBRARY_PATH", ""))
+open(os.path.join(out_dir, "options.txt"), "w").write(" ".join(sys.argv[2:]))
 ids = [line[1:].split()[0] for line in open(fasta) if line.startswith(">")]
 if any(len(i) > 50 for i in ids):
     sys.exit("FastaDB::_cleanIDs: Fasta file contains a sequence identifier which is too long ( max id length = 50 )")
@@ -94,7 +94,10 @@ def test_short_ids_and_no_repeats(tmp_path, synthetic_dir):
 
 
 def test_run_repeatmasker_rule(tmp_path):
-    """run_repeatmasker runs end to end and the .out file keeps the original long IDs."""
+    """
+    run_repeatmasker runs end to end and the .out file keeps the original long IDs. The RepeatMasker of the
+    output folder reads the Dfam files there and caches its libraries next to them.
+    """
     if not SNAKEMAKE or not os.path.isfile(SNAKEMAKE):
         pytest.skip("Snakemake not found (set ISOANNOT_SNAKEMAKE or put snakemake on PATH)")
 
@@ -102,16 +105,16 @@ def test_run_repeatmasker_rule(tmp_path):
     cdna = out_dir / "data" / "Hsapiens" / "config" / "ensembl" / "Homo_sapiens.GRCh38.cdna.all.fa"
     cdna.parent.mkdir(parents=True)
     cdna.write_text(f">{SHORT_ID} cdna\nACGTACGT\n>{LONG_ID}\nGGGGCCCC\n")
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    (bin_dir / "RepeatMasker").write_text(FAKE_REPEATMASKER)
-    (bin_dir / "RepeatMasker").chmod(0o755)
-    # The rule links libnsl into $CONDA_PREFIX/lib; point it at a scratch folder instead of a real env.
-    (tmp_path / "conda" / "lib").mkdir(parents=True)
-    env = dict(os.environ, CONDA_PREFIX=str(tmp_path / "conda"),
-               PATH=f"{bin_dir}:{os.path.dirname(sys.executable)}:{os.environ['PATH']}")
-    # Conda activation does not set LD_LIBRARY_PATH, and the rule must work without it
-    env.pop("LD_LIBRARY_PATH", None)
+    # Already downloaded and installed, so get_dfam and install_repeatmasker do not run
+    dfam_dir = out_dir / "data" / "global" / "dfam"
+    dfam_dir.mkdir(parents=True)
+    for dfam_file in ["dfam40.0.h5", "dfam40.curated.consensus.0.h5"]:
+        (dfam_dir / dfam_file).write_text("")
+    repeatmasker = out_dir / "data" / "global" / "repeatmasker" / "RepeatMasker"
+    repeatmasker.parent.mkdir(parents=True)
+    repeatmasker.write_text(FAKE_REPEATMASKER)
+    repeatmasker.chmod(0o755)
+    env = dict(os.environ, PATH=f"{os.path.dirname(sys.executable)}:{os.environ['PATH']}")
 
     config_dir = os.path.join(ISOANNOT_DIR, "config", "ensembl", "hsapiens")
     target = out_dir / "data" / "Hsapiens" / "output" / "ensembl" / "repeat_masker" / f"{cdna.name}.out"
@@ -125,5 +128,5 @@ def test_run_repeatmasker_rule(tmp_path):
 
     rows = [line.split() for line in target.read_text().splitlines()[3:]]
     assert [row[4] for row in rows] == [SHORT_ID, LONG_ID]
-    # No empty entry, which the loader would read as the current folder
-    assert (target.parent / "ld_library_path.txt").read_text() == str(tmp_path / "conda" / "lib")
+    assert (target.parent / "options.txt").read_text() == (f"-species Homo sapiens -famdb_data_dir {dfam_dir} "
+                                                          f"-cache_dir {dfam_dir / 'cache'} -pa 1 -dir .")
