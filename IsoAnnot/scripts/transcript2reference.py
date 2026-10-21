@@ -17,27 +17,36 @@ from uniprotPhosphosite_genomicCoordinates import get_fasta_sequences
 from layer_exons import get_gtf_exons
 
 
-def _get_transcript_exons_location(gtf_data, transcript):
+def group_exons_by_transcript(gtf_data):
+    '''
+    Groups the GTF exon lines by transcript, keeping their order in the file.
+    One pass instead of one scan of the whole GTF per isoform, which grew with the square of the input.
+    '''
+    transcript_exons = defaultdict(list)
+    for line in gtf_data:
+        transcript_id = line.split("transcript_id")[1].split(";")[0].replace('"', '').strip()
+        transcript_exons[transcript_id].append(line)
+    return transcript_exons
+
+
+def _get_transcript_exons_location(exon_lines):
     '''
     Constructs the location of the exons
 
     Args:
-        gtf_data ():
-        transcript_id (str)
+        exon_lines (list): GTF exon lines of one transcript
 
     Returns:
         SeqFeature for exon location
 
     '''
     isoform_exons = []
-    for line in gtf_data:
-        transcript_id = line.split("transcript_id")[1].split(";")[0].replace('"', '').strip()  
-        if transcript_id == transcript:
-            chr = line.split("\t")[0]
-            transcript_exon_start=int(line.split("\t")[3])
-            transcript_exon_end=int(line.split("\t")[4])
-            transcript_exon_strand = line.split("\t")[6]
-            isoform_exons.append({"start" :transcript_exon_start, "end": transcript_exon_end + 1, "strand": transcript_exon_strand})
+    for line in exon_lines:
+        chr = line.split("\t")[0]
+        transcript_exon_start=int(line.split("\t")[3])
+        transcript_exon_end=int(line.split("\t")[4])
+        transcript_exon_strand = line.split("\t")[6]
+        isoform_exons.append({"start" :transcript_exon_start, "end": transcript_exon_end + 1, "strand": transcript_exon_strand})
 
     isoforms_exon_locs = [
         FeatureLocation(exon_block['start'], exon_block['end'], strand_table.get(exon_block['strand'], None)) for exon_block
@@ -98,6 +107,7 @@ def _retrieve_pacbio_info(gtf_data, fasta_data):
     '''
     capture_regex = re.compile(r"^(\S+)\s.*?\|.*?\|.*?\|([0-9]+)\|[0-9]+$")
     isoforms_cds = {}
+    transcript_exons = group_exons_by_transcript(gtf_data)
 
     for fasta_id, fasta_seq in fasta_data.items():
         match_id = re.match(capture_regex, fasta_id)
@@ -106,7 +116,7 @@ def _retrieve_pacbio_info(gtf_data, fasta_data):
             isoform_id, cds_start = match_id.groups()
             cds_start = int(cds_start)
             cds_end = cds_start + len(fasta_seq)*3 -1 
-            exons_final_location = _get_transcript_exons_location(gtf_data, isoform_id)
+            exons_final_location = _get_transcript_exons_location(transcript_exons.get(isoform_id, []))
             isoforms_cds[isoform_id] = _calculate_cds_positions(cds_start, cds_end, exons_final_location.location)
             isoforms_cds[isoform_id]['chr'] = exons_final_location.id
 
