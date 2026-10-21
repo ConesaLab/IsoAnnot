@@ -304,12 +304,14 @@ rule check_chromosome_consistency:
         ref_fasta = rules.prepare_ensembl_reference.output
     output:
         touch(os.path.join(path_output, "data", prefix, "config", "check_chromosomes.done"))
+    log:
+        os.path.join(path_output, "logs", prefix, "check_chromosomes.log")
     shell:
         """
         python3 scripts/check_chromosomes.py \
             --user_input {input.user_input} \
             --ref_gtf {input.ref_gtf} \
-            --ref_fasta {input.ref_fasta}
+            --ref_fasta {input.ref_fasta} 2> {log}
         """
 
 rule get_pfam_clan:
