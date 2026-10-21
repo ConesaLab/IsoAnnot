@@ -222,7 +222,7 @@ def test_transcript2reference_writes_novel_rows(synthetic_dir, run_script, tmp_p
                     f">PB.10.1 GeneMark.hmm|4_aa|+|11|22\nMKKK\n")
     protein_assoc = tmp_path / "protein_assoc_data.txt"
     nmd = tmp_path / "nmd.txt"
-    result = run_script("transcript2reference.py", "--ensembl_gtf", synthetic_dir / "ensembl.gtf",
+    result = run_script("transcript2reference.py",
                         "--corrected_gtf", corrected_gtf, "--corrected_fasta_proteins", orfs,
                         "--database", "mytranscripts", "--species_db", synthetic_dir / "parsed_databases.json",
                         "--output_assoc", protein_assoc, "--output_nmd", nmd)
@@ -248,7 +248,7 @@ def test_transcript2reference_orfs_with_stop_codon(synthetic_dir, run_script, tm
     for name, stop in (("with_stop", "*"), ("without_stop", "")):
         orfs = tmp_path / f"{name}.faa"
         orfs.write_text(f">PB.3.1 GeneMark.hmm|150_aa|+|11|460\n{p0sya1}{stop}\n")
-        result = run_script("transcript2reference.py", "--ensembl_gtf", synthetic_dir / "ensembl.gtf",
+        result = run_script("transcript2reference.py",
                             "--corrected_gtf", corrected_gtf, "--corrected_fasta_proteins", orfs,
                             "--database", "mytranscripts", "--species_db", synthetic_dir / "parsed_databases.json",
                             "--output_assoc", tmp_path / f"{name}_assoc.txt", "--output_nmd", tmp_path / f"{name}_nmd.txt")

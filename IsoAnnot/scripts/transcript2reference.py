@@ -10,8 +10,7 @@ proteins associated to each sequenced transcript.
 
 from collections import defaultdict
 import argparse, sys, os, csv, logging, re, traceback, json
-import pandas as pd
-from IsoAnnot import strand_table, get_summary_parts, read_chr_ref_acc, natural_key
+from IsoAnnot import strand_table, get_summary_parts, natural_key
 from Bio.SeqFeature import FeatureLocation, SeqFeature
 from uniprotPhosphosite_genomicCoordinates import get_fasta_sequences
 from layer_exons import get_gtf_exons
@@ -159,50 +158,10 @@ def get_novel_protein_ids(isoform_proteins, all_proteins):
     return novel_protein_ids
 
 
-def read_genomic_cds_from_gtf_group_chr(gtf_file, chr_ref={}):
-    '''
-    Gets CDS genomic positions 
-    '''
-    aux_dict = {"Chromosome":[], "protein_id": [], "Start":[], "End": []}
-    parsed_dict = defaultdict(dict)
-
-    with open(gtf_file, "r") as gtf_content:
-        for line in gtf_content:
-            if line[0] != "#":
-                if line.split("\t")[2]=="CDS":
-                    try:
-                        protein_id = line.split("protein_id")[1].split(";")[0].replace('"', '').strip()
-                    except IndexError:
-                        continue
-                    chr = line.split("\t")[0]
-                    chr_name = chr_ref.get(chr, chr)
-                    start = line.split("\t")[3]
-                    end = line.split("\t")[4]
-                    aux_dict["Chromosome"].append(chr_name)
-                    aux_dict["protein_id"].append(protein_id)
-                    aux_dict["Start"].append(start)
-                    aux_dict["End"].append(end)
-    
-    gtf_cds = pd.DataFrame.from_dict(aux_dict)
-
-    for chr, values in gtf_cds.groupby("Chromosome"):
-        for prot_id, prot_values in values.groupby("protein_id"):
-            parsed_dict[chr][prot_id] = {
-                "start": sorted(prot_values['Start'].tolist()),
-                "end": sorted(prot_values['End'].tolist())
-            }
-
-    return parsed_dict
-
-
 def main():
 
     # Inputs
     parser = argparse.ArgumentParser(description="PacbioToReference")
-    parser.add_argument("--ensembl_gtf", required=True)
-    parser.add_argument("--refseq_gtf", required=False, default=None)
-    parser.add_argument("--chr_ref", required=False, default=None)
-
     parser.add_argument("--classification_file", required=False)
     parser.add_argument("--corrected_gtf", required=True)
     parser.add_argument("--corrected_fasta_proteins", required=True)
@@ -222,18 +181,6 @@ def main():
         with open(args.species_db, "rb") as fp:
             all_proteins = json.load(fp)
 
-        # Get chromosome Ensembl-RefSeq IDs equivalence if we
-        # are using GTF data
-        if args.refseq_gtf:
-            chrom_ref = read_chr_ref_acc(args.chr_ref, target_db="ensembl")
-
-        # Get Ensembl and RefSeq CDS info
-        cds_ensembl = read_genomic_cds_from_gtf_group_chr(args.ensembl_gtf)
-        if args.refseq_gtf:
-            cds_refseq = read_genomic_cds_from_gtf_group_chr(args.refseq_gtf,
-                                      chrom_ref)
-            chrom_ref.check_unmapped("transcript2reference.py")
-            
         # Get isoforms exon locations and predicted proteins of sequenced transcriptome
         # using SQANTI outputs
         corrected_exons = get_gtf_exons(args.corrected_gtf)
@@ -276,22 +223,6 @@ def main():
                             output_assoc_tsv.writerow([isoform_id, protein, source_tag, "sequence"])
                     if isoform_id in novel_protein_ids:
                         output_assoc_tsv.writerow([isoform_id, novel_protein_ids[isoform_id], "novel", "sequence"])
-
-                    # # Compare CDSs between Pacbio and reference transcripts and keep proteins that match CDS coordinates
-                    # transcript_starts = isoform_info.get('start')
-                    # transcript_ends = isoform_info.get('end')
-                    # transcript_chr = isoform_info.get('chr')
-
-                    # chr_ensembl = cds_ensembl.get(transcript_chr, {})
-                    # for cds_ref, cds_props in chr_ensembl.items():
-                    #     if cds_props.get("start") == transcript_starts and cds_props.get("end") == transcript_ends:
-                    #         output_assoc_tsv.writerow([isoform_id, cds_ref, "ensembl", "coord"])
-
-                    # if cds_refseq:
-                    #     chr_refseq = cds_refseq.get(transcript_chr, {})
-                    #     for cds_ref, cds_props in chr_refseq.items():
-                    #         if cds_props.get("start") == transcript_starts and cds_props.get("end") == transcript_ends:
-                    #             output_assoc_tsv.writerow([isoform_id, cds_ref, "refseq", "coord"])
 
         os.replace(args.output_assoc + ".tmp", args.output_assoc)
         os.replace(args.output_nmd + ".tmp", args.output_nmd)

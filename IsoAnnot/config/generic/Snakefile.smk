@@ -800,9 +800,6 @@ rule transcript_to_reference:
     conda:
         "../../envs/isoannotpy.yaml"
     input:
-        refseq_gtf=rules.prepare_refseq_gtf.output if config.get("refseq_gtf") else [],
-        ensembl_gtf=rules.prepare_ensembl_gtf.output,
-        chr_ref=rules.get_refseq_acc.output if config.get("refseq_chr_accessions") else [],
         classification_file=select_sqanti_classification,
         corrected_gtf=rules.run_sqanti.output.gtf, 
         fasta_proteins=rules.run_sqanti.output.fasta_proteins,
@@ -814,9 +811,7 @@ rule transcript_to_reference:
         os.path.join(path_output, "logs", prefix, "{db}", "transcript_to_reference.log")
     shell:
         """
-        scripts/transcript2reference.py --ensembl_gtf {input.ensembl_gtf} \
-        --refseq_gtf {input.refseq_gtf} \
-        --chr_ref {input.chr_ref} --classification_file {input.classification_file} --corrected_gtf {input.corrected_gtf} \
+        scripts/transcript2reference.py --classification_file {input.classification_file} --corrected_gtf {input.corrected_gtf} \
         --corrected_fasta_proteins {input.fasta_proteins} --output_assoc {output.protein_assoc} --output_nmd {output.nmd} \
         --database {wildcards.db} --species_db {input.species_db} &> {log}    
         """
