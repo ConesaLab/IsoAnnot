@@ -274,3 +274,15 @@ def test_dry_run_without_biomart_table(dry_run):
     assert result.returncode == 0, result.stdout + result.stderr
     assert "--biomart_table" not in planned_command(result.stdout, "layer_go.py")
     assert "--biomart_table" not in planned_command(result.stdout, "layer_reactome.py")
+
+
+@pytest.mark.parametrize("option", ["fasta_cdna", "gtf_cdna"])
+def test_dry_run_mytranscripts_fastq(dry_run, tmp_path, option):
+    """FASTQ transcripts stop the run while the job graph is built, with a hint to convert them, before any job runs."""
+    fastq = tmp_path / "isoforms.fastq"
+    fastq.write_text("@PB.1.1\nACGT\n+\nIIII\n")
+    result = dry_run("mytranscripts", f"{option}={fastq}")
+    assert result.returncode != 0
+    assert f"ERROR: File '{fastq}' looks like a FASTQ (starts with '@')" in result.stdout + result.stderr
+    assert f"seqtk seq -a {fastq} > transcripts.fasta" in result.stdout + result.stderr
+    assert "Job stats:" not in result.stdout
