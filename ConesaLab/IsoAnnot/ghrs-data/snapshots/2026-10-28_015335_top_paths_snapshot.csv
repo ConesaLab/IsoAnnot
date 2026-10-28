@@ -1,0 +1,10 @@
+url_path,views_total,views_unique
+/ConesaLab/IsoAnnot,6,6
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot,2,2
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot/config/ensembl/hsapiens,2,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/config/ensembl/hsapiens/Snakefile.smk,1,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/config/ensembl/hsapiens/config.yaml,1,1
+/ConesaLab/IsoAnnot/releases/tag/v0.9.0b1,1,1
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot/config,1,1
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot/config/ensembl,1,1
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot/data/global/PSP_data,1,1
