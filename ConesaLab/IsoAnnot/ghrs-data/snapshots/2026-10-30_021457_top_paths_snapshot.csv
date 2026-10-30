@@ -1,0 +1,11 @@
+url_path,views_total,views_unique
+/ConesaLab/IsoAnnot,12,10
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot,4,4
+/ConesaLab/IsoAnnot/tree/releases/0.9.0b1,3,3
+/ConesaLab/IsoAnnot/releases/tag/v0.9.0b1,3,2
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/config/generic/Snakefile.smk,3,1
+/ConesaLab/IsoAnnot/tree/IsoAnnot/add-ghrs,2,2
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot/config,2,2
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot/data/global/PSP_data,2,2
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/config/generic/Snakefile_mytranscripts.smk,2,1
+/ConesaLab/IsoAnnot/issues,2,1
