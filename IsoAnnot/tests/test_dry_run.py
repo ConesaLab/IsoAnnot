@@ -335,3 +335,18 @@ def test_dry_run_mytranscripts_fastq(dry_run, tmp_path, option):
     assert f"ERROR: File '{fastq}' looks like a FASTQ (starts with '@')" in result.stdout + result.stderr
     assert f"seqtk seq -a {fastq} > transcripts.fasta" in result.stdout + result.stderr
     assert "Job stats:" not in result.stdout
+
+
+@pytest.mark.parametrize("config, cache_option", [
+    ([], "--cache_dir {}/data/global/nucimport_cache "),
+    (["nls_cache=False"], "--no_cache "),
+])
+def test_dry_run_nls_cache_toggle(dry_run, tmp_path, config, cache_option):
+    """The NucImport cache is on by default and kept in data/global; nls_cache=False sends every protein to NucImport."""
+    result = dry_run("ensembl", *config)
+    assert result.returncode == 0, result.stdout + result.stderr
+    jobs = job_counts(result.stdout)
+    assert jobs["nls_cache_lookup"] == 1
+    assert jobs["nls_cache_store"] == 1
+    assert cache_option.format(tmp_path) in planned_command(result.stdout, "nls_cache.py lookup")
+    assert cache_option.format(tmp_path) in planned_command(result.stdout, "nls_cache.py store")

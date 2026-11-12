@@ -3,6 +3,8 @@ pfam_clan_url: https://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-A.c
 pfam_clan_desc_url: https://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-C.gz
 nls_chunks: 50
 nls_java_memory: 2g
+# Reuse NucImport results of earlier runs in this output folder (data/global/nucimport_cache), keyed by protein sequence
+nls_cache: True
 # RepeatMasker layer. Turn it off with repeat_masker=False
 repeat_masker: True
 # Dfam families RepeatMasker searches: curated (90 MB download, 600 MB on disk) or all, curated and uncurated
