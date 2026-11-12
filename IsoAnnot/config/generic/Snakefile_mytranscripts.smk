@@ -18,6 +18,9 @@ def select_user_cdna(wildcards):
                 if line.strip():
                     first_line = line
                     break
+            # Checked here, while the job graph is built, so nothing runs before the error
+            if first_line.startswith("@"):
+                sys.exit(f"ERROR: File '{target}' looks like a FASTQ (starts with '@'). IsoAnnot needs the transcripts as FASTA or GTF.\n Please convert it to FASTA first, for example with: seqtk seq -a {target} > transcripts.fasta")
             if user_fasta and not first_line.startswith(">"):
                 sys.exit(f"ERROR: File '{target}' was provided as FASTA but doesn't start with '>'.\n FOR 'mytranscripts' DATABASE YOU NEED TO PROVIDE A CUSTOM FASTA WITH --config fasta_cdna=myfasta.fasta OR A CUSTOM GTF WITH --config gtf_cdna=mygtf.gtf")
             if user_gtf and first_line.startswith(">"):

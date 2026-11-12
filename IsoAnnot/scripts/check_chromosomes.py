@@ -24,6 +24,17 @@ def open_file(path):
         return gzip.open(path, "rt")
     return open(path, "r")
 
+def is_fasta(path):
+    """
+    A FASTA starts with '>'. Checked on the content, as select_user_cdna does: names like .fna or .fas
+    were read as a GTF and stopped the run with a chromosome naming error.
+    """
+    with open_file(path) as f:
+        for line in f:
+            if line.strip():
+                return line.startswith(">")
+    return False
+
 def get_ids_gtf(path):
     """
     Extracts unique chromosome IDs from the first column of a GTF file.
@@ -75,7 +86,7 @@ def main():
 
         # Step 1: Handle input type. If user input is FASTA, bypass consistency check 
         # as coordinates are not relevant for naming match in the same way as GTF.
-        if str(args.user_input).lower().endswith((".fasta", ".fa", ".fasta.gz", ".fa.gz")):
+        if is_fasta(args.user_input):
             sys.exit(0)
         else:
             user_ids = get_ids_gtf(args.user_input)
