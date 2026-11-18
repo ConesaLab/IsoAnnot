@@ -319,6 +319,33 @@ def index_motifs(chrom_domains):
     return(protein_index, bin_index)
 
 
+def drop_phosphosite_duplicates(transcript_rows):
+    """
+    Leaves out the PhosphoSitePlus rows of a transcript that Swiss-Prot also reports: same feature,
+    position and ID, and the same modification. PhosphoSitePlus names the modification in a shorter way
+    ("acetyllysine" for "N6-acetyllysine"), so its name has to be a whole word of the Swiss-Prot one:
+    "methyllysine" is not the same modification as "N6,N6-dimethyllysine". Different modifications of
+    one residue stay as separate rows.
+
+    Args:
+        -transcript_rows (list): (motif annotations, output row) of the features of one transcript
+    """
+    swissprot_descs = defaultdict(list)
+    for annotations, row in transcript_rows:
+        if annotations["database"] == "SwissProt":
+            swissprot_descs[(row[2], row[3], row[4], annotations["id"])].append(str(annotations["desc"]).lower())
+
+    kept_rows = []
+    for annotations, row in transcript_rows:
+        if annotations["database"] == "PhosphositePlus":
+            same_modification = re.compile(r"(?<![a-z])" + re.escape(str(annotations["desc"]).lower()))
+            if any(same_modification.search(desc) for desc in swissprot_descs.get((row[2], row[3], row[4], annotations["id"]), [])):
+                continue
+        kept_rows.append((annotations, row))
+
+    return(kept_rows)
+
+
 # TODO check if this works for EnsemblPlants mytranscripts
 def read_protein_association(filename):
     protein_assoc_dict = defaultdict(lambda : {"uniprot": [], "ensembl": [], "refseq": []})
@@ -352,6 +379,8 @@ def main():
         parser.add_argument('--db', nargs=None, required=True)
         parser.add_argument('--protein_association', nargs='?', default=False, required=False, type=argparse_nullable)
         parser.add_argument('--biomart_host', nargs="?", const="https://www.ensembl.org")
+        parser.add_argument('--keep_both_sources', action="store_true",
+                            help="Write a modification reported by both Swiss-Prot and PhosphoSitePlus once for each source, instead of only the Swiss-Prot row")
 
 
         args = parser.parse_args()
@@ -376,6 +405,7 @@ def main():
         with open(args.output, "w") as output_file:
             logging.info(f"Starting coordinate transference process in {args.output}")
             output_file_tsv = csv.writer(output_file, delimiter="\t")
+            count_both_sources = 0
 
             # For each transcript, get exons and CDS genomic location
             for transcript_id, transcript_record in coding_transcripts.items():
@@ -425,6 +455,7 @@ def main():
                             transcript_protein_id = transcript_record.name.split(".")[0]
                         motif_positions = protein_index[transcript_chr].get(transcript_protein_id, [])
 
+                    transcript_rows = []
                     # The motifs are visited in the order of the chromosome (sorted by start)
                     for motif_record in (chrom_domains[transcript_chr][position] for position in sorted(motif_positions)):
                         motif = motif_record.features[0]
@@ -463,7 +494,7 @@ def main():
                                                 annotations = motif_record.annotations
                                                 gtf_attributes = f'ID={annotations["id"]}; Name={annotations["name"]}; Desc={annotations["desc"]}_{annotations["database"]}'
 
-                                                output_file_tsv.writerow([
+                                                transcript_rows.append((annotations, [
                                                     transcript_id, #seqname
                                                     "UniProtKB/Swiss-Prot_Phosphosite", # source
                                                     motif_record.annotations.get('feature'), # feature
@@ -473,7 +504,7 @@ def main():
                                                     ".", # strand
                                                     ".", # frame
                                                     gtf_attributes # attribute
-                                            ])
+                                            ]))
 
                                     continue
                             
@@ -507,7 +538,7 @@ def main():
                                             annotations = motif_record.annotations
                                             gtf_attributes = f'ID={annotations["id"]}; Name={annotations["name"]}; Desc={annotations["desc"]}_{annotations["database"]}'
                 
-                                            output_file_tsv.writerow([
+                                            transcript_rows.append((annotations, [
                                                 transcript_id, #seqname
                                                 "UniProtKB/Swiss-Prot_Phosphosite", # source
                                                 motif_record.annotations.get('feature'), # feature
@@ -517,7 +548,7 @@ def main():
                                                 ".", # strand
                                                 ".", # frame
                                                 gtf_attributes # attribute
-                                        ])
+                                        ]))
 
                         # For ensembl/refseq transcriptomes, faster
                         else:
@@ -542,7 +573,7 @@ def main():
                                     annotations = motif_record.annotations
                                     gtf_attributes = f'ID={annotations["id"]}; Name={annotations["name"]}; Desc={annotations["desc"]}_{annotations["database"]}'
 
-                                    output_file_tsv.writerow([
+                                    transcript_rows.append((annotations, [
                                         transcript_id, #seqname
                                         "UniProtKB/Swiss-Prot_Phosphosite", # source
                                         motif_record.annotations.get('feature'), # feature
@@ -552,7 +583,17 @@ def main():
                                         ".", # strand
                                         ".", # frame
                                         gtf_attributes # attribute
-                                ])
+                                ]))
+
+                    if not args.keep_both_sources:
+                        rows_before = len(transcript_rows)
+                        transcript_rows = drop_phosphosite_duplicates(transcript_rows)
+                        count_both_sources += rows_before - len(transcript_rows)
+                    output_file_tsv.writerows(row for annotations, row in transcript_rows)
+
+            if not args.keep_both_sources:
+                logging.info(f"{count_both_sources} PhosphoSitePlus modifications were left out because Swiss-Prot reports the same "
+                             f"modification at the same position (--keep_both_sources writes both)")
 
     except Exception as ex:
         logging.error(str(ex))

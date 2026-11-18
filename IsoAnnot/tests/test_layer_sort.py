@@ -65,7 +65,7 @@ def test_layer_uniprot_keeps_different_features_at_same_coordinates(tmp_path):
 
 
 def test_layer_uniprot_keeps_ptm_reported_by_both_sources(tmp_path):
-    """A PTM in both Swiss-Prot and PhosphoSitePlus differs only in the Desc suffix, so both rows stay."""
+    """With ptm_both_sources, a PTM in both Swiss-Prot and PhosphoSitePlus has two rows that differ only in the Desc suffix, and both stay."""
     uniprot = tmp_path / "uniprot.gtf"
     uniprot.write_text(
         "ENST1\tUniProtKB/Swiss-Prot_Phosphosite\tPTM\t10\t10\t.\t.\t.\tID=Phosphoserine; Name=Phosphoserine; Desc=Phosphoserine_SwissProt\n"

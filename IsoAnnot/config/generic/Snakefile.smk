@@ -873,14 +873,16 @@ rule get_uniprot_phosphosite_annotation:
         protein_assoc=select_prot_assoc
     params:
         keep_version = config["transcript_versioned"],
-        biomart_host = config.get("biomart_host", [])        
+        biomart_host = config.get("biomart_host", []),
+        # A PTM reported by Swiss-Prot and PhosphoSitePlus is written once, as Swiss-Prot, unless ptm_both_sources is on
+        both_sources = "--keep_both_sources" if is_feature_enabled("ptm_both_sources", default=False) else ""
     output:
         os.path.join(path_output, "data", prefix, "output", "{db}", "uniprot_Phosphosite_info.txt")
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "get_uniprot_phosphosite_annotation.log")
     shell:           
         """
-        scripts/uniprotPhosphosite_annotation.py --orf_fasta {input.fasta_orf} --classification_file {input.classification} --genepred_file {input.gene_prediction} --uniprotmotif_file {input.motif_info} --chr_ref {input.chr_ref} --protein_association {input.protein_assoc} --keep_version {params.keep_version} --db {wildcards.db} --biomart_host {params.biomart_host} --output {output} &> {log}
+        scripts/uniprotPhosphosite_annotation.py --orf_fasta {input.fasta_orf} --classification_file {input.classification} --genepred_file {input.gene_prediction} --uniprotmotif_file {input.motif_info} --chr_ref {input.chr_ref} --protein_association {input.protein_assoc} --keep_version {params.keep_version} --db {wildcards.db} --biomart_host {params.biomart_host} {params.both_sources} --output {output} &> {log}
         """
 
 
@@ -1265,8 +1267,8 @@ rule layer_uniprot:
         _output_layer_db("layer_uniprot", external_rule=rules.get_uniprot_phosphosite_annotation.output)
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "layer_uniprot.log")
-    # Whole-line dedup, as in layer_mirna_bs. A PTM reported by both Swiss-Prot and PhosphoSitePlus
-    # is kept twice, because the Desc source suffix differs.
+    # Whole-line dedup, as in layer_mirna_bs. A PTM reported by both Swiss-Prot and PhosphoSitePlus has
+    # two rows here only with ptm_both_sources: uniprotPhosphosite_annotation.py leaves out the second one.
     shell:
         """
         LC_ALL=C sort -V -k1,1 -k3,3 -k4,4n -k5,5n {input.uniprot_file} 2> {log} | uniq > {output}
