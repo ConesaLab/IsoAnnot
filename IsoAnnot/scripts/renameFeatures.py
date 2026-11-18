@@ -181,7 +181,8 @@ def updateGTF(filepath):
                                 addUnknown(res, line, fields, unknown_pairs)
 
                         elif fields[1] == "miRWalk":
-                            if fields[2] == "miRNA_binding_site":
+                            # One feature per seed match class (get_mirna_bs_annotation.py); miRNA_binding_site is the old name
+                            if fields[2] in ["miRNA_8mer", "miRNA_7mer", "miRNA_6mer", "miRNA_noncanonical", "miRNA_binding_site"]:
                                 addPosType(res, line, "T")
                             else:
                                 addUnknown(res, line, fields, unknown_pairs)

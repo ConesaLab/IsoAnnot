@@ -267,7 +267,7 @@ def test_dry_run_mirna_score_threshold(dry_run, config, score_option):
     result = dry_run("ensembl", *config)
     assert result.returncode == 0, result.stdout + result.stderr
     command = planned_command(result.stdout, "filter_mirna_bs.py")
-    assert f"--species 'Homo sapiens' {score_option}--mirwalk_output " in command
+    assert f"--species 'Homo sapiens' {score_option}--site_types canonical --mirwalk_output " in command
 
 
 def test_dry_run_mirna_score_threshold_missing(dry_run, tmp_path):
@@ -284,8 +284,40 @@ def test_dry_run_mirna_score_threshold_missing(dry_run, tmp_path):
     result = dry_run("ensembl", snakefile=str(snakefile), configfile=str(configfile))
     assert result.returncode == 0, result.stdout + result.stderr
     command = planned_command(result.stdout, "filter_mirna_bs.py")
-    assert "--species 'Homo sapiens' --mirwalk_output " in command
+    assert "--species 'Homo sapiens' --site_types canonical --mirwalk_output " in command
     assert "None" not in command
+
+
+@pytest.mark.parametrize("config, mirbase_file, site_types", [
+    ([], "miRNA_high_conf.dat", "canonical"),
+    (["mirna_mirbase_set=all", "mirna_site_types=canonical_6mer"], "miRNA.dat", "canonical_6mer"),
+    (["mirna_site_types=all"], "miRNA_high_conf.dat", "all"),
+])
+def test_dry_run_mirna_options(dry_run, config, mirbase_file, site_types):
+    """mirna_mirbase_set picks the miRBase file and mirna_site_types the seed match types kept."""
+    result = dry_run("ensembl", *config)
+    assert result.returncode == 0, result.stdout + result.stderr
+    command = planned_command(result.stdout, "filter_mirna_bs.py")
+    assert f"--mirbase_file data/global/miRNA/{mirbase_file} " in command
+    assert f"--site_types {site_types} " in command
+
+
+def test_dry_run_mirna_bad_option(dry_run):
+    result = dry_run("ensembl", "mirna_site_types=strong")
+    assert result.returncode != 0
+    assert "mirna_site_types must be one of canonical, canonical_6mer, all, not 'strong'." in result.stdout + result.stderr
+
+
+def test_dry_run_mirna_regions(dry_run, tmp_path):
+    """Only the 3'UTR miRWalk file is downloaded by default; noncoding is a region of the isoforms, not a download."""
+    result = dry_run("ensembl")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert job_counts(result.stdout)["get_mirwalk"] == 1
+    assert os.path.join(tmp_path, "data", "Hsapiens", "config", "mirna", "3UTR.zip") in result.stdout
+    command = planned_command(result.stdout, "get_mirna_bs_annotation.py")
+    classification = tmp_path / "data" / "Hsapiens" / "config" / "ensembl" / "sqanti_classification.txt"
+    assert f"--classification {classification} " in command
+    assert "--regions 3UTR noncoding --output " in command
 
 
 def test_dry_run_reactome_missing(dry_run, tmp_path):

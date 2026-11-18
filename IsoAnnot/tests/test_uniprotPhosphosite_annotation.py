@@ -105,7 +105,7 @@ def test_matched_long_read_orf_does_not_reuse_the_position_of_the_previous_motif
     assert lines == [PHOSPHOSERINE_6]
 
 
-def run_refseq_motifs(run_script, synthetic_dir, tmp_path, motif_lines):
+def run_refseq_motifs(run_script, synthetic_dir, tmp_path, motif_lines, *options):
     """Runs the script in refseq mode on NM_900001.1 with the given motifs, and returns the output lines and the log."""
     genepred = tmp_path / "refseq.genepred"
     genepred.write_text(GENEPRED_NM_900001)
@@ -116,7 +116,7 @@ def run_refseq_motifs(run_script, synthetic_dir, tmp_path, motif_lines):
                         "--classification_file", synthetic_dir / "refseq_sqanti_classification.txt",
                         "--genepred_file", genepred, "--uniprotmotif_file", motifs,
                         "--chr_ref", synthetic_dir / "chr2acc", "--keep_version", "True", "--db", "refseq",
-                        "--biomart_host", "www.ensembl.org", "--output", output)
+                        "--biomart_host", "www.ensembl.org", "--output", output, *options)
     assert result.returncode == 0, result.stderr
     return output.read_text().splitlines(), result.stderr
 
@@ -138,3 +138,38 @@ def test_any_other_id_with_spaces_is_joined_and_reported_once(run_script, synthe
                      "ID=Phosphoserine_Or_Phosphothreonine; Name=Phosphoserine_Or_Phosphothreonine; "
                      "Desc=Phosphoserine Or Phosphothreonine_SwissProt"]
     assert log.count("ID with spaces") == 1 and "1 UniProt features had an ID with spaces" in log
+
+
+def psp_line(description, start, end, sequence, protein_id):
+    """One PhosphoSitePlus line of uniprot_gcord_domainGenomic.txt, as uniprotPhosphosite_genomicCoordinates.py writes it."""
+    return "\t".join(["MOD_RES", description, "1", "+", str(start), str(end), str(start), str(end), "1", "3", sequence,
+                      "PhosphositePlus", "P0SYA1", protein_id, f"{sequence}6-p"]) + "\n"
+
+
+# Serine 6 of NP_900001.1 (codon 1116-1118) with three modifications: a phosphorylation in both sources,
+# an acetylation only in Swiss-Prot and a methylation whose degree differs between the sources
+BOTH_SOURCES = [motif_line("MOD_RES", "Phosphoserine; by PKA", 1116, 1118, "S", "NP_900001"),
+                psp_line("phosphoserine", 1116, 1118, "S", "NP_900001"),
+                motif_line("MOD_RES", "N-acetylserine", 1116, 1118, "S", "NP_900001"),
+                motif_line("MOD_RES", "N6,N6-dimethylserine", 1116, 1118, "S", "NP_900001"),
+                psp_line("methylserine", 1116, 1118, "S", "NP_900001")]
+ROW = "NM_900001.1\tUniProtKB/Swiss-Prot_Phosphosite\tPTM\t6\t6\t.\t.\t.\t"
+SWISSPROT_ROWS = [ROW + "ID=Phosphoserine; Name=Phosphoserine; Desc=Phosphoserine_SwissProt",
+                  ROW + "ID=Acetylation; Name=Acetylation; Desc=N-Acetylserine_SwissProt",
+                  ROW + "ID=Methylation; Name=Methylation; Desc=N6,N6-Dimethylserine_SwissProt"]
+METHYLSERINE = ROW + "ID=Methylation; Name=Methylation; Desc=Methylserine_PhosphositePlus"
+
+
+def test_ptm_reported_by_both_sources_is_written_once_as_swissprot(run_script, synthetic_dir, tmp_path):
+    """
+    The phosphoserine of PhosphoSitePlus is left out, because Swiss-Prot has it. Its methylserine stays:
+    the Swiss-Prot row at that residue is a dimethylation, which is another modification.
+    """
+    lines, log = run_refseq_motifs(run_script, synthetic_dir, tmp_path, BOTH_SOURCES)
+    assert sorted(lines) == sorted(SWISSPROT_ROWS + [METHYLSERINE])
+    assert "1 PhosphoSitePlus modifications were left out" in log
+
+
+def test_keep_both_sources_writes_the_ptm_once_for_each_source(run_script, synthetic_dir, tmp_path):
+    lines, log = run_refseq_motifs(run_script, synthetic_dir, tmp_path, BOTH_SOURCES, "--keep_both_sources")
+    assert sorted(lines) == sorted(SWISSPROT_ROWS + [METHYLSERINE, ROW + "ID=Phosphoserine; Name=Phosphoserine; Desc=Phosphoserine_PhosphositePlus"])
