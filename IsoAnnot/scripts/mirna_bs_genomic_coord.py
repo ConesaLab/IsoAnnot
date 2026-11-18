@@ -186,7 +186,7 @@ def main():
             writer = csv.writer(f_out, delimiter="\t")
 
             header = ["FeatureType", "miRNA", "mRNA", "Chrom", "Strand", "G_Start", "G_End",
-                      "Exon_Starts", "Exon_Ends", "Len_NT", "Sequence", "Source"]
+                      "Exon_Starts", "Exon_Ends", "Len_NT", "Sequence", "Source", "SiteType"]
             writer.writerow(header)
 
             for line in f_in:
@@ -197,6 +197,8 @@ def main():
                 count_total += 1
                 mirna = cols[0]
                 t_id = cols[1]
+                # Seed match type, added as the last column by filter_mirna_bs.py
+                site_type = cols[6]
 
                 # Basic validation: IDs must exist in reference files
                 if t_id not in coord_dict:
@@ -263,7 +265,7 @@ def main():
                         writer.writerow([
                             "miRNA_Binding_Site", mirna, t_id, chrom, strand,
                             global_start, global_end, starts_str, ends_str,
-                            length, motif, "miRWalk"
+                            length, motif, "miRWalk", site_type
                         ])
                         count_mapped += 1
                 except Exception as e:

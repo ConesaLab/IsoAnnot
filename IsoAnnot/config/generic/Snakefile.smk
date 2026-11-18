@@ -492,11 +492,16 @@ rule get_mirwalk:
         shell("wget -O {output} {target_url} &> {log}")
 
 
+def mirwalk_regions():
+    """miRWalk files to download: noncoding is not a miRWalk file, it keeps the sites on non-coding isoforms."""
+    return [region for region in config.get("mirna_regions_to_use", []) if region != "noncoding"]
+
+
 rule prepare_mirwalk:
     input:
         files = expand(
             os.path.join(path_output, "data", prefix, "config", "mirna", "{region}.zip"),
-            region=config.get("mirna_regions_to_use", [])
+            region=mirwalk_regions()
         )
     output:
         merged = os.path.join(path_output, "data", prefix, "config", "mirna", "mirwalk_merged.txt")
@@ -697,12 +702,29 @@ rule run_repeatmasker:
         {params.ids_script} restore --repeatmasker_file tmp_hashed.fasta.out --mapping id_mapping.tsv --output {output} &>> {log}
         """
 
+MIRBASE_FILES = {"high_confidence": "data/global/miRNA/miRNA_high_conf.dat", "all": "data/global/miRNA/miRNA.dat"}
+MIRNA_SITE_TYPES = ["canonical", "canonical_6mer", "all"]
+
+def mirbase_file():
+    mirbase_set = config.get("mirna_mirbase_set", "high_confidence")
+    if mirbase_set not in MIRBASE_FILES:
+        raise ValueError(f"mirna_mirbase_set must be one of {', '.join(MIRBASE_FILES)}, not '{mirbase_set}'.")
+    return MIRBASE_FILES[mirbase_set]
+
+def mirna_site_types():
+    site_types = config.get("mirna_site_types", "canonical")
+    if site_types not in MIRNA_SITE_TYPES:
+        raise ValueError(f"mirna_site_types must be one of {', '.join(MIRNA_SITE_TYPES)}, not '{site_types}'.")
+    return site_types
+
 rule filter_interactions:
     input:
         mirwalk=rules.prepare_mirwalk.output
     params:
         species_name=config["species"],
-        mirbase="data/global/miRNA/miRNA.dat",
+        # miRBase high-confidence miRNAs by default, all miRNAs with experimental evidence on request
+        mirbase=mirbase_file(),
+        site_types=mirna_site_types(),
         # Left out when the key is missing, so filter_mirna_bs.py uses its default
         score=_optional_param("mirna_db_evidence_score_threshold", "--score")
     output:
@@ -711,7 +733,7 @@ rule filter_interactions:
         os.path.join(path_output, "logs", prefix, "filter_interactions.log")
     shell:
         """
-        scripts/filter_mirna_bs.py --mirbase_file {params.mirbase} --mirwalk_file {input.mirwalk} --species {params.species_name:q} {params.score} --mirwalk_output {output} &> {log}
+        scripts/filter_mirna_bs.py --mirbase_file {params.mirbase} --mirwalk_file {input.mirwalk} --species {params.species_name:q} {params.score} --site_types {params.site_types} --mirwalk_output {output} &> {log}
         """
  
 rule run_mirwalk2gen:
@@ -794,14 +816,17 @@ rule get_mirna_bs_annotation:
         fasta=select_fasta_cdna,
         gene_prediction=rules.run_gtftogenepred.output,
         mirna_bs=rules.run_mirwalk2gen.output,
-        chr_ref=rules.get_refseq_acc.output
+        chr_ref=rules.get_refseq_acc.output,
+        classification=select_sqanti_classification
+    params:
+        regions=" ".join(config.get("mirna_regions_to_use", []))
     output:
         os.path.join(path_output, "data", prefix, "output", "{db}", "mirna_bs_annotation.txt")
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "get_mirna_bs_annotation.log")
     shell:
         """
-        scripts/get_mirna_bs_annotation.py --chr_ref {input.chr_ref} --genepred {input.gene_prediction} --isoform_fasta {input.fasta} --mirwalk_genomic {input.mirna_bs} --output {output} &> {log}
+        scripts/get_mirna_bs_annotation.py --chr_ref {input.chr_ref} --genepred {input.gene_prediction} --isoform_fasta {input.fasta} --mirwalk_genomic {input.mirna_bs} --classification {input.classification} --regions {params.regions} --output {output} &> {log}
         """
 
 rule get_genomic_coordinates:

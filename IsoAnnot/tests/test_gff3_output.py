@@ -429,6 +429,18 @@ def test_rename_features_uniprot_features(run_script, tmp_path, feature):
     assert "does not know" not in result.stderr
 
 
+@pytest.mark.parametrize("feature", ["miRNA_8mer", "miRNA_7mer", "miRNA_6mer", "miRNA_noncanonical", "miRNA_binding_site"])
+def test_rename_features_mirna_features(run_script, tmp_path, feature):
+    """Every seed match class get_mirna_bs_annotation.py writes is a positional transcript feature."""
+    gff3 = tmp_path / "annotation.gff3"
+    gff3.write_text(f"TX1\tmiRWalk\t{feature}\t600\t620\t.\t+\t.\tID=hsa-miR-1; Desc=3UTR_8mer\n")
+    result = run_script("renameFeatures.py", gff3)
+    assert result.returncode == 0, result.stderr
+    assert read_tsv(tmp_path / "annotation.gff3_mod") == [
+        ["TX1", "miRWalk", feature, "600", "620", ".", "+", ".", "ID=hsa-miR-1; Desc=3UTR_8mer; PosType=T"]]
+    assert "does not know" not in result.stderr
+
+
 def test_rename_features_malformed_line(run_script, tmp_path):
     """
     A line without 9 columns stops with its line number instead of a NameError on idx, and leaves no

@@ -6,13 +6,27 @@ Script to map genomic miRNA binding sites (from miRWalk) to transcriptomic coord
 It performs a sequence-level validation by comparing the genomic sequence provided 
 by miRWalk with the actual sequence extracted from the transcript FASTA file, 
 ensuring the mapping is accurate across exons and introns.
+Each site gets the region it falls in on that isoform (5UTR, CDS, 3UTR or noncoding), computed from the
+isoform's own CDS, and only the regions asked for are kept.
 """
 
 import argparse, sys, csv, logging, traceback
 from Bio.SeqIO.FastaIO import SimpleFastaParser
 from collections import defaultdict
-from IsoAnnot import read_chr_ref_acc
+from IsoAnnot import read_chr_ref_acc, normalize_id
+from t2goAnnotationFile import get_structural_classification_df
 from bx.intervals.intersection import IntervalTree
+
+# Feature name of each seed match type (filter_mirna_bs.py), so tappAS can switch each class on and off
+FEATURE_BY_SITE_TYPE = {
+    "8mer": "miRNA_8mer",
+    "7mer-m8": "miRNA_7mer",
+    "7mer-A1": "miRNA_7mer",
+    "6mer": "miRNA_6mer",
+    "offset-6mer": "miRNA_6mer",
+    "seed-GU": "miRNA_noncanonical",
+    "noncanonical": "miRNA_noncanonical",
+}
 
 def load_fasta_seqs(fasta_file):
     """
@@ -118,6 +132,19 @@ def get_transcript_length_at_genomic_pos(ordered_exons, genomic_pos, strand):
         transcript_pos += exon_len
     return -1
 
+def site_region(t_start, t_end, cds_start, cds_end):
+    """
+    Region of a site on one isoform, in transcript coordinates (1-based). miRWalk's own region refers to the
+    RefSeq model it predicted on, which can differ from this isoform's. A site that touches the CDS is CDS.
+    """
+    if cds_start is None or cds_end is None:
+        return "noncoding"
+    if t_end < int(cds_start):
+        return "5UTR"
+    if t_start > int(cds_end):
+        return "3UTR"
+    return "CDS"
+
 def main():
     """
     Main execution flow:
@@ -133,6 +160,9 @@ def main():
     parser.add_argument("--mirwalk_genomic", required=True, help="miRWalk file with genomic coordinates")
     parser.add_argument("--output", required=True, help="Final output TSV/GTF")
     parser.add_argument("--chr_ref", required=False, help="Refseq-Ensembl chromosome mapping table")
+    parser.add_argument("--classification", required=True, help="Classification file of the isoforms (for their CDS)")
+    parser.add_argument("--regions", nargs="+", choices=["3UTR", "5UTR", "CDS", "noncoding"], default=["3UTR", "noncoding"],
+                        help="Regions of the isoform where sites are kept (default: %(default)s)")
     args = parser.parse_args()
 
     try:
@@ -151,14 +181,17 @@ def main():
 
         # Step 2: Load sequences with double indexing (Exact vs No-Version)
         isoform_seqs_exact, isoform_seqs_no_ver = load_fasta_seqs(args.isoform_fasta)
+        transcript_info = get_structural_classification_df(args.classification)
 
         logging.info("Starting sequence validation process...")
 
         with open(args.mirwalk_genomic, "r") as f_in, open(args.output, "w") as f_out:
             reader = csv.DictReader(f_in, delimiter="\t")
-            writer = csv.writer(f_out, delimiter="\t")
+            writer = csv.writer(f_out, delimiter="\t", lineterminator="\n")
             count_valid = 0
             count_mismatch = 0
+            count_other_region = 0
+            count_unclassified = 0
             
             for row in reader:
                 overlaps = set()
@@ -169,6 +202,7 @@ def main():
                 strand = row["Strand"]
                 source = row["Source"]
                 expected_sequence = row["Sequence"]
+                site_type = row["SiteType"]
 
                 # Chromosome sanity check
                 if chrom not in isoforms_by_chr or chrom not in exons_by_chr: 
@@ -216,10 +250,19 @@ def main():
                             # Sequence validation (Case-insensitive)
                             if full_seq:
                                 if actual_sequence.upper() == expected_sequence.upper():
+                                    # Same ID fallback as layer_utrscan.py: the exact ID first, then without version
+                                    iso_info = transcript_info.get(iso_id) or transcript_info.get(normalize_id(iso_id))
+                                    if iso_info is None:
+                                        count_unclassified += 1
+                                        continue
+                                    region = site_region(final_t_start, final_t_end, iso_info["cds_start"], iso_info["cds_end"])
+                                    if region not in args.regions:
+                                        count_other_region += 1
+                                        continue
                                     count_valid += 1
-                                    gtf_attributes = f"ID={miRNA}"
+                                    gtf_attributes = f"ID={miRNA}; Desc={region}_{site_type}"
                                     writer.writerow([
-                                        iso_id, source, "miRNA_binding_site", 
+                                        iso_id, source, FEATURE_BY_SITE_TYPE[site_type],
                                         final_t_start, final_t_end,
                                         ".", ex_strand , ".", gtf_attributes
                                     ])
@@ -229,6 +272,9 @@ def main():
                                     logging.warning(f"Mismatch in {iso_id}: Expected {expected_sequence} but got {actual_sequence}")
 
         logging.info(f"Validation completed. Valid: {count_valid}, Discarded: {count_mismatch}")
+        logging.info(f"Sites outside the regions {' '.join(args.regions)}: {count_other_region}")
+        if count_unclassified:
+            logging.warning(f"{count_unclassified} sites were on isoforms missing from the classification file and were left out.")
 
     except Exception as ex:
         traceback.print_exc()

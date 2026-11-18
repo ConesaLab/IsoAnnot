@@ -415,6 +415,10 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
 | `repeat_masker` | Include the RepeatMasker layer | `True` by default; `False` to leave it out (see note 5) |
 | `repeatmasker_dfam` | Dfam repeat families RepeatMasker searches | `curated` (default) or `all` for curated and uncurated (see note 5) |
 | `biomart_table` | Saved BioMart table for the GO and Reactome layers, read instead of querying BioMart (optional) | `/abs/path/hsapiens_e115_biomart.tsv` |
+| `mirna_regions_to_use` | Regions of each isoform where miRNA binding sites are kept (see note 8); an empty list skips the miRNA layer | `["3UTR", "noncoding"]` by default; also `5UTR`, `CDS` |
+| `mirna_mirbase_set` | miRNAs whose sites are kept | `high_confidence` (default) or `all` |
+| `mirna_site_types` | Seed match types kept | `canonical` (default), `canonical_6mer` or `all` |
+| `mirna_db_evidence_score_threshold` | Minimum miRWalk binding probability | `0.95` |
 
 **Important notes**:
 
@@ -450,6 +454,12 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
    The archive host of each release is listed at https://www.ensembl.org/info/website/archives/. Run it in the `isoannotpy` environment, which has `pybiomart`.
 
 7. **RefSeq transcript sequences**: in refseq mode, UTRScan, RepeatMasker and the miRNA layer read the RefSeq transcripts spliced from the genome (`ensembl_reference`) with the exons of `refseq_gtf`, not NCBI's `rna.fna`. Some `rna.fna` sequences differ from the genome (a poly(A) tail, or bases the genome does not have), and their positions did not match the exons of the GFF3. The positions now match, but differences of the RefSeq mRNA from the genome are not annotated. The `refseq_cdna` key is no longer used.
+
+8. **miRNA binding sites** (human and mouse): the sites come from miRWalk 3 predictions and are placed on every isoform whose sequence contains them.
+   - **Seed match type.** A miRNA finds its targets mainly through its seed, nucleotides 2–8. IsoAnnot classifies each site from the miRWalk duplex, following TargetScan: `8mer` (seed 2–8 paired and an A opposite position 1), `7mer-m8` (2–8), `7mer-A1` (2–7 and the A), `6mer` (2–7), `offset-6mer` (3–8), `seed-GU` (seed paired only with G:U wobbles) and `noncanonical`. About 63% of the miRWalk sites are non-canonical; such sites bind Argonaute but have little effect on target levels (Agarwal et al. 2015, *eLife* 4:e05005). By default only `8mer` and `7mer` sites are kept (`mirna_site_types: canonical`); `canonical_6mer` adds the 6mers and `all` keeps every site. For human, the default keeps about 8% of the sites.
+   - **miRNAs.** `high_confidence` keeps the miRBase high-confidence miRNAs (814 in human), `all` every miRBase miRNA with experimental evidence (2,482 in human).
+   - **Region.** The region is computed for each isoform from its own CDS: `5UTR`, `CDS` (a site that touches the CDS), `3UTR`, or `noncoding` for isoforms without a CDS. Sites in the CDS and the 5′UTR are much less effective than 3′UTR sites, because ribosomes displace the miRNA complex. One miRWalk file is downloaded for each of `3UTR`, `5UTR` and `CDS` in the list (3′UTR only by default, 6.8 GB for human). Sites on non-coding isoforms come from the downloaded files.
+   - **In the GFF3**, each site has feature `miRNA_8mer`, `miRNA_7mer`, `miRNA_6mer` or `miRNA_noncanonical`, so the classes can be selected separately in tappAS, and `Desc=<region>_<type>`, e.g. `ID=hsa-miR-21-5p; Desc=3UTR_7mer-A1`.
 
 ---
 
