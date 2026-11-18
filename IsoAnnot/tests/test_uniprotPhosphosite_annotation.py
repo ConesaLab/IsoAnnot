@@ -91,3 +91,15 @@ def test_novel_long_read_orf_gets_the_motifs_it_overlaps(run_script, synthetic_d
                                    motif_line("MOD_RES", "Phosphoserine", 5001116, 5001118, "S", "ENSP_FAR")],
                                   ["PB.1.1\tProtein_PB.1.1\tnovel\tsequence\n"])
     assert lines == [PHOSPHOSERINE_6]
+
+
+def test_matched_long_read_orf_does_not_reuse_the_position_of_the_previous_motif(run_script, synthetic_dir, tmp_path):
+    """
+    The second motif of the matched protein lies in an intron of PB.1.1. It used to be written at the
+    position of the motif before it (serine 6), because the residue there is also a serine.
+    """
+    lines = run_long_read_isoform(run_script, synthetic_dir, tmp_path,
+                                  [motif_line("MOD_RES", "Phosphoserine", 1116, 1118, "S", "NP_900001"),
+                                   motif_line("MOD_RES", "N-acetylserine", 1500, 1502, "S", "NP_900001")],
+                                  ["PB.1.1\tP0SYA1\tswissprot\tsequence\n", "PB.1.1\tNP_900001\trefseq\tsequence\n"])
+    assert lines == [PHOSPHOSERINE_6]

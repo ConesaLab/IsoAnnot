@@ -444,23 +444,23 @@ def main():
                                             except:
                                                 continue
 
-                                    # Extract the motif sequence and, if it matches the one in the input file, annotate it
-                                    transcript_sequence = transcript_record.seq[first_aa_position:last_aa_position]
-                                    if motif_record.seq == transcript_sequence:
-                                        annotations = motif_record.annotations
-                                        gtf_attributes = f'ID={annotations["id"]}; Name={annotations["name"]}; Desc={annotations["desc"]}_{annotations["database"]}'
+                                            # Extract the motif sequence and, if it matches the one in the input file, annotate it
+                                            transcript_sequence = transcript_record.seq[first_aa_position:last_aa_position]
+                                            if motif_record.seq == transcript_sequence:
+                                                annotations = motif_record.annotations
+                                                gtf_attributes = f'ID={annotations["id"]}; Name={annotations["name"]}; Desc={annotations["desc"]}_{annotations["database"]}'
 
-                                        output_file_tsv.writerow([
-                                            transcript_id, #seqname
-                                            "UniProtKB/Swiss-Prot_Phosphosite", # source
-                                            motif_record.annotations.get('feature'), # feature
-                                            first_aa_position + 1, # start (1-based)
-                                            last_aa_position, # end
-                                            ".", # score
-                                            ".", # strand
-                                            ".", # frame
-                                            gtf_attributes # attribute
-                                    ])
+                                                output_file_tsv.writerow([
+                                                    transcript_id, #seqname
+                                                    "UniProtKB/Swiss-Prot_Phosphosite", # source
+                                                    motif_record.annotations.get('feature'), # feature
+                                                    first_aa_position + 1, # start (1-based)
+                                                    last_aa_position, # end
+                                                    ".", # score
+                                                    ".", # strand
+                                                    ".", # frame
+                                                    gtf_attributes # attribute
+                                            ])
 
                                     continue
                             
