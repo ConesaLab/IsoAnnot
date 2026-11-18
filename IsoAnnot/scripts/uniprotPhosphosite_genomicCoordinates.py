@@ -112,6 +112,7 @@ def get_uniprot_associations(uniprot_file, proteins_associations, valid_features
         "ids_all": set([]),
         "ids_with_database": set([]),
         "ids_with_match": set([]),
+        "alternative": set([]),
     }
 
     # Define the positions in the parsed uniprot file for the fields:
@@ -174,6 +175,10 @@ def get_uniprot_associations(uniprot_file, proteins_associations, valid_features
                         output_dict['ids_with_match'].add(uniprot_id)
                         output_dict['associations'][uniprot_id][db_or_class]['proteins'].append(refID)
                         output_dict['associations'][uniprot_id][db_or_class]['transcripts'].append(refTransID)
+                        # The features are numbered on the canonical sequence, so they cannot be placed
+                        # through a protein that only matches an alternative isoform
+                        if not protein_match(proteins_associations.get(uniprot_id), proteins_associations.get(refID)):
+                            output_dict['alternative'].add((uniprot_id, refID))
                     # canonical isoforms : have their version number in uniprot parsed file, but not in the fasta file
                     # eg: P26378-6
                     elif protein_match(proteins_associations.get(uniprot_id), proteins_associations.get(refID)):
@@ -306,6 +311,44 @@ def get_phosphosite_modifications(filename):
     return(modifications_dict)
 
 
+def split_isoform_cds(uniprot_id, cds_list, alternative):
+    """
+    Separates the CDSs of a UniProt entry into the ones of its canonical sequence and the ones of its
+    alternative isoforms. UniProt numbers the features on the canonical sequence, so only the canonical
+    CDSs can place them on the genome.
+
+    Returns:
+        -canonical_cds (list): CDSs of the proteins that match the canonical sequence
+        -alternative_cds (list): (CDS, {genomic position: position in the CDS}) of the other proteins
+    """
+    canonical_cds, alternative_cds = [], []
+
+    for cds in cds_list:
+        if (uniprot_id, cds.qualifiers['ref']) in alternative:
+            cds_positions = sorted(list(cds.location), reverse=int(cds.location.strand or 0) < 0)
+            alternative_cds.append((cds, {gpos: cpos for cpos, gpos in enumerate(cds_positions)}))
+        else:
+            canonical_cds.append(cds)
+
+    return(canonical_cds, alternative_cds)
+
+
+def feature_in_alternative_cds(feature_positions, cds_index):
+    """
+    Checks if an alternative isoform has a feature placed through the canonical CDS: its codons have to
+    be in the CDS of the isoform, one after the other and in the same reading frame.
+
+    Args:
+        feature_positions (list): genomic positions of the feature, in the order of the canonical CDS
+        cds_index (dict): {genomic position: position in the CDS} of the alternative isoform
+    """
+    first_position = cds_index.get(feature_positions[0])
+    if first_position is None or first_position % 3 != 0:
+        return False
+
+    return all(cds_index.get(gpos) == first_position + offset for offset, gpos in enumerate(feature_positions))
+
+
 def main():
     try:
         parser = argparse.ArgumentParser(description="UniprotPhosphosite GenomicCoordinates")
@@ -383,6 +426,8 @@ def main():
         gtf_cds = {**cds_ensembl, **cds_refseq}
 
         uniprot_cds = defaultdict(list)
+        # Proteins of alternative isoforms that get no feature, because no protein has the canonical sequence
+        isoforms_without_canonical = set()
 
         strand_back_conversion = {1: "+", -1: "-"}
 	
@@ -480,6 +525,9 @@ def main():
                 
                 for uniprot_id, features in uniprot_associations['features'].items():
                     protein_sequence = proteins_dict.get(uniprot_id, None)  
+                    canonical_cds, alternative_cds = split_isoform_cds(uniprot_id, uniprot_cds.get(uniprot_id, []), uniprot_associations['alternative'])
+                    if alternative_cds and not canonical_cds:
+                        isoforms_without_canonical.update(cds.qualifiers['ref'] for cds, cds_index in alternative_cds)
 
                     # Get feature position in protein   
                     for prot_feature in features:
@@ -487,8 +535,9 @@ def main():
                         feature_pstart = ProteinPosition(prot_feature.location.start, index=None)
                         feature_pend = ProteinPosition(prot_feature.location.end - 1, index=None)
 
-                        # Get genomic coordinates of feature for all the isoforms associated to a uniprot protein
-                        for cds in uniprot_cds.get(uniprot_id, []):
+                        # Get genomic coordinates of the feature through the proteins with the canonical sequence
+                        feature_places = {}
+                        for cds in canonical_cds:
                             cm = CoordinateMapper(cds)
 
                         # Get genomic coordinates of the feature (0-based half open)
@@ -499,8 +548,11 @@ def main():
                             except ProteinPositionError:
                                 continue
                             
-                            parts_in_cds =  _retrieve_parts_positions(feature_gstart, feature_gend, cm.exon_list)
+                            cds_positions = cm.exon_list
+                            parts_in_cds =  _retrieve_parts_positions(feature_gstart, feature_gend, cds_positions)
                             motif_sequence = protein_sequence[prot_feature.location.start:prot_feature.location.end]
+                            feature_positions = cds_positions[int(prot_feature.location.start) * 3:int(prot_feature.location.end) * 3]
+                            feature_places.setdefault((cds.id, cds.location.strand, tuple(feature_positions)), parts_in_cds)
 
                             output_domain_tsv.writerow([
                                 prot_feature.type, # Feature type
@@ -519,11 +571,37 @@ def main():
                                 cds.qualifiers['ref']   # Associated Protein ID in other database
                             ])
 
+                        # An alternative isoform gets the feature where the canonical protein has it,
+                        # if it has those codons in the same reading frame
+                        for cds, cds_index in alternative_cds:
+                            for (place_chr, place_strand, feature_positions), parts_in_cds in feature_places.items():
+                                if place_chr == cds.id and place_strand == cds.location.strand and feature_in_alternative_cds(feature_positions, cds_index):
+                                    output_domain_tsv.writerow([
+                                        prot_feature.type, # Feature type
+                                        prot_feature.qualifiers['desc'], # Description
+                                        cds.id, # Chromosome
+                                        strand_back_conversion.get(cds.location.strand, None), # Strand
+                                        parts_in_cds["start"][0],   # Feature genomic start
+                                        parts_in_cds["end"][-1],    # Feature genomic end
+                                        ",".join(map(str, parts_in_cds["start"])), # Start position of feature in each CDS part
+                                        ",".join(map(str, parts_in_cds["end"])), # End position offeature in each CDS part
+                                        abs(feature_pend.pos - feature_pstart.pos) + 1, # Feature length (aa)
+                                        parts_in_cds["len"],    # Feature length (nt)
+                                        motif_sequence,         # Feature sequence
+                                        "SwissProt",            # Source
+                                        uniprot_id,             # Protein Uniprot ID
+                                        cds.qualifiers['ref']   # Associated Protein ID in other database
+                                    ])
+                                    break
+
                 # Phosphosite modifications
                 for filename in args.phosphosite_files:
                     for uniprot_id, phospho_mods in get_phosphosite_modifications(filename).items():
                         protein_sequence = proteins_dict.get(uniprot_id, None)
-                        
+                        canonical_cds, alternative_cds = split_isoform_cds(uniprot_id, uniprot_cds.get(uniprot_id, []), uniprot_associations['alternative'])
+                        if alternative_cds and not canonical_cds:
+                            isoforms_without_canonical.update(cds.qualifiers['ref'] for cds, cds_index in alternative_cds)
+
                         if protein_sequence:
                             # Get modification position in protein in 0-based coordinates
                             for phospho_mod in phospho_mods:
@@ -532,7 +610,8 @@ def main():
                                 if mod_pposition <= len(protein_sequence) -1:
                                     motif_pseq = protein_sequence[mod_pposition]
 
-                                    for cds in uniprot_cds.get(uniprot_id, []):
+                                    feature_places = {}
+                                    for cds in canonical_cds:
                                         if motif_pseq == phospho_mod.get("motif"):
                                             cm = CoordinateMapper(cds)
 
@@ -544,8 +623,11 @@ def main():
                                             
                                             domain_ppos_start = int(domain_ppos[0])
                                             domain_ppos_end = int(domain_ppos[1]) +1
-                                            parts_in_cds = _retrieve_parts_positions(domain_ppos_start, domain_ppos_end, cm.exon_list)
-                                            
+                                            cds_positions = cm.exon_list
+                                            parts_in_cds = _retrieve_parts_positions(domain_ppos_start, domain_ppos_end, cds_positions)
+                                            feature_positions = cds_positions[mod_pposition * 3:mod_pposition * 3 + 3]
+                                            feature_places.setdefault((cds.id, cds.location.strand, tuple(feature_positions)), parts_in_cds)
+
                                             output_domain_tsv.writerow([
                                             phospho_mod['feature'], # Feature type
                                             phospho_mod['desc'],    # Description
@@ -564,6 +646,34 @@ def main():
                                             cds.qualifiers['ref'], # Associated Protein ID in other database
                                             phospho_mod['mod']      # Modification
                                     ])  
+
+                                    # Same as for the SwissProt features of the alternative isoforms
+                                    for cds, cds_index in alternative_cds:
+                                        for (place_chr, place_strand, feature_positions), parts_in_cds in feature_places.items():
+                                            if place_chr == cds.id and place_strand == cds.location.strand and feature_in_alternative_cds(feature_positions, cds_index):
+                                                output_domain_tsv.writerow([
+                                                    phospho_mod['feature'], # Feature type
+                                                    phospho_mod['desc'],    # Description
+                                                    cds.id,  # Chromosome
+                                                    strand_back_conversion.get(cds.location.strand, None), # Strand
+                                                    parts_in_cds["start"][0],  # Feature genomic start
+                                                    parts_in_cds["end"][-1],   # Feature genomic end
+                                                    ",".join(map(str, parts_in_cds["start"])),   # Start position of feature in each CDS part
+                                                    ",".join(map(str, parts_in_cds["end"])),     # End position offeature in each CDS part
+                                                    1,      # Feature length (aa)
+                                                    parts_in_cds["len"],   # Feature length (nt)
+                                                    motif_pseq,         # Feature sequence
+                                                    "PhosphositePlus",     # Source
+                                                    uniprot_id,            # Protein Uniprot ID
+                                                    cds.qualifiers['ref'], # Associated Protein ID in other database
+                                                    phospho_mod['mod']      # Modification
+                                                ])
+                                                break
+
+            if isoforms_without_canonical:
+                logging.warning(f"{len(isoforms_without_canonical)} proteins match an alternative UniProt isoform whose canonical sequence "
+                                f"has no protein in the reference annotations, so they get no UniProt or PhosphoSitePlus features "
+                                f"(e.g. {', '.join(sorted(isoforms_without_canonical)[:5])})")
 
                                                 
     except Exception as ex:
