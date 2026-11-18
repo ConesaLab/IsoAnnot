@@ -13,7 +13,7 @@ Script that projects protein features genomic coordinates into query isoforms an
 
 import argparse, sys, os, re, logging, csv, traceback
 import pandas as pd
-from collections import defaultdict
+from collections import Counter, defaultdict
 from IsoAnnot import openfile, strand_table, get_consecutive_parts, argparse_nullable, read_chr_ref_acc
 from Bio.SeqFeature import SeqFeature, FeatureLocation
 from Bio.Seq import Seq
@@ -116,6 +116,9 @@ def get_uniprot_domains(domaingenomic_filename):
     output_dict = defaultdict(list)
 
     motif_regex = re.compile(r"^([^;\.{]+)") 
+    leading_note_regex = re.compile(r"^(\([^)]*\)\s*)+")
+    # IDs that had spaces, which tappAS does not accept
+    ids_with_spaces = Counter()
 
     allowed_features = ["ACT_SITE", "BINDING", "CA_BIND", "DNA_BIND", "MOD_RES", "CARBOHYD", "LIPID",
                         "DISULFID", "METAL", "NONT_STD", "COILED", "INTRAMEM", "MOTIF", "REGION", "SITE",
@@ -143,7 +146,8 @@ def get_uniprot_domains(domaingenomic_filename):
         output = "PTM_other"
 
         if any(mod in search_col for mod in ["phosphoserine", "phosphothreonine", "phosphotyrosine"]):
-            output = motif_regex.match(search_col).group(1)
+            # A note in brackets before the residue, as in "(Microbial infection) Phosphoserine", stays in Desc only
+            output = motif_regex.match(leading_note_regex.sub("", search_col)).group(1)
         elif "phospho" in search_col:
             output = "Phosphorilation_nonT_nonS_nonY"
         elif "acetyl" in search_col:
@@ -221,6 +225,10 @@ def get_uniprot_domains(domaingenomic_filename):
             if callable(motif_id):
                 motif_id = motif_id(line)
 
+            if len(motif_id.split()) > 1:
+                ids_with_spaces[motif_id.title()] += 1
+                motif_id = "_".join(motif_id.split())
+
             motif_annotations = {
                 'id': motif_id.title(),
                 'feature': motif_feature_assign.get(motif_type, motif_type),
@@ -273,6 +281,11 @@ def get_uniprot_domains(domaingenomic_filename):
             # Group motifs by chromosome
             # TODO check if it's better to use protein_id as KEY to make the search faster
             output_dict[chrom_id].append(motif_record)
+
+    if ids_with_spaces:
+        logging.warning(f"{sum(ids_with_spaces.values())} UniProt features had an ID with spaces, which tappAS does not accept. "
+                        f"The spaces were replaced by underscores in {len(ids_with_spaces)} different IDs "
+                        f"(e.g. {', '.join(repr(motif_id) for motif_id, count in ids_with_spaces.most_common(5))})")
 
     sorted_dict = {k: sorted(v, key=lambda x: x.features[0].location.start) for k, v in output_dict.items()}
 

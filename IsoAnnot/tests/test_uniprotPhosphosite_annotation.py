@@ -103,3 +103,38 @@ def test_matched_long_read_orf_does_not_reuse_the_position_of_the_previous_motif
                                    motif_line("MOD_RES", "N-acetylserine", 1500, 1502, "S", "NP_900001")],
                                   ["PB.1.1\tP0SYA1\tswissprot\tsequence\n", "PB.1.1\tNP_900001\trefseq\tsequence\n"])
     assert lines == [PHOSPHOSERINE_6]
+
+
+def run_refseq_motifs(run_script, synthetic_dir, tmp_path, motif_lines):
+    """Runs the script in refseq mode on NM_900001.1 with the given motifs, and returns the output lines and the log."""
+    genepred = tmp_path / "refseq.genepred"
+    genepred.write_text(GENEPRED_NM_900001)
+    motifs = tmp_path / "uniprot_gcord_domainGenomic.txt"
+    motifs.write_text("".join(motif_lines))
+    output = tmp_path / "uniprot_Phosphosite_info.txt"
+    result = run_script("uniprotPhosphosite_annotation.py", "--orf_fasta", synthetic_dir / "refseq_protein.faa",
+                        "--classification_file", synthetic_dir / "refseq_sqanti_classification.txt",
+                        "--genepred_file", genepred, "--uniprotmotif_file", motifs,
+                        "--chr_ref", synthetic_dir / "chr2acc", "--keep_version", "True", "--db", "refseq",
+                        "--biomart_host", "www.ensembl.org", "--output", output)
+    assert result.returncode == 0, result.stderr
+    return output.read_text().splitlines(), result.stderr
+
+
+def test_note_in_brackets_before_the_residue_is_not_part_of_the_id(run_script, synthetic_dir, tmp_path):
+    """tappAS rejects IDs with spaces: "(Microbial infection) Phosphoserine" was written whole as the ID."""
+    lines, log = run_refseq_motifs(run_script, synthetic_dir, tmp_path,
+                                   [motif_line("MOD_RES", "(Microbial infection) Phosphoserine; by host", 1116, 1118, "S", "NP_900001")])
+    assert lines == ["NM_900001.1\tUniProtKB/Swiss-Prot_Phosphosite\tPTM\t6\t6\t.\t.\t.\t"
+                     "ID=Phosphoserine; Name=Phosphoserine; Desc=(Microbial Infection) Phosphoserine_SwissProt"]
+    assert "ID with spaces" not in log
+
+
+def test_any_other_id_with_spaces_is_joined_and_reported_once(run_script, synthetic_dir, tmp_path):
+    """A wording that no rule covers still gives an ID tappAS accepts, and one warning with the count."""
+    lines, log = run_refseq_motifs(run_script, synthetic_dir, tmp_path,
+                                   [motif_line("MOD_RES", "Phosphoserine or phosphothreonine; alternate", 1116, 1118, "S", "NP_900001")])
+    assert lines == ["NM_900001.1\tUniProtKB/Swiss-Prot_Phosphosite\tPTM\t6\t6\t.\t.\t.\t"
+                     "ID=Phosphoserine_Or_Phosphothreonine; Name=Phosphoserine_Or_Phosphothreonine; "
+                     "Desc=Phosphoserine Or Phosphothreonine_SwissProt"]
+    assert log.count("ID with spaces") == 1 and "1 UniProt features had an ID with spaces" in log
