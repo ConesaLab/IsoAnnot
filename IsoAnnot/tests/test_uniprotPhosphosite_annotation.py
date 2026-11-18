@@ -26,3 +26,115 @@ def test_refseq_mode_projects_motifs_from_the_ensembl_genome(run_script, synthet
     assert output.read_text().splitlines() == [
         "NM_900001.1\tUniProtKB/Swiss-Prot_Phosphosite\tPTM\t6\t6\t.\t.\t.\t"
         "ID=Phosphoserine; Name=Phosphoserine; Desc=Phosphoserine_UniProtKB"]
+
+
+def motif_line(feature, description, start, end, sequence, protein_id, strand="+"):
+    """One line of uniprot_gcord_domainGenomic.txt, on Ensembl chromosome 1."""
+    return "\t".join([feature, description, "1", strand, ".", ".", str(start), str(end), ".", ".", sequence,
+                      "SwissProt", "P0SYA1", protein_id]) + "\n"
+
+
+def run_long_read_isoform(run_script, synthetic_dir, tmp_path, motif_lines, assoc_lines):
+    """
+    Runs the script in mytranscripts mode on PB.1.1, a long-read isoform with the exons and the ORF of
+    NM_900001.1 (protein MDQLNSAS...), and returns the output lines.
+    """
+    genepred = tmp_path / "mytranscripts.genepred"
+    genepred.write_text(GENEPRED_NM_900001.replace("NM_900001.1\tNC_000001.11", "PB.1.1\t1"))
+    classification = tmp_path / "sqanti_classification.txt"
+    classification.write_text("isoform\tcoding\tCDS_start\tCDS_end\nPB.1.1\tcoding\t101\t550\n")
+    protein = [line for line in (synthetic_dir / "refseq_protein.faa").read_text().split(">") if line.startswith("NP_900001.1")][0]
+    orfs = tmp_path / "final_sqanti_corrected.faa"
+    orfs.write_text(">PB.1.1 synthetic ORF\n" + protein.split("\n", 1)[1])
+    motifs = tmp_path / "uniprot_gcord_domainGenomic.txt"
+    motifs.write_text("".join(motif_lines))
+    assoc = tmp_path / "protein_assoc_data.txt"
+    assoc.write_text("".join(assoc_lines))
+    output = tmp_path / "uniprot_Phosphosite_info.txt"
+    result = run_script("uniprotPhosphosite_annotation.py", "--orf_fasta", orfs, "--classification_file", classification,
+                        "--genepred_file", genepred, "--uniprotmotif_file", motifs, "--chr_ref", synthetic_dir / "chr2acc",
+                        "--protein_association", assoc, "--keep_version", "True", "--db", "mytranscripts",
+                        "--biomart_host", "www.ensembl.org", "--output", output)
+    assert result.returncode == 0, result.stderr
+    return output.read_text().splitlines()
+
+
+PHOSPHOSERINE_6 = ("PB.1.1\tUniProtKB/Swiss-Prot_Phosphosite\tPTM\t6\t6\t.\t.\t.\t"
+                   "ID=Phosphoserine; Name=Phosphoserine; Desc=Phosphoserine_SwissProt")
+
+
+def test_reference_mode_only_gives_a_transcript_the_motifs_of_its_protein(run_script, synthetic_dir, tmp_path):
+    """Motifs are looked up by protein ID: the serine of another protein at the same codon is not written."""
+    genepred = tmp_path / "refseq.genepred"
+    genepred.write_text(GENEPRED_NM_900001)
+    motifs = tmp_path / "uniprot_gcord_domainGenomic.txt"
+    motifs.write_text(motif_line("MOD_RES", "N-acetylserine", 1116, 1118, "S", "NP_900009")
+                      + motif_line("MOD_RES", "Phosphoserine", 1116, 1118, "S", "NP_900001"))
+    output = tmp_path / "uniprot_Phosphosite_info.txt"
+    result = run_script("uniprotPhosphosite_annotation.py", "--orf_fasta", synthetic_dir / "refseq_protein.faa",
+                        "--classification_file", synthetic_dir / "refseq_sqanti_classification.txt",
+                        "--genepred_file", genepred, "--uniprotmotif_file", motifs,
+                        "--chr_ref", synthetic_dir / "chr2acc", "--keep_version", "True", "--db", "refseq",
+                        "--biomart_host", "www.ensembl.org", "--output", output)
+    assert result.returncode == 0, result.stderr
+    assert output.read_text().splitlines() == [PHOSPHOSERINE_6.replace("PB.1.1", "NM_900001.1")]
+
+
+def test_novel_long_read_orf_gets_the_motifs_it_overlaps(run_script, synthetic_dir, tmp_path):
+    """
+    A novel ORF has no protein to look up, so its motifs are found by position: the serine inside its
+    CDS is written, the one 5 Mb away (another genomic bin) and the one on the other strand are not.
+    """
+    lines = run_long_read_isoform(run_script, synthetic_dir, tmp_path,
+                                  [motif_line("MOD_RES", "Phosphoserine", 1116, 1118, "S", "ENSP_OTHER"),
+                                   motif_line("MOD_RES", "Phosphoserine", 1116, 1118, "S", "ENSP_MINUS", strand="-"),
+                                   motif_line("MOD_RES", "Phosphoserine", 5001116, 5001118, "S", "ENSP_FAR")],
+                                  ["PB.1.1\tProtein_PB.1.1\tnovel\tsequence\n"])
+    assert lines == [PHOSPHOSERINE_6]
+
+
+def test_matched_long_read_orf_does_not_reuse_the_position_of_the_previous_motif(run_script, synthetic_dir, tmp_path):
+    """
+    The second motif of the matched protein lies in an intron of PB.1.1. It used to be written at the
+    position of the motif before it (serine 6), because the residue there is also a serine.
+    """
+    lines = run_long_read_isoform(run_script, synthetic_dir, tmp_path,
+                                  [motif_line("MOD_RES", "Phosphoserine", 1116, 1118, "S", "NP_900001"),
+                                   motif_line("MOD_RES", "N-acetylserine", 1500, 1502, "S", "NP_900001")],
+                                  ["PB.1.1\tP0SYA1\tswissprot\tsequence\n", "PB.1.1\tNP_900001\trefseq\tsequence\n"])
+    assert lines == [PHOSPHOSERINE_6]
+
+
+def run_refseq_motifs(run_script, synthetic_dir, tmp_path, motif_lines):
+    """Runs the script in refseq mode on NM_900001.1 with the given motifs, and returns the output lines and the log."""
+    genepred = tmp_path / "refseq.genepred"
+    genepred.write_text(GENEPRED_NM_900001)
+    motifs = tmp_path / "uniprot_gcord_domainGenomic.txt"
+    motifs.write_text("".join(motif_lines))
+    output = tmp_path / "uniprot_Phosphosite_info.txt"
+    result = run_script("uniprotPhosphosite_annotation.py", "--orf_fasta", synthetic_dir / "refseq_protein.faa",
+                        "--classification_file", synthetic_dir / "refseq_sqanti_classification.txt",
+                        "--genepred_file", genepred, "--uniprotmotif_file", motifs,
+                        "--chr_ref", synthetic_dir / "chr2acc", "--keep_version", "True", "--db", "refseq",
+                        "--biomart_host", "www.ensembl.org", "--output", output)
+    assert result.returncode == 0, result.stderr
+    return output.read_text().splitlines(), result.stderr
+
+
+def test_note_in_brackets_before_the_residue_is_not_part_of_the_id(run_script, synthetic_dir, tmp_path):
+    """tappAS rejects IDs with spaces: "(Microbial infection) Phosphoserine" was written whole as the ID."""
+    lines, log = run_refseq_motifs(run_script, synthetic_dir, tmp_path,
+                                   [motif_line("MOD_RES", "(Microbial infection) Phosphoserine; by host", 1116, 1118, "S", "NP_900001")])
+    assert lines == ["NM_900001.1\tUniProtKB/Swiss-Prot_Phosphosite\tPTM\t6\t6\t.\t.\t.\t"
+                     "ID=Phosphoserine; Name=Phosphoserine; Desc=(Microbial Infection) Phosphoserine_SwissProt"]
+    assert "ID with spaces" not in log
+
+
+def test_any_other_id_with_spaces_is_joined_and_reported_once(run_script, synthetic_dir, tmp_path):
+    """A wording that no rule covers still gives an ID tappAS accepts, and one warning with the count."""
+    lines, log = run_refseq_motifs(run_script, synthetic_dir, tmp_path,
+                                   [motif_line("MOD_RES", "Phosphoserine or phosphothreonine; alternate", 1116, 1118, "S", "NP_900001")])
+    assert lines == ["NM_900001.1\tUniProtKB/Swiss-Prot_Phosphosite\tPTM\t6\t6\t.\t.\t.\t"
+                     "ID=Phosphoserine_Or_Phosphothreonine; Name=Phosphoserine_Or_Phosphothreonine; "
+                     "Desc=Phosphoserine Or Phosphothreonine_SwissProt"]
+    assert log.count("ID with spaces") == 1 and "1 UniProt features had an ID with spaces" in log

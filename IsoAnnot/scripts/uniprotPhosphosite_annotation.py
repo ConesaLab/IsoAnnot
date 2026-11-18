@@ -13,13 +13,16 @@ Script that projects protein features genomic coordinates into query isoforms an
 
 import argparse, sys, os, re, logging, csv, traceback
 import pandas as pd
-from collections import defaultdict
+from collections import Counter, defaultdict
 from IsoAnnot import openfile, strand_table, get_consecutive_parts, argparse_nullable, read_chr_ref_acc
 from Bio.SeqFeature import SeqFeature, FeatureLocation
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from uniprotPhosphosite_genomicCoordinates import get_fasta_sequences
 from CoordinateMapper.CoordinateMapper import CoordinateMapper
+
+# Size of the genomic bins used to find the motifs that overlap a transcript
+MOTIF_BIN_SIZE = 100000
 
 
 def get_coding_transcripts(classification_filename, protein_sequences):
@@ -113,6 +116,9 @@ def get_uniprot_domains(domaingenomic_filename):
     output_dict = defaultdict(list)
 
     motif_regex = re.compile(r"^([^;\.{]+)") 
+    leading_note_regex = re.compile(r"^(\([^)]*\)\s*)+")
+    # IDs that had spaces, which tappAS does not accept
+    ids_with_spaces = Counter()
 
     allowed_features = ["ACT_SITE", "BINDING", "CA_BIND", "DNA_BIND", "MOD_RES", "CARBOHYD", "LIPID",
                         "DISULFID", "METAL", "NONT_STD", "COILED", "INTRAMEM", "MOTIF", "REGION", "SITE",
@@ -140,7 +146,8 @@ def get_uniprot_domains(domaingenomic_filename):
         output = "PTM_other"
 
         if any(mod in search_col for mod in ["phosphoserine", "phosphothreonine", "phosphotyrosine"]):
-            output = motif_regex.match(search_col).group(1)
+            # A note in brackets before the residue, as in "(Microbial infection) Phosphoserine", stays in Desc only
+            output = motif_regex.match(leading_note_regex.sub("", search_col)).group(1)
         elif "phospho" in search_col:
             output = "Phosphorilation_nonT_nonS_nonY"
         elif "acetyl" in search_col:
@@ -218,6 +225,10 @@ def get_uniprot_domains(domaingenomic_filename):
             if callable(motif_id):
                 motif_id = motif_id(line)
 
+            if len(motif_id.split()) > 1:
+                ids_with_spaces[motif_id.title()] += 1
+                motif_id = "_".join(motif_id.split())
+
             motif_annotations = {
                 'id': motif_id.title(),
                 'feature': motif_feature_assign.get(motif_type, motif_type),
@@ -271,9 +282,42 @@ def get_uniprot_domains(domaingenomic_filename):
             # TODO check if it's better to use protein_id as KEY to make the search faster
             output_dict[chrom_id].append(motif_record)
 
+    if ids_with_spaces:
+        logging.warning(f"{sum(ids_with_spaces.values())} UniProt features had an ID with spaces, which tappAS does not accept. "
+                        f"The spaces were replaced by underscores in {len(ids_with_spaces)} different IDs "
+                        f"(e.g. {', '.join(repr(motif_id) for motif_id, count in ids_with_spaces.most_common(5))})")
+
     sorted_dict = {k: sorted(v, key=lambda x: x.features[0].location.start) for k, v in output_dict.items()}
 
     return(sorted_dict)
+
+
+def index_motifs(chrom_domains):
+    """
+    Indexes the motifs of each chromosome by protein ID and by genomic position, so that a transcript
+    only looks at the motifs of its protein, or at the ones it overlaps, instead of at every motif of
+    the chromosome (34 h in a human Ensembl run). Both indexes store the position of the motif in the
+    sorted list of its chromosome, so the motifs are still visited in the same order.
+
+    Returns:
+        -protein_index (dict): chromosome -> protein ID -> positions of its motifs
+        -bin_index (dict): chromosome -> bin of MOTIF_BIN_SIZE bases -> positions of the motifs in it
+    """
+    protein_index, bin_index = {}, {}
+
+    for chrom_id, motif_records in chrom_domains.items():
+        chrom_proteins, chrom_bins = defaultdict(list), defaultdict(list)
+
+        for position, motif_record in enumerate(motif_records):
+            chrom_proteins[motif_record.name].append(position)
+            motif_location = motif_record.features[0].location
+            for bin_id in range(int(motif_location.start) // MOTIF_BIN_SIZE, int(motif_location.end) // MOTIF_BIN_SIZE + 1):
+                chrom_bins[bin_id].append(position)
+
+        protein_index[chrom_id], bin_index[chrom_id] = chrom_proteins, chrom_bins
+
+    return(protein_index, bin_index)
+
 
 # TODO check if this works for EnsemblPlants mytranscripts
 def read_protein_association(filename):
@@ -322,6 +366,7 @@ def main():
 
         transcript_pred_exons = get_genepred_exons(genepred_filename=args.genepred_file, match_file=args.chr_ref)
         chrom_domains = get_uniprot_domains(domaingenomic_filename=args.uniprotmotif_file)
+        protein_index, bin_index = index_motifs(chrom_domains)
 
         protein_assoc = None
         if args.protein_association:
@@ -357,14 +402,35 @@ def main():
                     cds_loc_position = sum(cds_locations)
                     cds_cm = CoordinateMapper(SeqFeature(cds_loc_position, type="CDS"))              
 
-                    # For each valid transcript, look for motifs that are in the same chromosome as the transcript
-                    # And get motif information if it corresponds to the same protein_id associated to the transcript
-                    for motif_record in chrom_domains.get(transcript_exons.get('chr'), {}):
-                        motif = motif_record.features[0]
-                        motif_set = set(motif.location)
+                    # Select the motifs of the chromosome that this transcript can get
+                    transcript_chr = transcript_exons.get('chr')
+                    if args.db.upper() == "MYTRANSCRIPTS":
+                        cds_set = set(cds_loc_position)
+                        if transcript_id in protein_assoc and len(protein_assoc[transcript_id]["uniprot"]) > 0:
+                            # Motifs of the reference proteins with the same sequence as the ORF
+                            motif_positions = set()
+                            for assoc_protein_id in protein_assoc[transcript_id]["ensembl"] + protein_assoc[transcript_id]["refseq"]:
+                                motif_positions.update(protein_index[transcript_chr].get(assoc_protein_id, []))
+                        else:
+                            # Novel ORF: motifs in the genomic bins of the transcript
+                            motif_positions = set()
+                            for bin_id in range(int(transcript_exons_loc.start) // MOTIF_BIN_SIZE, int(transcript_exons_loc.end) // MOTIF_BIN_SIZE + 1):
+                                motif_positions.update(bin_index[transcript_chr].get(bin_id, []))
+                    else:
+                        # Keep version for EnsemblPlants
+                        if "plants" in args.biomart_host and args.db.upper() == "ENSEMBL":
+                            transcript_protein_id = transcript_record.name
+                        else:
+                            # Remove protein versions so they can match
+                            transcript_protein_id = transcript_record.name.split(".")[0]
+                        motif_positions = protein_index[transcript_chr].get(transcript_protein_id, [])
 
+                    # The motifs are visited in the order of the chromosome (sorted by start)
+                    for motif_record in (chrom_domains[transcript_chr][position] for position in sorted(motif_positions)):
+                        motif = motif_record.features[0]
 
                         if args.db.upper() == "MYTRANSCRIPTS":
+                            motif_set = set(motif.location)
                             # For those transcripts whose products match known uniprot proteins
                             if transcript_id in protein_assoc and len(protein_assoc[transcript_id]["uniprot"]) > 0:
                                 motif_protein_id = motif_record.name
@@ -374,7 +440,7 @@ def main():
 
                                     # TODO check if conditional could be restricted to issubset() only, since it should include all the other conditions
                                     # if motif.strand == transcript_exons_loc.strand and cds_positions[0] < motif.location.end and cds_positions[-1] > motif.location.start and motif_set.issubset(cds_positions):
-                                    if motif.location.strand == transcript_exons_loc.strand and transcript_exons_loc.start < motif.location.end and transcript_exons_loc.end > motif.location.start and motif_set.issubset(set(cds_loc_position)): # linea antigua
+                                    if motif.location.strand == transcript_exons_loc.strand and transcript_exons_loc.start < motif.location.end and transcript_exons_loc.end > motif.location.start and motif_set.issubset(cds_set): # linea antigua
                                         # Until now all motif positions could be included inside the CDS, but the later could
                                         # contain a in-between fragment between them, so we perform a reverse search.
                                         filtered_cds = set(filter(lambda x: motif.location.start <= x < motif.location.end, sorted(cds_loc_position)))
@@ -391,23 +457,23 @@ def main():
                                             except:
                                                 continue
 
-                                    # Extract the motif sequence and, if it matches the one in the input file, annotate it
-                                    transcript_sequence = transcript_record.seq[first_aa_position:last_aa_position]
-                                    if motif_record.seq == transcript_sequence:
-                                        annotations = motif_record.annotations
-                                        gtf_attributes = f'ID={annotations["id"]}; Name={annotations["name"]}; Desc={annotations["desc"]}_{annotations["database"]}'
+                                            # Extract the motif sequence and, if it matches the one in the input file, annotate it
+                                            transcript_sequence = transcript_record.seq[first_aa_position:last_aa_position]
+                                            if motif_record.seq == transcript_sequence:
+                                                annotations = motif_record.annotations
+                                                gtf_attributes = f'ID={annotations["id"]}; Name={annotations["name"]}; Desc={annotations["desc"]}_{annotations["database"]}'
 
-                                        output_file_tsv.writerow([
-                                            transcript_id, #seqname
-                                            "UniProtKB/Swiss-Prot_Phosphosite", # source
-                                            motif_record.annotations.get('feature'), # feature
-                                            first_aa_position + 1, # start (1-based)
-                                            last_aa_position, # end
-                                            ".", # score
-                                            ".", # strand
-                                            ".", # frame
-                                            gtf_attributes # attribute
-                                    ])
+                                                output_file_tsv.writerow([
+                                                    transcript_id, #seqname
+                                                    "UniProtKB/Swiss-Prot_Phosphosite", # source
+                                                    motif_record.annotations.get('feature'), # feature
+                                                    first_aa_position + 1, # start (1-based)
+                                                    last_aa_position, # end
+                                                    ".", # score
+                                                    ".", # strand
+                                                    ".", # frame
+                                                    gtf_attributes # attribute
+                                            ])
 
                                     continue
                             
@@ -418,7 +484,7 @@ def main():
 
                                 # TODO check if conditional could be restricted to issubset() only, since it should include all the other conditions
                                 # if motif.strand == transcript_exons_loc.strand and cds_positions[0] < motif.location.end and cds_positions[-1] > motif.location.start and motif_set.issubset(cds_positions):
-                                if motif.location.strand == transcript_exons_loc.strand and transcript_exons_loc.start < motif.location.end and transcript_exons_loc.end > motif.location.start and motif_set.issubset(set(cds_loc_position)): # linea antigua
+                                if motif.location.strand == transcript_exons_loc.strand and transcript_exons_loc.start < motif.location.end and transcript_exons_loc.end > motif.location.start and motif_set.issubset(cds_set): # linea antigua
                                     # Until now all motif positions could be included inside the CDS, but the later could
                                     # contain a in-between fragment between them, so we perform a reverse search.
                                     filtered_cds = set(filter(lambda x: motif.location.start <= x < motif.location.end, sorted(cds_loc_position)))
@@ -456,12 +522,6 @@ def main():
                         # For ensembl/refseq transcriptomes, faster
                         else:
                             motif_protein_id = motif_record.name
-                            # Keep version for EnsemblPlants
-                            if "plants" in args.biomart_host and args.db.upper() == "ENSEMBL":
-                                transcript_protein_id = transcript_record.name
-                            else:
-                                # Remove protein versions so they can match
-                                transcript_protein_id = transcript_record.name.split(".")[0]
 
                             if motif_protein_id == transcript_protein_id:
 
