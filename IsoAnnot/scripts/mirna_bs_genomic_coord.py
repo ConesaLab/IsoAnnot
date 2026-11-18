@@ -24,11 +24,12 @@ def get_exon_from_gtf(gtf_file, chrom_ref={}):
         chrom_ref (dict): Dictionary for chromosome name conversion (e.g., NCBI to Ensembl).
 
     Returns:
-        dict: A dictionary where keys are transcript IDs and values are lists of 
-              sorted exon coordinate dictionaries.
+        dict: A dictionary where keys are transcript IDs and values are lists with one sorted list of
+              exon coordinate dictionaries for each placement of the transcript. NCBI also places some
+              transcripts on alternate loci, patches or the Y pseudoautosomal region, as NM_080740.5_1.
     """
     logging.info(f"Reading GTF: {gtf_file}...")
-    transcript_coord = defaultdict(list)
+    placements = defaultdict(lambda: defaultdict(list))
     ids_loaded = 0
 
     with open(gtf_file, 'r') as f:
@@ -46,7 +47,9 @@ def get_exon_from_gtf(gtf_file, chrom_ref={}):
             except AttributeError:
                 continue
 
-            # Standardize ID (remove version) and handle chromosome mapping
+            # Standardize ID (remove version) and handle chromosome mapping. The full ID keeps the exons
+            # of each placement apart: merged, they gave one wrong exon model and the sites were lost
+            placement_id = t_id_raw
             t_id_raw = t_id_raw.split(".")[0]
             raw_chrom = parts[0]
             clean_chrom = chrom_ref.get(raw_chrom, raw_chrom)
@@ -57,14 +60,16 @@ def get_exon_from_gtf(gtf_file, chrom_ref={}):
                 "strand": parts[6],
                 "chr": clean_chrom
             }
-            transcript_coord[t_id_raw].append(seq_record)
+            placements[t_id_raw][placement_id].append(seq_record)
             ids_loaded += 1
 
     # Ensure exons are sorted by genomic start position for consistent mapping
-    for t_id in transcript_coord:
-        transcript_coord[t_id].sort(key=lambda x: x["start"])
+    transcript_coord = {}
+    for t_id in placements:
+        transcript_coord[t_id] = [sorted(exons, key=lambda x: x["start"]) for exons in placements[t_id].values()]
 
-    logging.info(f"GTF loaded. {len(transcript_coord)} unique transcripts indexed.")
+    count_placements = sum(len(models) for models in transcript_coord.values())
+    logging.info(f"GTF loaded. {len(transcript_coord)} unique transcripts indexed, in {count_placements} placements.")
     return transcript_coord
 
 def get_fasta_seq(refseq_fasta):
@@ -240,37 +245,39 @@ def main():
                     count_seq_mismatch += 1
                     continue
 
-                try:
-                    # Sanity check: coordinates must not exceed total transcript length
-                    total_transcript_len = sum([(exon["end"] - exon["start"] + 1) for exon in coord_dict[t_id]])
+                # One site for each placement of the transcript on the genome
+                for transcript_exons in coord_dict[t_id]:
+                    try:
+                        # Sanity check: coordinates must not exceed total transcript length
+                        total_transcript_len = sum([(exon["end"] - exon["start"] + 1) for exon in transcript_exons])
 
-                    if bs_end > total_transcript_len:
-                        count_pos_mismatch += 1
+                        if bs_end > total_transcript_len:
+                            count_pos_mismatch += 1
+                            continue
+
+                        # Translate linear binding site to genomic blocks
+                        g_blocks = map_transcript_to_genomic_blocks(transcript_exons, bs_start, bs_end)
+
+                        if g_blocks:
+                            exon_info = transcript_exons[0]
+                            chrom = exon_info["chr"]
+                            strand = exon_info["strand"]
+
+                            global_start = g_blocks[0][0]
+                            global_end = g_blocks[-1][1]
+                            starts_str = ",".join([str(b[0]) for b in g_blocks])
+                            ends_str = ",".join([str(b[1]) for b in g_blocks])
+                            length = bs_end - bs_start + 1
+
+                            writer.writerow([
+                                "miRNA_Binding_Site", mirna, t_id, chrom, strand,
+                                global_start, global_end, starts_str, ends_str,
+                                length, motif, "miRWalk", site_type
+                            ])
+                            count_mapped += 1
+                    except Exception as e:
+                        logging.warning(f"Failed to map binding site for transcript {t_id}: {e}")
                         continue
-
-                    # Translate linear binding site to genomic blocks
-                    g_blocks = map_transcript_to_genomic_blocks(coord_dict[t_id], bs_start, bs_end)
-
-                    if g_blocks:
-                        exon_info = coord_dict[t_id][0]
-                        chrom = exon_info["chr"]
-                        strand = exon_info["strand"]
-
-                        global_start = g_blocks[0][0]
-                        global_end = g_blocks[-1][1]
-                        starts_str = ",".join([str(b[0]) for b in g_blocks])
-                        ends_str = ",".join([str(b[1]) for b in g_blocks])
-                        length = bs_end - bs_start + 1
-
-                        writer.writerow([
-                            "miRNA_Binding_Site", mirna, t_id, chrom, strand,
-                            global_start, global_end, starts_str, ends_str,
-                            length, motif, "miRWalk", site_type
-                        ])
-                        count_mapped += 1
-                except Exception as e:
-                    logging.warning(f"Failed to map binding site for transcript {t_id}: {e}")
-                    continue
 
             # Final summary statistics
             logging.info("-" * 30)
