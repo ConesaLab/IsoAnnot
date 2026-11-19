@@ -893,6 +893,9 @@ rule parse_protein_databases:
         uniprot_fasta = _uniprot_files("uniprot_fasta"),
         refseq_fasta=rules.prepare_refseq_proteins.output,
         ensembl_fasta=rules.get_ensembl_proteins.output.fa,
+        # The annotations as downloaded: they give the form of the protein IDs of each database
+        refseq_gtf=rules.get_refseq_gtf.output,
+        ensembl_gtf=rules.get_ensembl_gtf.output,
     output:
         os.path.join(path_output, "data", prefix, "config", "parsed_databases.json")
     params:
@@ -902,7 +905,7 @@ rule parse_protein_databases:
         os.path.join(path_output, "logs", prefix, "parse_protein_databases.log")
     shell:
         """
-        scripts/parse_protein_databases.py --uniprot_fasta {input.uniprot_fasta} {params.ensembl_fasta_regex} {params.refseq_fasta_regex} --ensembl_fasta {input.ensembl_fasta} --refseq_fasta {input.refseq_fasta} --output {output} &> {log}
+        scripts/parse_protein_databases.py --uniprot_fasta {input.uniprot_fasta} {params.ensembl_fasta_regex} {params.refseq_fasta_regex} --ensembl_fasta {input.ensembl_fasta} --refseq_fasta {input.refseq_fasta} --ensembl_gtf {input.ensembl_gtf} --refseq_gtf {input.refseq_gtf} --output {output} &> {log}
         """
 
 

@@ -105,6 +105,17 @@ def test_matched_long_read_orf_does_not_reuse_the_position_of_the_previous_motif
     assert lines == [PHOSPHOSERINE_6]
 
 
+def test_matched_long_read_orf_with_versioned_refseq_id(run_script, synthetic_dir, tmp_path):
+    """
+    protein_assoc has the RefSeq IDs with their version and the motifs don't (NP_900001.1 and NP_900001):
+    the ORF still gets the motifs of its protein.
+    """
+    lines = run_long_read_isoform(run_script, synthetic_dir, tmp_path,
+                                  [motif_line("MOD_RES", "Phosphoserine", 1116, 1118, "S", "NP_900001")],
+                                  ["PB.1.1\tP0SYA1\tswissprot\tsequence\n", "PB.1.1\tNP_900001.1\trefseq\tsequence\n"])
+    assert lines == [PHOSPHOSERINE_6]
+
+
 def run_refseq_motifs(run_script, synthetic_dir, tmp_path, motif_lines, *options):
     """Runs the script in refseq mode on NM_900001.1 with the given motifs, and returns the output lines and the log."""
     genepred = tmp_path / "refseq.genepred"

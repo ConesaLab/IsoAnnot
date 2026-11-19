@@ -213,17 +213,18 @@ def test_nmd_and_junction_tables(synthetic_dir):
 
 
 def test_parsed_databases_json(synthetic_dir):
-    """The identical SYNB protein maps to one SwissProt isoform; SYND has no UniProt entry."""
+    """The identical SYNB protein maps to one SwissProt isoform; SYND has no UniProt entry. The IDs have the
+    form of each annotation: RefSeq with version, Ensembl without."""
     pep = read_fasta(synthetic_dir / "ensembl_pep.fa")
     uniprot = read_fasta(synthetic_dir / "uniprot.fasta")
     with open(synthetic_dir / "parsed_databases.json") as handle:
         parsed = json.load(handle)
     assert parsed == {
-        pep["ENSP00000000001.2"]: {"swissprot": ["P0SYA1"], "refseq": ["NP_900001"], "ensembl": ["ENSP00000000001"]},
-        pep["ENSP00000000002.1"]: {"trembl": ["A0A0S1YNA6"], "refseq": ["NP_900002"], "ensembl": ["ENSP00000000002"]},
-        pep["ENSP00000000003.2"]: {"swissprot": ["P0SYB1-2"], "refseq": ["NP_900003", "NP_900004"],
+        pep["ENSP00000000001.2"]: {"swissprot": ["P0SYA1"], "refseq": ["NP_900001.1"], "ensembl": ["ENSP00000000001"]},
+        pep["ENSP00000000002.1"]: {"trembl": ["A0A0S1YNA6"], "refseq": ["NP_900002.1"], "ensembl": ["ENSP00000000002"]},
+        pep["ENSP00000000003.2"]: {"swissprot": ["P0SYB1-2"], "refseq": ["NP_900003.1", "NP_900004.1"],
                                    "ensembl": ["ENSP00000000003", "ENSP00000000004"]},
-        pep["ENSP00000000006.3"]: {"refseq": ["NP_900006"], "ensembl": ["ENSP00000000006"]},
+        pep["ENSP00000000006.3"]: {"refseq": ["NP_900006.2"], "ensembl": ["ENSP00000000006"]},
         uniprot["sp|P0SYB1|SYNB_HUMAN"]: {"swissprot": ["P0SYB1"]},
     }
 

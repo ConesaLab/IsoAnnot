@@ -172,32 +172,65 @@ def test_reference_protein_assoc_refseq(synthetic_dir, run_script, tmp_path):
     output, result = run_reference_protein_assoc(run_script, synthetic_dir, tmp_path, "refseq", classification)
     assert read_tsv(output) == [
         ["NM_900003.2", "P0SYB1-2", "swissprot", "sequence"],
-        ["NM_900003.2", "NP_900003", "refseq", "sequence"],
-        ["NM_900003.2", "NP_900004", "refseq", "sequence"],
-        ["NM_900006.3", "NP_900006", "refseq", "sequence"],
+        ["NM_900003.2", "NP_900003.1", "refseq", "sequence"],
+        ["NM_900003.2", "NP_900004.1", "refseq", "sequence"],
+        ["NM_900006.3", "NP_900006.2", "refseq", "sequence"],
     ]
     assert "1 of 3 coding transcripts" in result.stderr
+    assert "another version" not in result.stderr
 
 
-def test_reference_protein_assoc_ambiguous_native_id(run_script, tmp_path):
+def test_reference_protein_assoc_other_version(synthetic_dir, run_script, tmp_path):
     """
-    A native ID that maps to two sequences once the version is removed (AT1G01010.1 and AT1G01010.2 in
-    Ensembl Plants) is not used to pick a sequence.
+    A refProt whose version differs from the protein FASTA (annotation and proteins of different releases)
+    still finds its sequence. The IDs written are the ones of the protein FASTA, and a warning counts it.
+    """
+    classification = write_classification(tmp_path / "classification.txt", [
+        ["NM_900006.3", "1", "+", 1100, "protein_coding", "SYND", "NM_900006.3", "coding", 267, 101, 901, "NP_900006.3"],
+    ])
+    output, result = run_reference_protein_assoc(run_script, synthetic_dir, tmp_path, "refseq", classification)
+    assert read_tsv(output) == [["NM_900006.3", "NP_900006.2", "refseq", "sequence"]]
+    assert "1 of 1 coding transcripts have a refProt that" in result.stderr
+
+
+def test_reference_protein_assoc_isoform_numbers(run_script, tmp_path):
+    """
+    In Ensembl Plants the number is the isoform (AT1G01010.1 and AT1G01010.2 are two proteins). The IDs are
+    kept whole, so each transcript gets the UniProt ID of its own protein.
     """
     species_db = tmp_path / "parsed_databases.json"
-    species_db.write_text(json.dumps({"MAAA": {"swissprot": ["Q00001"], "ensembl": ["AT1G01010"]},
-                                      "MCCC": {"ensembl": ["AT1G01010"]},
-                                      "MGGG": {"swissprot": ["Q00002"], "ensembl": ["AT1G01020"]}}))
+    species_db.write_text(json.dumps({"MAAA": {"swissprot": ["Q00001"], "ensembl": ["AT1G01010.1"]},
+                                      "MCCC": {"swissprot": ["Q00001-2"], "ensembl": ["AT1G01010.2"]}}))
     classification = write_classification(tmp_path / "classification.txt", [
         ["AT1G01010.1", "1", "+", 900, "protein_coding", "G1", "AT1G01010.1", "coding", 3, 1, 9, "AT1G01010.1"],
-        ["AT1G01020.1", "1", "+", 900, "protein_coding", "G2", "AT1G01020.1", "coding", 3, 1, 9, "AT1G01020.1"],
+        ["AT1G01010.2", "1", "+", 900, "protein_coding", "G1", "AT1G01010.2", "coding", 3, 1, 9, "AT1G01010.2"],
     ])
     output = tmp_path / "assoc.txt"
     result = run_script("reference_protein_assoc.py", "--classification_file", classification,
                         "--species_db", species_db, "--database", "ensembl", "--output", output)
     assert result.returncode == 0, result.stderr
-    assert read_tsv(output) == [["AT1G01020.1", "Q00002", "swissprot", "sequence"],
-                                ["AT1G01020.1", "AT1G01020", "ensembl", "sequence"]]
+    assert read_tsv(output) == [["AT1G01010.1", "Q00001", "swissprot", "sequence"],
+                                ["AT1G01010.1", "AT1G01010.1", "ensembl", "sequence"],
+                                ["AT1G01010.2", "Q00001-2", "swissprot", "sequence"],
+                                ["AT1G01010.2", "AT1G01010.2", "ensembl", "sequence"]]
+
+
+def test_reference_protein_assoc_ambiguous_native_id(run_script, tmp_path):
+    """A refProt without number is not looked up by its gene when the isoforms have different proteins."""
+    species_db = tmp_path / "parsed_databases.json"
+    species_db.write_text(json.dumps({"MAAA": {"swissprot": ["Q00001"], "ensembl": ["AT1G01010.1"]},
+                                      "MCCC": {"ensembl": ["AT1G01010.2"]},
+                                      "MGGG": {"swissprot": ["Q00002"], "ensembl": ["AT1G01020.1"]}}))
+    classification = write_classification(tmp_path / "classification.txt", [
+        ["AT1G01010", "1", "+", 900, "protein_coding", "G1", "AT1G01010", "coding", 3, 1, 9, "AT1G01010"],
+        ["AT1G01020", "1", "+", 900, "protein_coding", "G2", "AT1G01020", "coding", 3, 1, 9, "AT1G01020"],
+    ])
+    output = tmp_path / "assoc.txt"
+    result = run_script("reference_protein_assoc.py", "--classification_file", classification,
+                        "--species_db", species_db, "--database", "ensembl", "--output", output)
+    assert result.returncode == 0, result.stderr
+    assert read_tsv(output) == [["AT1G01020", "Q00002", "swissprot", "sequence"],
+                                ["AT1G01020", "AT1G01020.1", "ensembl", "sequence"]]
 
 
 def test_novel_protein_ids():
@@ -230,7 +263,7 @@ def test_transcript2reference_writes_novel_rows(synthetic_dir, run_script, tmp_p
     assert [line.split("\t") for line in protein_assoc.read_text().splitlines()] == [
         ["PB.2.1", "Protein_PB.2.1", "novel", "sequence"],
         ["PB.3.1", "P0SYA1", "swissprot", "sequence"],
-        ["PB.3.1", "NP_900001", "refseq", "sequence"],
+        ["PB.3.1", "NP_900001.1", "refseq", "sequence"],
         ["PB.3.1", "ENSP00000000001", "ensembl", "sequence"],
         ["PB.10.1", "Protein_PB.2.1", "novel", "sequence"],
     ]
@@ -256,7 +289,7 @@ def test_transcript2reference_orfs_with_stop_codon(synthetic_dir, run_script, tm
         outputs[name] = (tmp_path / f"{name}_assoc.txt").read_text()
     assert [line.split("\t") for line in outputs["with_stop"].splitlines()] == [
         ["PB.3.1", "P0SYA1", "swissprot", "sequence"],
-        ["PB.3.1", "NP_900001", "refseq", "sequence"],
+        ["PB.3.1", "NP_900001.1", "refseq", "sequence"],
         ["PB.3.1", "ENSP00000000001", "ensembl", "sequence"],
     ]
     assert outputs["with_stop"] == outputs["without_stop"]

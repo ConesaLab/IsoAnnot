@@ -2,8 +2,8 @@
 IsoAnnot functions
 Modified by Alessandra Martinez
 """
-import gzip, itertools, re
-from collections import defaultdict
+import gzip, itertools, logging, re
+from collections import Counter, defaultdict
 from operator import itemgetter
 
 strand_table = {
@@ -56,6 +56,62 @@ def normalize_id(identifier):
     """
     match = VERSIONED_ID_REGEX.match(identifier)
     return match.group(1) if match else identifier
+
+
+TRAILING_NUMBER_REGEX = re.compile(r"\.\d+$")
+GTF_PROTEIN_ID_REGEX = re.compile(r'protein_id "([^"]+)"')
+
+
+def read_gtf_protein_ids(gtf_file):
+    """Protein IDs of the CDS lines of a GTF, as the annotation writes them."""
+    protein_ids = set()
+    with openfile(gtf_file, "rt") as read_handler:
+        for line in read_handler:
+            if "\tCDS\t" in line:
+                match = GTF_PROTEIN_ID_REGEX.search(line)
+                if match:
+                    protein_ids.add(match.group(1))
+    return protein_ids
+
+
+def annotation_id_forms(fasta_ids, annotation_ids, database):
+    """
+    Returns {protein FASTA ID: ID as the annotation of its database writes it}, so every protein ID of the
+    GFF3 has the form its database publishes: Ensembl GTFs drop the version (ENSP00000000233.5 ->
+    ENSP00000000233), RefSeq ones keep it (NP_000005.3) and in TAIR the number is the isoform (AT1G01010.1).
+    The form is read from the annotation and not from ID patterns. normalize_id() is for lookups only.
+
+    IDs that are not in the annotation (human Ensembl proteins on scaffolds, which the .chr GTF leaves
+    out) follow what the IDs of the same database do: they lose the number only when every ID found in
+    the annotation does, and only if no two IDs become the same one.
+    """
+    same = {fasta_id for fasta_id in fasta_ids if fasta_id in annotation_ids}
+    without_number = {fasta_id: TRAILING_NUMBER_REGEX.sub("", fasta_id) for fasta_id in fasta_ids if fasta_id not in same}
+    cut = {fasta_id: short_id for fasta_id, short_id in without_number.items() if short_id in annotation_ids}
+    unmatched = [fasta_id for fasta_id in without_number if fasta_id not in cut]
+
+    forms = {fasta_id: fasta_id for fasta_id in fasta_ids}
+    forms.update(cut)
+
+    n_kept_whole = 0
+    if cut and not same:
+        times_used = Counter(TRAILING_NUMBER_REGEX.sub("", fasta_id) for fasta_id in fasta_ids)
+        for fasta_id in unmatched:
+            if times_used[without_number[fasta_id]] == 1:
+                forms[fasta_id] = without_number[fasta_id]
+            else:
+                n_kept_whole += 1
+
+    logging.info(f"{database}: {len(same)} protein IDs are written as in the annotation, {len(cut)} without their "
+                 f"final number, as the annotation has them, and {len(unmatched)} are not in the annotation.")
+    if unmatched and ((same and cut) or not (same or cut)):
+        logging.warning(f"{database}: the annotation and the protein FASTA do not share one form of protein ID "
+                        f"({len(same)} IDs are the same, {len(cut)} differ in the final number). The {len(unmatched)} "
+                        f"protein IDs that are not in the annotation are written as in the protein FASTA.")
+    if n_kept_whole:
+        logging.warning(f"{database}: {n_kept_whole} protein IDs that are not in the annotation keep their final "
+                        f"number, because without it they are the same ID as another protein.")
+    return forms
 
 
 class ChromosomeMap:
