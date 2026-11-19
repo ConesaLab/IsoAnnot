@@ -493,6 +493,31 @@ def test_protein_id_fallbacks(run_script, tmp_path):
     assert cds == {"PB.1.1": "ID=Protein_PB.1.1", "PB:2,1": "ID=Protein_PB_2_1"}
 
 
+def test_protein_length_of_sqanti3_classification(run_script, tmp_path):
+    """
+    In a SQANTI3 classification (mytranscripts) ORF_length is the span of the CDS on the genome, and
+    protein_length counts the stop codon of the ORFs that have one. The protein line has the number of
+    amino acids: PB.1.1 (CDS of 453 nt with its stop) is 150 long, not 2758.
+    """
+    sqanti = tmp_path / "sqanti_classification.txt"
+    sqanti.write_text("isoform\tchrom\tstrand\tlength\tstructural_category\tassociated_gene\tassociated_transcript"
+                      "\tcoding\tORF_length\tCDS_length\tprotein_length\tCDS_start\tCDS_end\tCDS_type\n"
+                      "PB.1.1\t1\t+\t750\tfull-splice_match\tSYNA\tENST00000000001\tcoding\t2758\t453\t151\t101\t553\tcomplete\n"
+                      "PB.1.2\t1\t+\t750\tnovel_in_catalog\tSYNA\tnovel\tcoding\t900\t453\t151\t1\t453\t5prime_partial\n"
+                      "PB.1.3\t1\t+\t750\tnovel_in_catalog\tSYNA\tnovel\tcoding\t900\t450\t150\t301\t750\t3prime_partial\n"
+                      "PB.1.4\t1\t+\t750\tnovel_in_catalog\tSYNA\tnovel\tcoding\t750\t750\t250\t1\t750\tinternal\n"
+                      "PB.1.5\t1\t+\t750\tnovel_in_catalog\tSYNA\tnovel\tnon_coding\tNA\tNA\tNA\tNA\tNA\tNA\n")
+    exons = tmp_path / "exons.gtf"
+    exons.write_text("PB.1.1\ttappAS\texon\t1001\t1750\t.\t+\t.\tChr=chr1\n")
+    output = tmp_path / "annotation.gff3"
+    result = run_script("t2goAnnotationFile.py", "--classification_file", sqanti,
+                        "--input_transcripts", exons, "--input_genomic", exons, "--input_protein", exons,
+                        "--output", output)
+    assert result.returncode == 0, result.stderr
+    proteins = {row[0]: (row[3], row[4]) for row in read_tsv(output) if row[2] == "protein"}
+    assert proteins == {"PB.1.1": ("1", "150"), "PB.1.2": ("1", "150"), "PB.1.3": ("1", "150"), "PB.1.4": ("1", "250")}
+
+
 def test_t2go_empty_protein_association(run_script, tmp_path):
     """
     The association file is empty when no refProt is found in parsed_databases.json. t2go then uses
