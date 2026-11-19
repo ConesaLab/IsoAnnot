@@ -462,6 +462,8 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
    - **Region.** The region is computed for each isoform from its own CDS: `5UTR`, `CDS` (a site that touches the CDS), `3UTR`, or `noncoding` for isoforms without a CDS. Sites in the CDS and the 5′UTR are much less effective than 3′UTR sites, because ribosomes displace the miRNA complex. One miRWalk file is downloaded for each of `3UTR`, `5UTR` and `CDS` in the list (3′UTR only by default, 6.8 GB for human). Sites on non-coding isoforms come from the downloaded files.
    - **In the GFF3**, each site has feature `miRNA_8mer`, `miRNA_7mer`, `miRNA_6mer` or `miRNA_noncanonical`, so the classes can be selected separately in tappAS, and `Desc=<region>_<type>`, e.g. `ID=hsa-miR-21-5p; Desc=3UTR_7mer-A1`.
 
+9. **Nonsense-mediated decay (NMD)**: a coding isoform gets the `NMD` feature when its stop codon is more than 50 nt before the last exon-exon junction (the 50 nt rule, the same limit as `predicted_NMD` of SQANTI3), in the three modes. The distance is measured on the spliced transcript. SQANTI3 measures it on the genome, which also counts the introns between the stop codon and the last junction, so an isoform whose stop lies two or more exons before the last one is always a predicted target there. IsoAnnot does not follow it in that case, because the NMD feature is read as biology in tappAS: in human, 141 Ensembl and 99 RefSeq transcripts are not NMD targets on the spliced transcript, the main transcript of NRAS among them (its stop codon is 43 nt before the last junction on the transcript and more than 380 nt on the genome). For a long-read isoform, the `NMD` feature can therefore differ from the `predicted_NMD` column of its SQANTI3 classification.
+
 ---
 
 ## Output
