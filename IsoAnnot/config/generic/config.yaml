@@ -8,6 +8,8 @@ nls_cache: True
 # A modification reported by both Swiss-Prot and PhosphoSitePlus is written once, with Swiss-Prot as the source.
 # True writes one row for each source
 ptm_both_sources: False
+# UTRscan motifs of transcripts without a CDS, written as ncRNAmotif. Leave them out with utrscan_noncoding=False
+utrscan_noncoding: True
 # RepeatMasker layer. Turn it off with repeat_masker=False
 repeat_masker: True
 # Dfam families RepeatMasker searches: curated (90 MB download, 600 MB on disk) or all, curated and uncurated

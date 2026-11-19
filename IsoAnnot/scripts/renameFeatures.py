@@ -148,6 +148,8 @@ def updateGTF(filepath):
                                 addPosType(res, line, "T")
                             elif fields[2] == '3UTRmotif':
                                 addPosType(res, line, "T")
+                            elif fields[2] == 'ncRNAmotif':
+                                addPosType(res, line, "T")
                             else:
                                 addUnknown(res, line, fields, unknown_pairs)
 

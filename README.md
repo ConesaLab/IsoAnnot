@@ -413,6 +413,7 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
 | `reactome` | Reactome pathway mapping file URL | URL or pathway-specific URL; `no` to skip the layer |
 | `layer_go` | Include Gene Ontology layer | `si`, `yes` or `true` to include; `no`, `false` or omit to skip |
 | `ptm_both_sources` | Write a modification reported by both Swiss-Prot and PhosphoSitePlus once for each source | `False` by default: one row, with Swiss-Prot as the source |
+| `utrscan_noncoding` | Write the UTRscan motifs of transcripts without a CDS, as `ncRNAmotif` (see note 10) | `True` by default; `False` leaves them out |
 | `repeat_masker` | Include the RepeatMasker layer | `True` by default; `False` to leave it out (see note 5) |
 | `repeatmasker_dfam` | Dfam repeat families RepeatMasker searches | `curated` (default) or `all` for curated and uncurated (see note 5) |
 | `biomart_table` | Saved BioMart table for the GO and Reactome layers, read instead of querying BioMart (optional) | `/abs/path/hsapiens_e115_biomart.tsv` |
@@ -463,6 +464,8 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
    - **In the GFF3**, each site has feature `miRNA_8mer`, `miRNA_7mer`, `miRNA_6mer` or `miRNA_noncanonical`, so the classes can be selected separately in tappAS, and `Desc=<region>_<type>`, e.g. `ID=hsa-miR-21-5p; Desc=3UTR_7mer-A1`.
 
 9. **Nonsense-mediated decay (NMD)**: a coding isoform gets the `NMD` feature when its stop codon is more than 50 nt before the last exon-exon junction (the 50 nt rule, the same limit as `predicted_NMD` of SQANTI3), in the three modes. The distance is measured on the spliced transcript. SQANTI3 measures it on the genome, which also counts the introns between the stop codon and the last junction, so an isoform whose stop lies two or more exons before the last one is always a predicted target there. IsoAnnot does not follow it in that case, because the NMD feature is read as biology in tappAS: in human, 141 Ensembl and 99 RefSeq transcripts are not NMD targets on the spliced transcript, the main transcript of NRAS among them (its stop codon is 43 nt before the last junction on the transcript and more than 380 nt on the genome). For a long-read isoform, the `NMD` feature can therefore differ from the `predicted_NMD` column of its SQANTI3 classification.
+
+10. **UTR motifs (UTRscan)**: UTRscan searches the 59 motifs of UTRsite along each whole transcript, and its catalogue (`software/bin/UtrSite.Command`) says in which UTR each motif acts. IsoAnnot keeps a motif only there: an upstream ORF, an IRES or a TOP tract in the 5′UTR (`uORF`, `5UTRmotif`), a polyadenylation signal or a Musashi element in the 3′UTR (`PAS`, `3UTRmotif`), and the few motifs defined for both in either. A short ORF found after the CDS is therefore not reported as an upstream ORF. Transcripts without a CDS have no UTR: their motifs are written as `ncRNAmotif` (`PAS` for the polyadenylation signal), without the 5′UTR motifs, which act on the translation of a CDS. `utrscan_noncoding: False` leaves them out. The catalogue also gives the group of organisms of each motif, which IsoAnnot does not use yet, so a human annotation still has some motifs described in insects.
 
 ---
 

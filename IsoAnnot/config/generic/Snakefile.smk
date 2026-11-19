@@ -1288,9 +1288,12 @@ rule layer_utrscan:
         _output_layer_db("layer_utrscan", external_rule=rules.run_utrscan.output)
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "layer_utrscan.log")
+    params:
+        utrsite_cmd = rules.run_utrscan.params.utrsite_cmd,
+        skip_noncoding = "" if is_feature_enabled("utrscan_noncoding", default=True) else "--skip_noncoding"
     shell:
         """
-        scripts/layer_utrscan.py --utrscan_file {input.utrscan_file} --classification_file {input.classification_file} --output {output} &> {log}
+        scripts/layer_utrscan.py --utrscan_file {input.utrscan_file} --classification_file {input.classification_file} --utrsite_file {params.utrsite_cmd} {params.skip_noncoding} --output {output} &> {log}
         """
 
 rule layer_nls:
