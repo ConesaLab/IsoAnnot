@@ -10,7 +10,7 @@ proteins associated to each sequenced transcript.
 
 from collections import defaultdict
 import argparse, sys, os, csv, logging, re, traceback, json
-from IsoAnnot import strand_table, get_summary_parts, natural_key
+from IsoAnnot import strand_table, get_summary_parts, natural_key, predict_nmd
 from Bio.SeqFeature import FeatureLocation, SeqFeature
 from uniprotPhosphosite_genomicCoordinates import get_fasta_sequences
 from layer_exons import get_gtf_exons
@@ -62,29 +62,13 @@ def _get_transcript_exons_location(exon_lines):
 
 def _calculate_nmd(prot_start, prot_end, exon_locations):
     '''
-    Calculates nonsense mediated decay with the 55 nucleotide rule:
-    A termination codon that falls more than 55 nt upstream of an exon-exon junction 
-    will be potentially detected and degraded via the NMD machinery.
+    NMD status of an isoform from the genomic positions of its CDS, which includes the stop codon.
     '''
-    exons_starts, exons_ends = [], []
-
-    for part in exon_locations.parts:
-        exons_starts.append(part.start)
-        exons_ends.append(part.end)
-
-    exons_starts.sort()
-    exons_ends.sort()
-
-    prot_ord = sorted([prot_start, prot_end])
-
-    nmd_status = "nonNMD"
-
-    if exon_locations.strand == 1 and prot_ord[1] < exons_starts[-1] and (exons_ends[-2] - prot_ord[1] + 1) > 55:
-        nmd_status = "NMD"
-    elif exon_locations.strand == -1 and prot_ord[0] > exons_ends[0] and (prot_ord[0] - exons_starts[1] + 1) > 55:
-        nmd_status = "NMD"
-
-    return nmd_status
+    # The exon parts are half-open
+    exons = [(int(part.start), int(part.end) - 1) for part in exon_locations.parts]
+    if exon_locations.strand == -1:
+        return predict_nmd(exons, min(prot_start, prot_end), "-", stop_in_cds=True)
+    return predict_nmd(exons, max(prot_start, prot_end), "+", stop_in_cds=True)
 
 
 def _calculate_cds_positions(cds_start, cds_end, location):

@@ -114,6 +114,48 @@ def annotation_id_forms(fasta_ids, annotation_ids, database):
     return forms
 
 
+# A stop codon more than 50 nt before the last exon-exon junction marks the transcript for nonsense-mediated
+# decay. Same number as predicted_NMD of SQANTI3.
+NMD_MIN_DISTANCE = 50
+
+
+def bases_to_last_junction(exons, cds_last, strand):
+    """
+    Number of bases of the spliced transcript between the last base of the CDS and the last exon-exon
+    junction. None when the CDS ends in the last exon or the transcript has one exon.
+
+    :param exons: (start, end) of every exon on the genome, both included
+    :param cds_last: genomic position of the last CDS base in the sense of the transcript
+    :param strand: "+" or "-"
+    """
+    ordered_exons = sorted(exons, reverse=(strand == "-"))
+    distance = None
+    for start, end in ordered_exons[:-1]:
+        if distance is not None:
+            distance += end - start + 1
+        elif start <= cds_last <= end:
+            distance = end - cds_last if strand == "+" else cds_last - start
+    return distance
+
+
+def predict_nmd(exons, cds_last, strand, stop_in_cds):
+    """
+    NMD or nonNMD with the 50 nt rule. The distance is measured on the spliced transcript, which is what
+    the ribosome reads. The distance on the genome counts the introns between the stop and the last
+    junction, so a stop two exons back was always NMD, also when only a few bases of exon separate it
+    from the junction (NRAS, NM_002524.5: 43 nt on the transcript, more than 380 on the genome).
+
+    :param stop_in_cds: True when the CDS includes the stop codon (SQANTI3 ORFs). Ensembl and RefSeq CDS
+                        lines end before it, so its 3 bases are not part of the distance.
+    """
+    distance = bases_to_last_junction(exons, cds_last, strand)
+    if distance is None:
+        return "nonNMD"
+    if not stop_in_cds:
+        distance -= 3
+    return "NMD" if distance > NMD_MIN_DISTANCE else "nonNMD"
+
+
 class ChromosomeMap:
     """
     Bi-directional, case-insensitive, version-safe chromosome mapper.
