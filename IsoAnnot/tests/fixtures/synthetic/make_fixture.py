@@ -375,6 +375,7 @@ def main():
     subprocess.run([sys.executable, os.path.join(SCRIPTS_DIR, "parse_protein_databases.py"),
                     "--uniprot_fasta", path("uniprot.fasta"), path("uniprot_additional.fasta"),
                     "--ensembl_fasta", path("ensembl_pep.fa"), "--refseq_fasta", path("refseq_protein.faa"),
+                    "--ensembl_gtf", path("ensembl.gtf"), "--refseq_gtf", path("refseq.gtf"),
                     "--output", path("parsed_databases.json")], cwd=SCRIPTS_DIR, check=True, stdout=subprocess.DEVNULL)
 
 
