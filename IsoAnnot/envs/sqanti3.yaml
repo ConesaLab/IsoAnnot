@@ -1,8 +1,7 @@
 name: sqanti3
 channels:
+  - conda-forge
   - bioconda
-  - anaconda
-  - r
-  - defaults
+  - nodefaults
 dependencies:
-  - sqanti3
+  - sqanti3=6.1
