@@ -34,11 +34,11 @@ def test_layer_interproscan_writes_each_clan_once(run_script, synthetic_dir, tmp
     # LRR_4 is a second family of clan CL0022: ENST00000000002 already has that clan line
     assert output.read_text().splitlines() == [
         "ENST00000000001\t" + domain.format(10, 40),
-        "ENST00000000001\t" + clan,
         "ENST00000000001\t" + domain.format(60, 90),
+        "ENST00000000001\t" + clan,
         "ENST00000000002\t" + domain.format(5, 30),
-        "ENST00000000002\t" + clan,
         "ENST00000000002\tPFAM\tDOMAIN\t40\t70\t.\t.\t.\tID=PF12799; Name=LRR_4; Desc=Leucine Rich repeats (2 copies)",
+        "ENST00000000002\t" + clan,
     ]
 
 
@@ -96,3 +96,39 @@ def test_layer_reactome_mytranscripts_each_pathway_once(monkeypatch, synthetic_d
         for transcript in ["ENST00000000001", "ENST00000000002"]
         for pathway, name in [("R-HSA-1", "Pathway one"), ("R-HSA-2", "Pathway two")]
     ]
+
+
+def test_layer_interproscan_writes_a_fixed_order(run_script, synthetic_dir, tmp_path):
+    """
+    InterProScan gives its matches in a different order from run to run. The layer is the same file for
+    both: transcripts in the order they first appear, then by source, start, end and ID, clans last.
+    """
+    lines = ["ENSP00000000001\tTMHMM\t-\tTMhelix\tTransmembrane Helix\tNone\t100\t122\n",
+             "ENSP00000000001\tPfam\t-\tPF13855\tLRR_8\tLeucine rich repeat\t60\t90\n",
+             "ENSP00000000001\tMobiDB_lite\t-\tmobidb-lite\tdisorder_prediction\tNone\t200\t230\n",
+             "ENSP00000000001\tPfam\t-\tPF13855\tLRR_8\tLeucine rich repeat\t10\t40\n",
+             "ENSP00000000001\tPfam\t-\tPF00001\t7tm_1\t7 transmembrane receptor\t10\t40\n",
+             "ENSP00000000001\tMobiDB_lite\t-\tmobidb-lite\tdisorder_prediction\tNone\t5\t20\n"]
+    pfam = tmp_path / "Pfam-A.clans.tsv"
+    pfam.write_text("PF13855\tCL0022\tLRR\tLRR_8\tLeucine rich repeat\n")
+    outputs = []
+    for name, run_lines in (("first", lines), ("second", lines[::-1])):
+        interproscan = tmp_path / f"{name}.tsv"
+        interproscan.write_text("ENSP00000000002\tPfam\t-\tPF13855\tLRR_8\tLeucine rich repeat\t5\t30\n" + "".join(run_lines))
+        output = tmp_path / f"{name}.gtf"
+        result = run_script("layer_interproscan.py", "--interproscan_file", interproscan, "--pfam_file", pfam,
+                            "--classification_file", synthetic_dir / "ensembl_sqanti_classification.txt", "--output", output)
+        assert result.returncode == 0, result.stderr
+        outputs.append(output.read_text())
+    assert outputs[0] == outputs[1]
+    assert [line.split("\t")[:5] for line in outputs[0].splitlines()] == [
+        ["ENST00000000002", "PFAM", "DOMAIN", "5", "30"],
+        ["ENST00000000002", "PFAM", "clan", ".", "."],
+        ["ENST00000000001", "MOBIDB_LITE", "DISORDER", "5", "20"],
+        ["ENST00000000001", "MOBIDB_LITE", "DISORDER", "200", "230"],
+        ["ENST00000000001", "PFAM", "DOMAIN", "10", "40"],
+        ["ENST00000000001", "PFAM", "DOMAIN", "10", "40"],
+        ["ENST00000000001", "PFAM", "DOMAIN", "60", "90"],
+        ["ENST00000000001", "PFAM", "clan", ".", "."],
+        ["ENST00000000001", "TMHMM", "TRANSMEM", "100", "122"]]
+    assert [line.split("ID=")[1].split(";")[0] for line in outputs[0].splitlines()[4:6]] == ["PF00001", "PF13855"]
