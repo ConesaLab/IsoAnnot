@@ -1121,25 +1121,50 @@ rule expand_nls:
         """
 
 # LAYERS
+# Gene names and GO terms of the Ensembl release of biomart_host, saved once and read by layer_go and
+# layer_reactome. BioMart is not asked inside the layers: www.ensembl.org serves the newest release,
+# which is not the release of the downloaded files for long.
+rule get_biomart_table:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    resources:
+        n_downloads=1
+    output:
+        os.path.join(path_output, "data", prefix, "config", "biomart", f"{config.get('biomart_dataset') or 'biomart'}_biomart.tsv")
+    params:
+        biomart_host=config.get("biomart_host") or "www.ensembl.org",
+        biomart_dataset=config.get("biomart_dataset", []),
+        ensembl_gtf_url=_optional_param("ensembl_gtf", "--ensembl_gtf_url")
+    log:
+        os.path.join(path_output, "logs", prefix, "get_biomart_table.log")
+    shell:
+        """
+        scripts/save_biomart_tables.py --biomart_host {params.biomart_host} --biomart_dataset {params.biomart_dataset} --output {output} {params.ensembl_gtf_url} &> {log}
+        # A BioMart release that is not the release of the files is shown in the run, not only in the log
+        grep "WARNING" {log} >&2 || true
+        """
+
+
+def select_biomart_table(wildcards=None):
+    # A table given with biomart_table is read as it is, and nothing is downloaded
+    return config.get("biomart_table") or rules.get_biomart_table.output
+
+
 rule layer_go:
     conda:
         "../../envs/isoannotpy.yaml"
     input:
         classification_file=select_sqanti_classification,
-        # Saved BioMart answer (save_biomart_tables.py), read instead of querying BioMart
-        biomart_table=config.get("biomart_table") or []
+        biomart_table=select_biomart_table
     output:
         _output_layer_db("layer_go", lambda x: config.get("biomart_dataset", []))
     params:
-        biomart_table=_optional_param("biomart_table", "--biomart_table"),
-        biomart_host=config.get("biomart_host", []),
-        biomart_dataset=config.get("biomart_dataset", []),
         db=config.get("db")
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "layer_go.log")
     shell:
         """
-        scripts/layer_go.py --classification_file {input.classification_file} --output {output} --biomart_host {params.biomart_host} --biomart_dataset {params.biomart_dataset} --db {params.db} {params.biomart_table} &> {log}
+        scripts/layer_go.py --classification_file {input.classification_file} --output {output} --db {params.db} --biomart_table {input.biomart_table} &> {log}
         """
 
 
@@ -1217,11 +1242,8 @@ rule layer_reactome:
     input:
         classification_file=select_sqanti_classification,
         reactome_file=rules.get_reactome.output,
-        biomart_table=config.get("biomart_table") or []
+        biomart_table=select_biomart_table
     params:
-        biomart_table=_optional_param("biomart_table", "--biomart_table"),
-        biomart_host=config.get("biomart_host", []),
-        biomart_dataset=config.get("biomart_dataset", []),
         species=config["species"],
         db=config.get("db")
     output:
@@ -1230,7 +1252,7 @@ rule layer_reactome:
         os.path.join(path_output, "logs", prefix, "{db}", "layer_reactome.log")
     shell:
         """
-        scripts/layer_reactome.py --reactome_file {input.reactome_file} --classification_file {input.classification_file} --biomart_host {params.biomart_host} --biomart_dataset {params.biomart_dataset} --species {params.species:q} --db {params.db} {params.biomart_table} --output {output} &> {log}
+        scripts/layer_reactome.py --reactome_file {input.reactome_file} --classification_file {input.classification_file} --species {params.species:q} --db {params.db} --biomart_table {input.biomart_table} --output {output} &> {log}
         """
 
 

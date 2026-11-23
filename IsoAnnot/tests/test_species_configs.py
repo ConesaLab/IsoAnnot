@@ -37,3 +37,22 @@ def test_drerio_refseq_is_grcz11():
     config = read_config("refseq", "drerio")
     assert "GRCz11" in os.path.basename(config["ensembl_reference"])
     assert {assembly_folder(config[key]) for key in REFSEQ_KEYS} == {"GCF_000002035.6_GRCz11"}
+
+
+ALL_CONFIGS = sorted(glob.glob(os.path.join(CONFIG_DIR, "*", "*", "config.yaml")))
+
+
+@pytest.mark.parametrize("config_file", ALL_CONFIGS, ids=lambda p: "/".join(p.split(os.sep)[-3:-1]))
+def test_biomart_host_is_the_release_of_the_files(config_file):
+    """
+    biomart_host names the Ensembl release of the downloaded files (e115.ensembl.org, eg62-plants.ensembl.org),
+    so gene names and GO terms are not taken from a newer release than the GTF.
+    """
+    from save_biomart_tables import release_of_url
+    with open(config_file) as h:
+        config = yaml.safe_load(h)
+    release = release_of_url(config["ensembl_gtf"])
+    plants = "/plants/" in config["ensembl_gtf"]
+    assert config["biomart_host"] == (f"eg{release}-plants.ensembl.org" if plants else f"e{release}.ensembl.org")
+    # The UniProt scripts tell a plant species by the word "plants" in biomart_host
+    assert ("plants" in config["biomart_host"]) == plants

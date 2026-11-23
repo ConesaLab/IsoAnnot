@@ -354,9 +354,8 @@ BIOMART_TABLE_COLUMNS = ["Gene stable ID", "Gene name", "GO term accession", "GO
 
 def read_biomart_table(filename, layer_name="biomart"):
     """
-    Reads a table written by save_biomart_tables.py. The layers use it instead of querying BioMart when
-    the biomart_table config key is set, so a run works offline and stays tied to one Ensembl release.
-    Empty cells become NA, as in a BioMart answer.
+    Reads a table written by save_biomart_tables.py: the one the get_biomart_table rule downloads, or the
+    one of the biomart_table config key. Empty cells become NA, as in a BioMart answer.
     """
     import logging
     import pandas as pd
@@ -366,7 +365,7 @@ def read_biomart_table(filename, layer_name="biomart"):
     if missing:
         raise ValueError(f"{filename} is not a saved BioMart table: columns {', '.join(missing)} are missing. "
                          f"Write it with scripts/save_biomart_tables.py.")
-    logging.info(f"[{layer_name}] Using the saved BioMart table {filename} ({len(table)} rows) instead of querying BioMart")
+    logging.info(f"[{layer_name}] Using the saved BioMart table {filename} ({len(table)} rows)")
     return table
 
 

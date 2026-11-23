@@ -340,21 +340,54 @@ def test_dry_run_reactome_missing(dry_run, tmp_path):
 
 
 def test_dry_run_biomart_table(dry_run, tmp_path):
-    """With biomart_table set, layer_go and layer_reactome get the saved table instead of querying BioMart."""
+    """With biomart_table set, layer_go and layer_reactome read that table and nothing is downloaded from BioMart."""
     table = tmp_path / "biomart_table.tsv"
     table.write_text("Gene stable ID\tGene name\tGO term accession\tGO term name\tGO domain\n")
     result = dry_run("ensembl", f"biomart_table={table}")
     assert result.returncode == 0, result.stdout + result.stderr
+    assert "get_biomart_table" not in job_counts(result.stdout)
     assert f"--db ensembl --biomart_table {table} " in planned_command(result.stdout, "layer_go.py")
     assert f"--db ensembl --biomart_table {table} --output " in planned_command(result.stdout, "layer_reactome.py")
 
 
-def test_dry_run_without_biomart_table(dry_run):
-    """Without biomart_table the layers query BioMart as before."""
-    result = dry_run("ensembl")
+@pytest.mark.parametrize("database", ["ensembl", "refseq", "mytranscripts"])
+def test_dry_run_downloads_the_biomart_table_once(dry_run, tmp_path, synthetic_dir, database):
+    """
+    Without biomart_table, one job saves the BioMart table of the release in the config and both layers
+    read it. The GTF URL goes with it, so its release can be compared with the one BioMart serves.
+    """
+    config = [f"fasta_cdna={synthetic_dir / 'ensembl_cdna.fa'}"] if database == "mytranscripts" else []
+    result = dry_run(database, *config)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "--biomart_table" not in planned_command(result.stdout, "layer_go.py")
-    assert "--biomart_table" not in planned_command(result.stdout, "layer_reactome.py")
+    assert job_counts(result.stdout)["get_biomart_table"] == 1
+    table = tmp_path / "data" / "Hsapiens" / "config" / "biomart" / "hsapiens_gene_ensembl_biomart.tsv"
+    command = planned_command(result.stdout, "save_biomart_tables.py")
+    assert f"--biomart_host e115.ensembl.org --biomart_dataset hsapiens_gene_ensembl --output {table} --ensembl_gtf_url https://ftp.ensembl.org/pub/release-115/gtf/" in command
+    assert f"--biomart_table {table} " in planned_command(result.stdout, "layer_go.py")
+    assert f"--biomart_table {table} --output " in planned_command(result.stdout, "layer_reactome.py")
+    assert "--biomart_host" not in planned_command(result.stdout, "layer_go.py")
+
+
+def test_dry_run_no_biomart_table_without_its_layers(dry_run):
+    """With the GO and Reactome layers off, nothing is asked to BioMart."""
+    result = dry_run("ensembl", "layer_go=no", "reactome=no")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "get_biomart_table" not in job_counts(result.stdout)
+
+
+def test_dry_run_biomart_host_missing(dry_run, tmp_path):
+    """A config without biomart_host asks www.ensembl.org. The old default, with https://, could not connect."""
+    with open(os.path.join(ISOANNOT_DIR, "config", "ensembl", "hsapiens", "config.yaml")) as h:
+        lines = [line for line in h if not line.startswith("biomart_host")]
+    configfile = tmp_path / "config.yaml"
+    configfile.write_text("".join(lines))
+    # The species Snakefile loads its own config.yaml, which has the key, so include the generic one directly
+    snakefile = tmp_path / "Snakefile.smk"
+    snakefile.write_text(f'configfile: "{configfile}"\n\n'
+                         f'include: "{os.path.join(ISOANNOT_DIR, "config", "generic", "Snakefile_ensembl.smk")}"\n')
+    result = dry_run("ensembl", snakefile=str(snakefile), configfile=str(configfile))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "--biomart_host www.ensembl.org --biomart_dataset" in planned_command(result.stdout, "save_biomart_tables.py")
 
 
 @pytest.mark.parametrize("option", ["fasta_cdna", "gtf_cdna"])

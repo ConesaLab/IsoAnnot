@@ -1,7 +1,5 @@
 import os
 import sys
-import types
-from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
@@ -44,20 +42,18 @@ def test_layer_interproscan_writes_each_clan_once(run_script, synthetic_dir, tmp
 
 def run_layer_reactome(monkeypatch, tmp_path, classification, reactome_text, gene_names, db):
     """
-    Runs layer_reactome.main() in this process, with BioMart's gene ID-name answer given by the test:
-    pybiomart is not needed and nothing goes to the network. Returns the output lines.
+    Runs layer_reactome.main() in this process, with the gene ID-name pairs of the BioMart table given
+    by the test. Returns the output lines.
     """
-    pybiomart = types.ModuleType("pybiomart")
-    pybiomart.Dataset = MagicMock()
-    monkeypatch.setitem(sys.modules, "pybiomart", pybiomart)
     sys.modules.pop("layer_reactome", None)
     import layer_reactome
-    monkeypatch.setattr(layer_reactome, "query_biomart_with_retry", lambda **kwargs: gene_names.copy())
+    biomart_table = tmp_path / "biomart_table.tsv"
+    gene_names.assign(**{"GO term accession": "", "GO term name": "", "GO domain": ""}).to_csv(biomart_table, sep="\t", index=False)
     reactome = tmp_path / "Ensembl2Reactome_All_Levels.txt"
     reactome.write_text(reactome_text)
     output = tmp_path / "layer_reactome.gtf"
     monkeypatch.setattr(sys, "argv", ["layer_reactome.py", "--reactome_file", str(reactome), "--classification_file", str(classification),
-                                      "--biomart_host", "www.ensembl.org", "--biomart_dataset", "hsapiens_gene_ensembl",
+                                      "--biomart_table", str(biomart_table),
                                       "--species", "Homo sapiens", "--db", db, "--output", str(output)])
     with pytest.raises(SystemExit) as exit_info:
         layer_reactome.main()
