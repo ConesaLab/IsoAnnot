@@ -21,26 +21,33 @@ def read_tsv(path):
         return [line.rstrip("\n").split("\t") for line in handle]
 
 
-def make_layers(run_script, synthetic_dir, classification, outdir):
+# Transcripts with a GO term in the small GO layer of the tests: the first SYNA and the first SYNB one
+GO_TRANSCRIPTS = {"ensembl": ("ENST00000000001", "ENST00000000003"), "refseq": ("NM_900001.1", "NM_900003.2")}
+
+
+def make_layers(run_script, synthetic_dir, classification, outdir, database="ensembl"):
     """Exon, junction and NMD layers made by the layer scripts on the fixture, plus a small GO layer."""
     layers = {name: outdir / f"layer_{name}.gtf" for name in ("exons", "junctions", "nmd", "go")}
-    for args in (("layer_exons.py", "--gtf_file", synthetic_dir / "ensembl.gtf"),
-                 ("layer_junctions.py", "--junctions_file", synthetic_dir / "ensembl_sqanti_junctions.txt",
+    # As rule layer_exons: the RefSeq GTF has NCBI chromosome names, translated with chr2acc
+    chr_ref = ("--chr_ref", synthetic_dir / "chr2acc") if database == "refseq" else ()
+    for args in (("layer_exons.py", "--gtf_file", synthetic_dir / f"{database}.gtf", *chr_ref),
+                 ("layer_junctions.py", "--junctions_file", synthetic_dir / f"{database}_sqanti_junctions.txt",
                   "--classification_file", classification),
-                 ("layer_nmd.py", "--nmd_file", synthetic_dir / "ensembl_sqanti_NMD.txt",
+                 ("layer_nmd.py", "--nmd_file", synthetic_dir / f"{database}_sqanti_NMD.txt",
                   "--classification_file", classification)):
         name = args[0][len("layer_"):-len(".py")]
         result = run_script(*args, "--output", layers[name])
         assert result.returncode == 0, result.stderr
-    layers["go"].write_text("ENST00000000001\tGeneOntology\tC\t.\t.\t.\t.\t.\tID=GO:0005737; Name=cytoplasm\n"
-                            "ENST00000000003\tGeneOntology\tF\t.\t.\t.\t.\t.\tID=GO:0005515; Name=protein binding\n")
+    first, second = GO_TRANSCRIPTS[database]
+    layers["go"].write_text(f"{first}\tGeneOntology\tC\t.\t.\t.\t.\t.\tID=GO:0005737; Name=cytoplasm\n"
+                            f"{second}\tGeneOntology\tF\t.\t.\t.\t.\t.\tID=GO:0005515; Name=protein binding\n")
     return layers
 
 
-def run_t2go(run_script, synthetic_dir, tmp_path, classification=None, protein_assoc=None):
+def run_t2go(run_script, synthetic_dir, tmp_path, classification=None, protein_assoc=None, database="ensembl"):
     """Runs t2goAnnotationFile.py as rule tappas_annotation does and returns the output rows."""
-    classification = classification or synthetic_dir / "ensembl_sqanti_classification.txt"
-    layers = make_layers(run_script, synthetic_dir, classification, tmp_path)
+    classification = classification or synthetic_dir / f"{database}_sqanti_classification.txt"
+    layers = make_layers(run_script, synthetic_dir, classification, tmp_path, database)
     output = tmp_path / "annotation.gff3"
     args = ["--classification_file", classification, "--input_transcripts", layers["nmd"],
             "--input_genomic", layers["exons"], layers["junctions"], "--input_protein", layers["go"],
@@ -375,6 +382,60 @@ def test_end_to_end_gff3(synthetic_dir, run_script, tmp_path):
         "ENST00000000006": ("1", "267", "ID=ENSP00000000006; PosType=P"),
     }
     assert all(re.match(r"^ID=[A-Za-z0-9_.\-]+;", attributes) for _, _, attributes in proteins.values())
+
+
+def test_end_to_end_gff3_refseq(synthetic_dir, run_script, tmp_path):
+    """
+    The same layout in RefSeq mode, which only the gold panel checked. The RefSeq models of the fixture
+    are the Ensembl ones, so blocks and coordinates are those of test_end_to_end_gff3. The protein IDs
+    are RefSeq ones with their version, as the RefSeq annotation writes them.
+    """
+    classification = synthetic_dir / "refseq_sqanti_classification.txt"
+    protein_assoc, _ = run_reference_protein_assoc(run_script, synthetic_dir, tmp_path, "refseq", classification)
+    run_t2go(run_script, synthetic_dir, tmp_path, protein_assoc=protein_assoc, database="refseq")
+    result = run_script("renameFeatures.py", tmp_path / "annotation.gff3")
+    assert result.returncode == 0, result.stderr
+    rows = read_tsv(tmp_path / "annotation.gff3_mod")
+
+    assert all(len(row) == 9 and re.search(r"[^;\s]; PosType=[TGPN]$", row[8]) for row in rows)
+
+    # Each transcript's lines are contiguous and in the legacy tappAS order
+    transcripts = list(dict.fromkeys(row[0] for row in rows))
+    assert transcripts == ["NM_900001.1", "NM_900002.1", "NM_900003.2", "NM_900004.1", "NM_900006.3", "NR_900005.1"]
+    assert [row[0] for row in rows] == sorted((row[0] for row in rows), key=transcripts.index)
+    blocks = {transcript: "".join(block_letter(row) for row in rows if row[0] == transcript)
+              for transcript in transcripts}
+    assert blocks == {"NM_900001.1": "tgcGeeejjpN", "NM_900002.1": "tgcTGeeeejjjp",
+                      "NM_900003.2": "tgcGeeeejjjpN", "NM_900004.1": "tgcGeeeeejjjjp",
+                      "NM_900006.3": "tgcGep", "NR_900005.1": "tgGeej"}
+
+    # Integer coordinates, except the position-less GO and NMD features
+    for row in rows:
+        if row[1] in ("GeneOntology", "NMD"):
+            assert (row[3], row[4]) == (".", ".")
+        else:
+            assert re.match(r"^\d+$", row[3]) and re.match(r"^\d+$", row[4]), row
+
+    # No duplicate lines
+    assert len(rows) == len({tuple(row) for row in rows})
+
+    # Same ID and Desc on CDS and protein lines, shared by the two SYNB transcripts
+    cds = {row[0]: (row[3], row[4], row[8]) for row in rows if row[2] == "CDS"}
+    proteins = {row[0]: (row[3], row[4], row[8]) for row in rows if row[2] == "protein"}
+    assert cds == {
+        "NM_900001.1": ("101", "550", "ID=P0SYA1; Desc=NP_900001.1; PosType=T"),
+        "NM_900002.1": ("101", "361", "ID=A0A0S1YNA6; Desc=NP_900002.1; PosType=T"),
+        "NM_900003.2": ("51", "611", "ID=P0SYB1-2; Desc=NP_900003.1,NP_900004.1; PosType=T"),
+        "NM_900004.1": ("111", "671", "ID=P0SYB1-2; Desc=NP_900003.1,NP_900004.1; PosType=T"),
+        "NM_900006.3": ("101", "901", "ID=NP_900006.2; PosType=T"),
+    }
+    assert proteins == {
+        "NM_900001.1": ("1", "150", "ID=P0SYA1; Desc=NP_900001.1; PosType=P"),
+        "NM_900002.1": ("1", "87", "ID=A0A0S1YNA6; Desc=NP_900002.1; PosType=P"),
+        "NM_900003.2": ("1", "187", "ID=P0SYB1-2; Desc=NP_900003.1,NP_900004.1; PosType=P"),
+        "NM_900004.1": ("1", "187", "ID=P0SYB1-2; Desc=NP_900003.1,NP_900004.1; PosType=P"),
+        "NM_900006.3": ("1", "267", "ID=NP_900006.2; PosType=P"),
+    }
 
 
 def test_t2go_empty_blocks(run_script, tmp_path):
