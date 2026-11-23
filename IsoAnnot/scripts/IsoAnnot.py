@@ -6,6 +6,9 @@ import gzip, itertools, logging, re
 from collections import Counter, defaultdict
 from operator import itemgetter
 
+# isoannot.sh reads the version from this line: keep it as __version__ = "x.y.z"
+__version__ = "0.9.2"
+
 strand_table = {
     '+': +1,
     '-': -1,

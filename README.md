@@ -203,6 +203,7 @@ Not every layer exists for every species. The table shows what the configuration
 | `--config` | Override config values | Conditional* | `key=value` pairs |
 | `--configfile` | Custom config file path | No | Path to YAML file |
 | `--snakefile` | Custom snakefile path | No | Path to Snakefile |
+| `--version` | Print the IsoAnnot version and exit. Every run also prints it as its first line | No | |
 
 *Required when using `--database mytranscripts` with custom files
 
