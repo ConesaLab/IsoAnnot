@@ -66,3 +66,20 @@ def test_isoform_without_a_canonical_protein_gets_no_feature_and_is_reported(run
     log, rows = run_genomic_coordinates(run_script, tmp_path, gtf, fasta)
     assert rows == []
     assert f"1 proteins match an alternative UniProt isoform" in log and ISOFORM in log
+
+
+def test_stops_when_the_table_does_not_know_the_chromosomes_of_the_refseq_gtf(run_script, synthetic_dir, tmp_path):
+    """RefSeq CDSs on sequences that chr2acc can't translate were kept under a name the genome does not have."""
+    files = {"uniprot.fasta": UNIPROT_FASTA, "pep.fa": f">{CANONICAL}.1 pep\nMASKTTTTGSYW\n", "parsed.txt": PARSED,
+             "phosphosite.txt": PHOSPHOSITE, "ensembl.gtf": cds_lines(CANONICAL, [(101, 112), (201, 212), (301, 312)]),
+             "refseq.gtf": cds_lines("NP_900101.1", [(101, 112)]).replace("1\ttest", "NW_999999.1\ttest")}
+    for name, text in files.items():
+        (tmp_path / name).write_text(text)
+    result = run_script("uniprotPhosphosite_genomicCoordinates.py", "--uniprot_fasta", tmp_path / "uniprot.fasta",
+                        "--ensembl_fasta", tmp_path / "pep.fa", "--uniprot_parsed", tmp_path / "parsed.txt",
+                        "--phosphosite_files", tmp_path / "phosphosite.txt", "--ensembl_gtf", tmp_path / "ensembl.gtf",
+                        "--refseq_gtf", tmp_path / "refseq.gtf", "--chr_ref", synthetic_dir / "chr2acc",
+                        "--biomart_host", "e115.ensembl.org", "--output_protein", tmp_path / "protein.txt",
+                        "--output_domain", tmp_path / "domain.txt")
+    assert result.returncode != 0
+    assert "Critical Error in uniprotPhosphosite_genomicCoordinates.py: 1/1 chromosome lookups failed" in result.stderr

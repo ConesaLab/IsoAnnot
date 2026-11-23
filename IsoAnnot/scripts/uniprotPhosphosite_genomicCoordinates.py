@@ -419,6 +419,9 @@ def main():
         if args.refseq_gtf:
             cds_refseq = get_cds_from_gtf(args.refseq_gtf,
                                         chrom_ref=refseqChrom)  
+            # A table that does not know the chromosomes of the RefSeq GTF leaves its proteins without features
+            if args.chr_ref:
+                refseqChrom.check_unmapped("uniprotPhosphosite_genomicCoordinates.py")
     
         logging.info(f"Len of ensembl CDS: {len(cds_ensembl)}")
         logging.info(f"Len of refseq CDS: {len(cds_refseq)}")
