@@ -1,6 +1,8 @@
 import os
 import sys
 
+import pytest
+
 main_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts"))
 sys.path.insert(0, main_path)
 
@@ -184,3 +186,51 @@ def test_ptm_reported_by_both_sources_is_written_once_as_swissprot(run_script, s
 def test_keep_both_sources_writes_the_ptm_once_for_each_source(run_script, synthetic_dir, tmp_path):
     lines, log = run_refseq_motifs(run_script, synthetic_dir, tmp_path, BOTH_SOURCES, "--keep_both_sources")
     assert sorted(lines) == sorted(SWISSPROT_ROWS + [METHYLSERINE, ROW + "ID=Phosphoserine; Name=Phosphoserine; Desc=Phosphoserine_PhosphositePlus"])
+
+
+GENEPRED_ENST_1 = GENEPRED_NM_900001.replace("NM_900001.1\tNC_000001.11", "ENST00000000001\t1")
+
+
+def run_ensembl(run_script, synthetic_dir, tmp_path, genepred_text, keep_version="False", classification=None):
+    """Runs the script in Ensembl mode with a phosphoserine on serine 6 of ENSP00000000001."""
+    genepred = tmp_path / "ensembl.genepred"
+    genepred.write_text(genepred_text)
+    motifs = tmp_path / "uniprot_gcord_domainGenomic.txt"
+    motifs.write_text(motif_line("MOD_RES", "Phosphoserine", 1116, 1118, "S", "ENSP00000000001"))
+    output = tmp_path / "uniprot_Phosphosite_info.txt"
+    result = run_script("uniprotPhosphosite_annotation.py", "--orf_fasta", synthetic_dir / "ensembl_pep.fa",
+                        "--classification_file", classification or synthetic_dir / "ensembl_sqanti_classification.txt",
+                        "--genepred_file", genepred, "--uniprotmotif_file", motifs,
+                        "--chr_ref", synthetic_dir / "chr2acc", "--keep_version", keep_version, "--db", "ensembl",
+                        "--biomart_host", "e115.ensembl.org", "--output", output)
+    return result, output
+
+
+@pytest.mark.parametrize("keep_version", ["False", "True"])
+def test_ensembl_protein_is_found_whatever_transcript_versioned_says(run_script, synthetic_dir, tmp_path, keep_version):
+    """
+    The Ensembl protein FASTA has versions (ENSP00000000001.2) and the classification does not. With
+    transcript_versioned: True in an Ensembl config no transcript found its protein, and the layer was empty.
+    """
+    result, output = run_ensembl(run_script, synthetic_dir, tmp_path, GENEPRED_ENST_1, keep_version)
+    assert result.returncode == 0, result.stderr
+    assert output.read_text().splitlines() == [PHOSPHOSERINE_6.replace("PB.1.1", "ENST00000000001")]
+    assert "the UniProt layer will be empty" not in result.stderr
+
+
+def test_warns_when_no_coding_transcript_has_its_protein(run_script, synthetic_dir, tmp_path):
+    """A classification and a protein FASTA of different annotations give an empty layer: it is said once."""
+    classification = tmp_path / "classification.txt"
+    classification.write_text((synthetic_dir / "ensembl_sqanti_classification.txt").read_text().replace("\tENSP0000", "\tOTHERP0000"))
+    result, output = run_ensembl(run_script, synthetic_dir, tmp_path, GENEPRED_ENST_1, classification=classification)
+    assert result.returncode == 0, result.stderr
+    assert output.read_text() == ""
+    assert result.stderr.count("coding transcripts of") == 1
+    assert "has its protein in the protein FASTA, so the UniProt layer will be empty" in result.stderr
+
+
+def test_stops_when_the_table_does_not_know_the_chromosomes_of_the_transcripts(run_script, synthetic_dir, tmp_path):
+    """Transcripts on chromosomes that chr2acc can't translate got no motif, without an error."""
+    result, output = run_ensembl(run_script, synthetic_dir, tmp_path, GENEPRED_ENST_1.replace("\t1\t+", "\tNW_999999.1\t+"))
+    assert result.returncode != 0
+    assert "Critical Error in uniprotPhosphosite_annotation.py: 1/1 chromosome lookups failed" in result.stderr

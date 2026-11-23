@@ -14,7 +14,7 @@ Script that projects protein features genomic coordinates into query isoforms an
 import argparse, sys, os, re, logging, csv, traceback
 import pandas as pd
 from collections import Counter, defaultdict
-from IsoAnnot import openfile, strand_table, get_consecutive_parts, argparse_nullable, read_chr_ref_acc
+from IsoAnnot import openfile, strand_table, get_consecutive_parts, argparse_nullable, read_chr_ref_acc, normalize_id
 from Bio.SeqFeature import SeqFeature, FeatureLocation
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
@@ -40,18 +40,24 @@ def get_coding_transcripts(classification_filename, protein_sequences):
     logging.info(f"Reading SQANTI classification file {classification_filename}")
 
     transcript_dict = {}
+    # The protein FASTA and the classification can differ in the version of an ID (ENSP00000000233.5 and
+    # ENSP00000000233), whatever transcript_versioned says. Without this second lookup no transcript
+    # found its protein and the layer was empty, with no error.
+    sequences_without_version = {normalize_id(protein_id): seq for protein_id, seq in protein_sequences.items()}
+    n_coding = 0
 
     with openfile(classification_filename, "rt") as read_handler:
         tsv_reader = csv.DictReader(read_handler, delimiter="\t")
         for line in tsv_reader:
             if line.get('coding') == "coding":
+                n_coding += 1
                 transcript_id = line.get('isoform') # or associatedTranscript?
                 # In mytranscripts there is no refProt, use the transcript id
                 protein_id = line.get('refProt', transcript_id)
 
                 # SQANTI classification file is 1-based, change to 0-based
                 cds_pos = [int(line.get('CDS_start'))-1, (int(line.get('CDS_end')))]
-                protein_seq = protein_sequences.get(protein_id, None)
+                protein_seq = protein_sequences.get(protein_id) or sequences_without_version.get(normalize_id(protein_id))
 
                 # Create  SeqFeature object for the transcript with CDS position, transcript ID,
                 # protein ID and protein sequence.
@@ -65,6 +71,10 @@ def get_coding_transcripts(classification_filename, protein_sequences):
                     
                     # TODO: should this be a list instead?
                     transcript_dict[transcript_id] = record_transcript
+
+    if n_coding and not transcript_dict:
+        logging.warning(f"None of the {n_coding} coding transcripts of {classification_filename} has its protein in the "
+                        f"protein FASTA, so the UniProt layer will be empty. Check that both come from the same annotation.")
 
     return(transcript_dict)
 
@@ -97,6 +107,10 @@ def get_genepred_exons(genepred_filename, match_file=None):
                 transcript_locations = [FeatureLocation(int(e_start)+1, int(e_end)+1, strand) for e_start, e_end in zip(exons_start, exons_end)]
                 location_object = sum(transcript_locations)
                 output_dict[transcript_id] = {"chr": chrom, "location": location_object}
+
+    # A table that does not know the chromosomes of the transcripts leaves them without motifs
+    if match_file:
+        chr_conversion.check_unmapped("uniprotPhosphosite_annotation.py")
 
     return(output_dict)
 
