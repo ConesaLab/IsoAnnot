@@ -340,7 +340,7 @@ Here's a complete template for creating a new species configuration. The example
 species:  Homo sapiens
 species_name: human
 
-biomart_host: http://www.ensembl.org
+biomart_host: e108.ensembl.org
 biomart_dataset: hsapiens_gene_ensembl
 
 ensembl_cdna: ftp://ftp.ensembl.org/pub/release-108/fasta/homo_sapiens/cdna/Homo_sapiens.GRCh38.cdna.all.fa.gz
@@ -413,7 +413,7 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
 |-----------|-------------|---------|
 | `species` | Full scientific name | `Homo sapiens` |
 | `species_name` | Common name (lowercase) | `human` |
-| `biomart_host` | BioMart server URL | `http://www.ensembl.org` |
+| `biomart_host` | BioMart host of the Ensembl release of your files (see note 6) | `e115.ensembl.org` |
 | `biomart_dataset` | BioMart dataset identifier | `hsapiens_gene_ensembl` |
 | `ensembl_cdna` | Ensembl cDNA FASTA file URL | URL to .fa.gz file |
 | `ensembl_proteins` | Ensembl protein FASTA file URL | URL to .fa.gz file |
@@ -434,7 +434,7 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
 | `utrscan_noncoding` | Write the UTRscan motifs of transcripts without a CDS, as `ncRNAmotif` (see note 10) | `True` by default; `False` leaves them out |
 | `repeat_masker` | Include the RepeatMasker layer | `True` by default; `False` to leave it out (see note 5) |
 | `repeatmasker_dfam` | Dfam repeat families RepeatMasker searches | `curated` (default) or `all` for curated and uncurated (see note 5) |
-| `biomart_table` | Saved BioMart table for the GO and Reactome layers, read instead of querying BioMart (optional) | `/abs/path/hsapiens_e115_biomart.tsv` |
+| `biomart_table` | BioMart table saved before, read by the GO and Reactome layers instead of downloading it (optional, see note 6) | `/abs/path/hsapiens_e115_biomart.tsv` |
 | `mirna_regions_to_use` | Regions of each isoform where miRNA binding sites are kept (see note 8); an empty list skips the miRNA layer | `["3UTR", "noncoding"]` by default; also `5UTR`, `CDS` |
 | `mirna_mirbase_set` | miRNAs whose sites are kept | `high_confidence` (default) or `all` |
 | `mirna_site_types` | Seed match types kept | `canonical` (default), `canonical_6mer` or `all` |
@@ -465,13 +465,16 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
    - IsoAnnot installs RepeatMasker 4.2.6 from its [GitHub release](https://github.com/Dfam-consortium/RepeatMasker/releases) and downloads the Dfam 4.0 library, both into `{outputdir}/data/global/`. The curated families (the default) are a 90 MB download and take 600 MB on disk. `repeatmasker_dfam=all` adds the uncurated ones: a 4.2 GB download (about 40 minutes on our cluster) that takes 25 GB on disk.
    - Curated families cover human, mouse and zebrafish well (about 1,400 to 2,000 each) but plants hardly at all: Dfam 4.0 has only 9 curated families for *Arabidopsis thaliana*, and 503 uncurated ones. For plants use `repeatmasker_dfam=all`.
 
-6. **`biomart_table`**: the GO and Reactome layers ask BioMart for gene names and GO terms while the pipeline runs. `www.ensembl.org` always serves the newest Ensembl release, which may not be the release of your GTF, and the run fails if BioMart is down. To avoid both, save the answer once with the archive host of your release and point `biomart_table` to it (absolute path):
+6. **BioMart (`biomart_host` and `biomart_table`)**: the GO and Reactome layers take gene names and GO terms from Ensembl BioMart. IsoAnnot downloads them once per output folder, into `data/<Prefix>/config/biomart/`, and both layers read that table.
+   - `biomart_host` has to be the BioMart of the Ensembl release of your files, because `www.ensembl.org` always serves the newest release. Ensembl has one host per release: `e115.ensembl.org` for release 115, and `eg62-plants.ensembl.org` for Ensembl Plants 62. It can be written with or without `https://`.
+   - If the release of `biomart_host` is not the release in the `ensembl_gtf` URL, the run goes on and shows a warning. Ensembl does not keep an archive of every old release, above all for plants: in that case use `plants.ensembl.org` or `www.ensembl.org`, and expect the warning.
+   - To run without internet, or when BioMart is down, save the table once and give it with `biomart_table` (absolute path). Nothing is downloaded then:
    ```bash
    cd IsoAnnot/scripts
-   ./save_biomart_tables.py --biomart_host sep2025.archive.ensembl.org \
+   ./save_biomart_tables.py --biomart_host e115.ensembl.org \
        --biomart_dataset hsapiens_gene_ensembl --output /abs/path/hsapiens_e115_biomart.tsv
    ```
-   The archive host of each release is listed at https://www.ensembl.org/info/website/archives/. Run it in the `isoannotpy` environment, which has `pybiomart`.
+   Run it in the `isoannotpy` environment.
 
 7. **RefSeq transcript sequences**: in refseq mode, UTRScan, RepeatMasker and the miRNA layer read the RefSeq transcripts spliced from the genome (`ensembl_reference`) with the exons of `refseq_gtf`, not NCBI's `rna.fna`. Some `rna.fna` sequences differ from the genome (a poly(A) tail, or bases the genome does not have), and their positions did not match the exons of the GFF3. The positions now match, but differences of the RefSeq mRNA from the genome are not annotated. The `refseq_cdna` key is no longer used.
 
