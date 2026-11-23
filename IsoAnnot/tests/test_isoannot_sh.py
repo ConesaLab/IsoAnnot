@@ -100,3 +100,26 @@ def test_absolute_outputdir_unchanged(launch):
     """An absolute --outputdir is passed as given."""
     argv = launch("--database", "ensembl", "--species", "hsapiens", "--outputdir", "/abs/out")
     assert config_tokens(argv)[1] == "path_output=/abs/out"
+
+
+def read_version():
+    from IsoAnnot import __version__
+    return __version__
+
+
+def test_version_option_prints_the_version_and_exits(launch):
+    """--version needs no database or species, and does not start snakemake."""
+    assert launch("--version") == [f"IsoAnnot {read_version()}"]
+
+
+def test_version_is_the_first_line_of_a_run(launch):
+    """Every run starts with the version, so the log of a job says which IsoAnnot made the output."""
+    argv = launch("--database", "ensembl", "--species", "hsapiens")
+    assert argv[0] == f"IsoAnnot {read_version()}"
+    assert "--snakefile" in argv
+
+
+def test_version_has_three_numbers():
+    """isoannot.sh reads the version with a pattern, so it has to stay in the form x.y.z (or x.y.zb1)."""
+    import re
+    assert re.fullmatch(r"\d+\.\d+\.\d+\w*", read_version())

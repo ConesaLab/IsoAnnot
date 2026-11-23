@@ -53,6 +53,10 @@ case $key in
     DEFAULT=YES
     shift # past argument
     ;;
+    --version)
+    SHOW_VERSION=YES
+    shift # past argument
+    ;;
     *)    # unknown option
     POSITIONAL+=("$1") # save it in an array for later
     shift # past argument
@@ -63,6 +67,15 @@ set -- "${POSITIONAL[@]}" # restore positional parameters
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 SHADOW_DIR="$( paste -d'/' <(echo "$DIR") <(paste -d'_' <( echo ".$SPECIES" ) <( echo "$DATABASE" )) )"
+
+# The version is kept in one place, scripts/IsoAnnot.py
+VERSION="$( sed -n 's/^__version__ = "\(.*\)"$/\1/p' "$DIR/scripts/IsoAnnot.py" )"
+
+if [ "$SHOW_VERSION" = "YES" ]
+then
+    echo "IsoAnnot $VERSION"
+    exit 0
+fi
 
 
 if [ -z "$DATABASE" ]
@@ -108,6 +121,9 @@ fi
 
 # TODO ASK the user the directory where they want to store the final annotation. Connect with isoannot.sh script
 
+
+# First line of every run, so the log says which version made the output
+echo "IsoAnnot $VERSION"
 
 exec snakemake -p --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE "path_output=$OUTPUTDIR" $CONFIG --directory $DIR --cores ${SLURM_CPUS_PER_TASK:-8} all --rerun-incomplete --nolock --resources n_downloads=1 #-n
 #exec snakemake -p --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE $CONFIG --directory $DIR --cores 8 all  --rerun-incomplete --nolock --summary
