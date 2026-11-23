@@ -2,7 +2,8 @@
 
 IsoAnnot is a new tool for generating functional and structural annotation at isoform level, capable of collecting and integrating information from different databases to categorize and describe each isoform, including functional and structural information for both transcript and protein.
 
-⚠️⚠️ IsoAnnot is currenlty under beta-testing. Please see the [latest release](https://github.com/ConesaLab/IsoAnnot/releases/tag/v0.9.0b1) and download IsoAnnot from the [release](https://github.com/ConesaLab/IsoAnnot/tree/v0.9.0b1) branch.
+⚠️ IsoAnnot is in pre-release. Please download it from the [releases page](https://github.com/ConesaLab/IsoAnnot/releases) and report any problem in the [issues](https://github.com/ConesaLab/IsoAnnot/issues).
+
 ## Requirements
 
 ### Computational Requirements
@@ -25,7 +26,7 @@ IsoAnnot requires the following software to be installed before use:
 1. **Operating System**: GNU/Linux (tested and supported)
 2. **Python**: Python 3 (managed automatically by conda)
 3. **Conda**: For dependency management
-4. **Snakemake**: Workflow management system (version 7.x recommended)
+4. **Snakemake**: Workflow management system (version 8; IsoAnnot is developed and tested with 8.28)
 
 ---
 
@@ -62,7 +63,7 @@ conda activate snakemake
 Follow the official Snakemake installation guide: https://snakemake.readthedocs.io/en/stable/getting_started/installation.html
 
 ```bash
-conda create -n snakemake -c conda-forge -c bioconda snakemake
+conda create -n snakemake -c conda-forge -c bioconda snakemake=8
 conda activate snakemake
 ```
 
@@ -174,6 +175,23 @@ cd IsoAnnot
 ```
 
 This example annotates potato (*Solanum tuberosum*) transcripts from a custom FASTA file.
+
+### Layers available for each species
+
+Not every layer exists for every species. The table shows what the configurations shipped with IsoAnnot produce:
+
+| Layer | Human, mouse | Zebrafish, fruit fly | *Arabidopsis* |
+|---|---|---|---|
+| Exons, junctions, NMD, UTR motifs, repeats | Yes | Yes | Yes |
+| Protein domains (InterProScan), GO, UniProt features | Yes | Yes | Yes |
+| Pathways | Reactome | Reactome | Plant Reactome |
+| PTMs from PhosphoSitePlus | Yes | No | No |
+| NLS (NucImport) | Yes | No | No |
+| miRNA binding sites (miRWalk) | Yes | No | No |
+
+- NLS and miRNA sites need the `nls_model` and miRWalk keys in the species configuration, which only human and mouse have.
+- PhosphoSitePlus is mostly human, mouse and rat. Other species get the PTMs that UniProt reports.
+- `mytranscripts` is shipped for human only. For another species, see [Creating a New Config File](#creating-a-new-config-file).
 
 ### Command-line Parameters
 
