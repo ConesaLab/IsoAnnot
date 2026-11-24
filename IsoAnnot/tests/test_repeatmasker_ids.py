@@ -19,12 +19,18 @@ SHORT_ID = "ENST00000000001.4"
 
 # Stand-in for RepeatMasker: it stops on IDs longer than 50 characters, as the real one does, and writes
 # one .out hit per sequence, with the 3 header lines and the column layout of a real .out file. It also
-# saves the options it was run with.
+# prints the folder it runs in and its options, which end in the log of the rule. It leaves a temporary file
+# and a cached library behind, as the real one does.
 FAKE_REPEATMASKER = f"""#!{sys.executable}
 import os, sys
 fasta = sys.argv[1]
 out_dir = sys.argv[sys.argv.index("-dir") + 1]
-open(os.path.join(out_dir, "options.txt"), "w").write(" ".join(sys.argv[2:]))
+print("cwd: " + os.getcwd())
+print("options: " + " ".join(sys.argv[2:]))
+open(os.path.join(out_dir, "RM_batch.tmp"), "w").write("temporary")
+cache_dir = sys.argv[sys.argv.index("-cache_dir") + 1]
+os.makedirs(cache_dir, exist_ok=True)
+open(os.path.join(cache_dir, "homo_sapiens.lib"), "a").write("library\\n")
 ids = [line[1:].split()[0] for line in open(fasta) if line.startswith(">")]
 if any(len(i) > 50 for i in ids):
     sys.exit("FastaDB::_cleanIDs: Fasta file contains a sequence identifier which is too long ( max id length = 50 )")
@@ -95,8 +101,9 @@ def test_short_ids_and_no_repeats(tmp_path, synthetic_dir):
 
 def test_run_repeatmasker_rule(tmp_path):
     """
-    run_repeatmasker runs end to end and the .out file keeps the original long IDs. The RepeatMasker of the
-    output folder reads the Dfam files there and caches its libraries next to them.
+    run_repeatmasker runs end to end and the .out file keeps the original long IDs. RepeatMasker works in a
+    folder of its own inside scratch_dir, which is removed at the end: the output folder only gets the .out
+    file and the cached libraries, because RepeatMasker's temporary files blocked a shared filesystem.
     """
     if not SNAKEMAKE or not os.path.isfile(SNAKEMAKE):
         pytest.skip("Snakemake not found (set ISOANNOT_SNAKEMAKE or put snakemake on PATH)")
@@ -114,13 +121,17 @@ def test_run_repeatmasker_rule(tmp_path):
     repeatmasker.parent.mkdir(parents=True)
     repeatmasker.write_text(FAKE_REPEATMASKER)
     repeatmasker.chmod(0o755)
+    scratch_dir = tmp_path / "scratch"
+    # A library cached by an earlier run is given to RepeatMasker and kept
+    (dfam_dir / "cache").mkdir()
+    (dfam_dir / "cache" / "homo_sapiens.lib").write_text("earlier run\n")
     env = dict(os.environ, PATH=f"{os.path.dirname(sys.executable)}:{os.environ['PATH']}")
 
     config_dir = os.path.join(ISOANNOT_DIR, "config", "ensembl", "hsapiens")
     target = out_dir / "data" / "Hsapiens" / "output" / "ensembl" / "repeat_masker" / f"{cdna.name}.out"
     cmd = [SNAKEMAKE, "--snakefile", os.path.join(config_dir, "Snakefile.smk"),
            "--configfile", os.path.join(config_dir, "config.yaml"),
-           "--config", "db=ensembl", f"path_output={out_dir}",
+           "--config", "db=ensembl", f"path_output={out_dir}", f"scratch_dir={scratch_dir}",
            "--directory", ISOANNOT_DIR, "--cores", "1", "--nolock", str(target)]
     result = subprocess.run(cmd, capture_output=True, text=True, env=env)
     log = out_dir / "logs" / "Hsapiens" / "ensembl" / "run_repeatmasker.log"
@@ -128,5 +139,11 @@ def test_run_repeatmasker_rule(tmp_path):
 
     rows = [line.split() for line in target.read_text().splitlines()[3:]]
     assert [row[4] for row in rows] == [SHORT_ID, LONG_ID]
-    assert (target.parent / "options.txt").read_text() == (f"-species Homo sapiens -famdb_data_dir {dfam_dir} "
-                                                          f"-cache_dir {dfam_dir / 'cache'} -pa 1 -dir .")
+    log_lines = log.read_text().splitlines()
+    work_dir = next(line for line in log_lines if line.startswith("cwd: "))[len("cwd: "):]
+    assert os.path.dirname(work_dir) == str(scratch_dir)
+    assert f"options: -species Homo sapiens -famdb_data_dir {dfam_dir} -cache_dir cache -pa 1 -dir ." in log_lines
+    # Nothing is left in the scratch folder, and no temporary file reaches the output folder
+    assert os.listdir(scratch_dir) == []
+    assert os.listdir(target.parent) == [target.name]
+    assert (dfam_dir / "cache" / "homo_sapiens.lib").read_text() == "earlier run\nlibrary\n"

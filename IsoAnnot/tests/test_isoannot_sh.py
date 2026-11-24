@@ -123,3 +123,22 @@ def test_version_has_three_numbers():
     """isoannot.sh reads the version with a pattern, so it has to stay in the form x.y.z (or x.y.zb1)."""
     import re
     assert re.fullmatch(r"\d+\.\d+\.\d+\w*", read_version())
+
+
+def test_scratch_sets_scratch_dir(launch):
+    """--scratch is passed to snakemake as scratch_dir, the folder RepeatMasker works in."""
+    argv = launch("--database", "ensembl", "--species", "hsapiens", "--outputdir", "/abs/out",
+                  "--scratch", "/local/scratch", "--config", "layer_go=no")
+    assert config_tokens(argv) == ["db=ensembl", "path_output=/abs/out", "scratch_dir=/local/scratch", "layer_go=no"]
+
+
+def test_relative_scratch_made_absolute(launch, tmp_path):
+    """A relative --scratch is taken from the folder isoannot.sh is run in, like --outputdir."""
+    argv = launch("--database", "ensembl", "--species", "hsapiens", "--outputdir", "/abs/out", "--scratch", "scratch")
+    assert config_tokens(argv) == ["db=ensembl", "path_output=/abs/out", f"scratch_dir={tmp_path}/work/scratch"]
+
+
+def test_no_scratch_no_scratch_dir(launch):
+    """Without --scratch no scratch_dir is passed, so the rule uses the system's temporary folder."""
+    argv = launch("--database", "ensembl", "--species", "hsapiens", "--outputdir", "/abs/out")
+    assert config_tokens(argv) == ["db=ensembl", "path_output=/abs/out"]

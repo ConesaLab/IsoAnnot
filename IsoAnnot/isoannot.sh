@@ -33,6 +33,11 @@ case $key in
     shift # past argument
     shift # past value
     ;;
+    --scratch)
+    SCRATCH="$2"
+    shift # past argument
+    shift # past value
+    ;;
     --config)
     shift # past argument
     # Take every key=value up to the next --option, so --config a=1 b=2 keeps b=2 too.
@@ -103,6 +108,12 @@ then
     OUTPUTDIR="$PWD/$OUTPUTDIR"
 fi
 
+# RepeatMasker cd's into the scratch folder, so a relative --scratch is made absolute like --outputdir
+if [ -n "$SCRATCH" ] && [[ "$SCRATCH" != /* ]]
+then
+    SCRATCH="$PWD/$SCRATCH"
+fi
+
 if [ -z "$SNAKEFILE" ]
 then
     SNAKEFILE="$DIR/config/${DATABASE}/${SPECIES}/Snakefile.smk"
@@ -125,6 +136,6 @@ fi
 # First line of every run, so the log says which version made the output
 echo "IsoAnnot $VERSION"
 
-exec snakemake -p --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE "path_output=$OUTPUTDIR" $CONFIG --directory $DIR --cores ${SLURM_CPUS_PER_TASK:-8} all --rerun-incomplete --nolock --resources n_downloads=1 #-n
+exec snakemake -p --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE "path_output=$OUTPUTDIR" ${SCRATCH:+"scratch_dir=$SCRATCH"} $CONFIG --directory $DIR --cores ${SLURM_CPUS_PER_TASK:-8} all --rerun-incomplete --nolock --resources n_downloads=1 #-n
 #exec snakemake -p --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE $CONFIG --directory $DIR --cores 8 all  --rerun-incomplete --nolock --summary
 #exec snakemake -p --nolock --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE $CONFIG --directory $DIR --cores 8 all --rerun-incomplete --dag | dot -Tsvg > dag.svg

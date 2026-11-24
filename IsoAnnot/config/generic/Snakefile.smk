@@ -678,12 +678,13 @@ rule run_repeatmasker:
     threads: 16
     params:
         species=config["species"],
-        outdir=os.path.join(path_output, "data", prefix, "output", "{db}", "repeat_masker/"),
-        ids_script=os.path.abspath("scripts/repeatmasker_ids.py"),  # absolute: the rule cd's into outdir
+        # Absolute: the rule cd's into the scratch folder
+        ids_script=os.path.abspath("scripts/repeatmasker_ids.py"),
         dfam_dir=os.path.join(path_output, "data", "global", "dfam"),
         # The species libraries RepeatMasker builds from Dfam. Their names say the species and whether uncurated
         # families are in, and runs can share the folder
         cache_dir=os.path.join(path_output, "data", "global", "dfam", "cache"),
+        scratch_dir=config.get("scratch_dir") or "",
         uncurated="-uncurated" if repeatmasker_dfam == "all" else "",
         # Each RepeatMasker job runs RMBlast with 4 threads
         parallel_jobs=lambda wildcards, threads: max(1, threads // 4)
@@ -691,15 +692,22 @@ rule run_repeatmasker:
         os.path.join(path_output, "logs", prefix, "{db}", "run_repeatmasker.log")
     shell:
         r"""
-        mkdir -p {params.outdir}
-        cd {params.outdir}
+        # RepeatMasker works in a folder of its own on a local disk and only its result is copied to the output
+        # folder: its thousands of temporary files blocked the shared filesystem of a cluster for every user.
+        # scratch_dir.py stops the run if the folder is on a network filesystem
+        WORKDIR=$(scripts/scratch_dir.py --scratch_dir "{params.scratch_dir}" --prefix isoannot_repeatmasker 2> {log}) || {{ cat {log} >&2; exit 1; }}
+        trap 'rm -rf "$WORKDIR"' EXIT
+        cd "$WORKDIR"
+        if [ -d {params.cache_dir} ]; then cp -r {params.cache_dir} cache; fi
 
         # RepeatMasker stops on FASTA IDs longer than 50 characters: run it on a copy with those IDs hashed,
         # then put the original IDs back in the .out file
-        {params.ids_script} shorten --fasta {input.fasta} --output tmp_hashed.fasta --mapping id_mapping.tsv &> {log}
+        {params.ids_script} shorten --fasta {input.fasta} --output tmp_hashed.fasta --mapping id_mapping.tsv &>> {log}
         {input.repeatmasker} tmp_hashed.fasta -species "{params.species}" {params.uncurated} -famdb_data_dir {params.dfam_dir} \
-            -cache_dir {params.cache_dir} -pa {params.parallel_jobs} -dir . &>> {log}
+            -cache_dir cache -pa {params.parallel_jobs} -dir . &>> {log}
         {params.ids_script} restore --repeatmasker_file tmp_hashed.fasta.out --mapping id_mapping.tsv --output {output} &>> {log}
+        # Keep the species libraries for the next run
+        if [ -d cache ]; then mkdir -p {params.cache_dir} && cp -r cache/. {params.cache_dir}/; fi
         """
 
 MIRBASE_FILES = {"high_confidence": "data/global/miRNA/miRNA_high_conf.dat", "all": "data/global/miRNA/miRNA.dat"}
