@@ -1,0 +1,11 @@
+url_path,views_total,views_unique
+/ConesaLab/IsoAnnot,27,19
+/ConesaLab/IsoAnnot/releases/tag/v0.9.0b1,9,8
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot,9,2
+/ConesaLab/IsoAnnot/issues,5,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/isoannot.sh,4,2
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/snakemake.yaml,4,1
+/ConesaLab/IsoAnnot/tree/main,4,1
+/ConesaLab/IsoAnnot/blob/main/IsoAnnot/envs/isoannot.yaml,3,1
+/ConesaLab/IsoAnnot/tree/dev/IsoAnnot/config,3,1
+/ConesaLab/IsoAnnot/tree/main/IsoAnnot/config,2,2
