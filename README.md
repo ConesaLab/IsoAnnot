@@ -145,6 +145,7 @@ cd IsoAnnot
 
 **Optional parameter:**
 - `--outputdir`: Output directory to store the results. By default, the IsoAnnot install folder (where `isoannot.sh` is). A relative path is taken from the folder you run `isoannot.sh` in.
+- `--scratch`: Folder on a local disk where RepeatMasker works. By default, the system's temporary folder. On a cluster, give the local disk of the compute nodes (see note 5).
 - `--config`: Additional configuration options (required for `mytranscripts`)
 
 **Supported databases:**
@@ -200,6 +201,7 @@ Not every layer exists for every species. The table shows what the configuration
 | `--database` | Database source | Yes | `ensembl`, `refseq`, `mytranscripts` |
 | `--species` | Species identifier | Yes | Lowercase species code (e.g., `hsapiens`, `mmusculus`) |
 | `--outputdir`| Output directory | No | Path to directory (IsoAnnot install folder by default). A relative path is taken from the current folder |
+| `--scratch` | Folder RepeatMasker works in | No | Path to a folder on a local disk (the system's temporary folder by default). See note 5 |
 | `--config` | Override config values | Conditional* | `key=value` pairs |
 | `--configfile` | Custom config file path | No | Path to YAML file |
 | `--snakefile` | Custom snakefile path | No | Path to Snakefile |
@@ -464,6 +466,7 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
 5. **RepeatMasker**:
    - It is on by default. Add `repeat_masker=False` to `--config` to leave it out.
    - IsoAnnot installs RepeatMasker 4.2.6 from its [GitHub release](https://github.com/Dfam-consortium/RepeatMasker/releases) and downloads the Dfam 4.0 library, both into `{outputdir}/data/global/`. The curated families (the default) are a 90 MB download and take 600 MB on disk. `repeatmasker_dfam=all` adds the uncurated ones: a 4.2 GB download (about 40 minutes on our cluster) that takes 25 GB on disk.
+   - RepeatMasker writes thousands of small temporary files, which can block a network filesystem (Ceph, NFS, Lustre...) for every user of a cluster. So it works in a folder of its own on a local disk, and only its result is copied to the output folder. The folder is made in the system's temporary folder (`$TMPDIR`, or `/tmp`), or in the folder you give with `--scratch`, and it is removed when RepeatMasker ends. If that folder is on a network filesystem, the run stops before RepeatMasker starts. ⚠️**Warning**: on a cluster, give the local disk of the compute nodes, for example `--scratch /scr_local/$USER`, and never a folder of your home or of the shared storage.
    - Curated families cover human, mouse and zebrafish well (about 1,400 to 2,000 each) but plants hardly at all: Dfam 4.0 has only 9 curated families for *Arabidopsis thaliana*, and 503 uncurated ones. For plants use `repeatmasker_dfam=all`.
 
 6. **BioMart (`biomart_host` and `biomart_table`)**: the GO and Reactome layers take gene names and GO terms from Ensembl BioMart. IsoAnnot downloads them once per output folder, into `data/<Prefix>/config/biomart/`, and both layers read that table.

@@ -230,7 +230,9 @@ def test_dry_run_repeatmasker_dfam(dry_run, tmp_path, config, dfam_files, uncura
     repeatmasker_command = lines[n] + lines[n + 1]
     assert ("-uncurated" in repeatmasker_command) == uncurated
     assert f"-famdb_data_dir {tmp_path}/data/global/dfam " in repeatmasker_command
-    assert f"-cache_dir {tmp_path}/data/global/dfam/cache " in repeatmasker_command
+    # The libraries are cached in the scratch folder while RepeatMasker runs, and copied to the output folder after
+    assert "-cache_dir cache " in repeatmasker_command
+    assert f"cp -r cache/. {tmp_path}/data/global/dfam/cache/" in result.stdout
     assert "-pa 2" in repeatmasker_command  # 8 cores in the dry run, 4 per RMBlast job
 
 
@@ -415,3 +417,15 @@ def test_dry_run_nls_cache_toggle(dry_run, tmp_path, config, cache_option):
     assert jobs["nls_cache_store"] == 1
     assert cache_option.format(tmp_path) in planned_command(result.stdout, "nls_cache.py lookup")
     assert cache_option.format(tmp_path) in planned_command(result.stdout, "nls_cache.py store")
+
+
+@pytest.mark.parametrize("config, scratch_option", [
+    ([], '--scratch_dir "" '),
+    (["scratch_dir=/local/scratch"], '--scratch_dir "/local/scratch" '),
+])
+def test_dry_run_repeatmasker_scratch(dry_run, config, scratch_option):
+    """RepeatMasker works in a folder made by scratch_dir.py, in scratch_dir when it is given, not in the output folder."""
+    result = dry_run("ensembl", "repeat_masker=True", *config)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert scratch_option in planned_command(result.stdout, "scratch_dir.py")
+    assert 'cd "$WORKDIR"' in result.stdout
