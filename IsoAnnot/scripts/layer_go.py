@@ -12,7 +12,7 @@ GO terms).
 
 import argparse, sys, os, logging, csv, traceback
 import pandas as pd
-from IsoAnnot import query_biomart_with_retry, read_biomart_table
+from IsoAnnot import read_biomart_table
 from t2goAnnotationFile import get_structural_classification_df
 
 
@@ -36,44 +36,20 @@ def main():
     try:
         parser = argparse.ArgumentParser(description='LayerGO')
         parser.add_argument('--classification_file', required=True)
-        parser.add_argument('--biomart_host', nargs="?", const="https://www.ensembl.org")
-        parser.add_argument('--biomart_dataset', nargs=None, required=True)
         parser.add_argument('--output', nargs=None, required=True)
         parser.add_argument('--db', nargs=None, required=True)
-        parser.add_argument('--biomart_table', default=None, help='Table written by save_biomart_tables.py, read instead of querying BioMart')
+        parser.add_argument('--biomart_table', required=True, help='Table written by save_biomart_tables.py, with the BioMart answer of the Ensembl release in use')
         args = parser.parse_args()
-
-        if "plants" in args.biomart_host:
-            biomart_schema = "plants_mart"
-        else:
-            biomart_schema = "default"
 
         # Get info from files
         transcript_info = get_structural_classification_df(args.classification_file)
 
         # Select the appropriate gene identifier column based on the database choice
-        if args.db == "mytranscripts":
-            attribute = "ensembl_gene_id"
-            gene_column = "Gene stable ID"
-        else:
-            attribute = "external_gene_name"
-            gene_column = "Gene name"
+        gene_column = "Gene stable ID" if args.db == "mytranscripts" else "Gene name"
 
-        if args.biomart_table:
-            # Same rows as the query below: BioMart returns unique rows for the attributes asked for
-            go_columns = [gene_column, "GO term accession", "GO term name", "GO domain"]
-            go_table = read_biomart_table(args.biomart_table, "layer_go")[go_columns].drop_duplicates()
-        else:
-            # Open the connection to Biomart server and send query
-            # Imported here: a run with a saved BioMart table does not need pybiomart
-            from pybiomart import Dataset
-            dataset = Dataset(name=args.biomart_dataset, host=args.biomart_host,
-                              virtual_schema=biomart_schema)
-            go_table = query_biomart_with_retry(
-                dataset=dataset,
-                attributes=[attribute, "go_id", "name_1006", "namespace_1003"],
-                layer_name="layer_go"
-            )
+        # The table has one row per gene ID, name and GO term: the rows of the columns used here are made unique
+        go_columns = [gene_column, "GO term accession", "GO term name", "GO domain"]
+        go_table = read_biomart_table(args.biomart_table, "layer_go")[go_columns].drop_duplicates()
         # Remove NAs and allow only specific go categories 
         go_table = go_table.dropna()
         go_table = go_table[go_table['GO domain'].isin(allowed_features)] 

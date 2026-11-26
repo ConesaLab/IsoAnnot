@@ -12,7 +12,7 @@ For refseq we use the gff3 but after removing partial alignments!!! Why? becuase
 '''
 
 import argparse, gzip, logging, os
-from IsoAnnot import openfile, argparse_nullable, read_chr_ref_acc
+from IsoAnnot import openfile, argparse_nullable, read_chr_ref_acc, predict_nmd
 
 # TODO: adapt SQANTI to python3 and use those definitions from IsoAnnot
 
@@ -73,34 +73,9 @@ class myTranscripts:
 	def NMD_calculation(self):
 		if self.firstProtPos == "NA":
 			return "NA"
-		else:
-			exonsStart = [x[0] for x in self.exons_coord]
-			exonsEnd = [x[1] for x in self.exons_coord]
-			exonsStart = sorted(exonsStart)
-			exonsEnd = sorted(exonsEnd)
-			nmd = "nonNMD"
-			if self.strand == "+":
-
-				if self.lastProtPos >= exonsStart[-1]:
-					nmd = "nonNMD"
-
-				else:
-					if (exonsEnd[-2] - self.lastProtPos + 1) < 55:
-						nmd = "nonNMD"
-					else:
-						nmd = "NMD"
-
-			if self.strand == "-":
-
-				if self.firstProtPos <= exonsEnd[0]:
-					nmd = "nonNMD"
-
-				else:
-					if (self.firstProtPos - exonsStart[1] + 1) < 55:
-						nmd = "nonNMD"
-					else:
-						nmd = "NMD"
-			return nmd
+		# The CDS ends at lastProtPos on the plus strand and at firstProtPos on the minus strand
+		cds_last = self.lastProtPos if self.strand == "+" else self.firstProtPos
+		return predict_nmd(self.exons_coord, cds_last, self.strand, stop_in_cds=False)
 
 
 	def __str__(self):

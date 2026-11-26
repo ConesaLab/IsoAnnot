@@ -196,17 +196,68 @@ def test_dry_run_reactome_toggle(dry_run, value, enabled):
 
 
 @pytest.mark.parametrize("config, enabled", [
-    ([], False),
-    (["repeat_masker=True"], True),
+    ([], True),
+    (["repeat_masker=False"], False),
 ])
 def test_dry_run_repeat_masker_toggle(dry_run, config, enabled):
-    """RepeatMasker is off unless repeat_masker=True: the repeats conda env has no Dfam library to run it with."""
+    """RepeatMasker is on unless repeat_masker=False, and Dfam is only downloaded when it is on."""
     result = dry_run("ensembl", *config)
     assert result.returncode == 0, result.stdout + result.stderr
     jobs = job_counts(result.stdout)
     assert ("run_repeatmasker" in jobs) == enabled
     assert ("layer_repeatmasker" in jobs) == enabled
+    assert ("get_dfam" in jobs) == enabled
+    assert ("install_repeatmasker" in jobs) == enabled
     assert jobs["tappas_annotation"] == 1
+
+
+@pytest.mark.parametrize("config, dfam_files, uncurated", [
+    ([], ["dfam40.0.h5", "dfam40.curated.consensus.0.h5"], False),
+    (["repeatmasker_dfam=all"], ["dfam40.0.h5", "dfam40.curated.consensus.0.h5",
+                                 "dfam40.uncurated.consensus.0.h5", "dfam40.uncurated.consensus.1.h5"], True),
+])
+def test_dry_run_repeatmasker_dfam(dry_run, tmp_path, config, dfam_files, uncurated):
+    """The curated Dfam files by default; repeatmasker_dfam=all adds the uncurated ones and RepeatMasker -uncurated."""
+    result = dry_run("ensembl", "repeat_masker=True", *config)
+    assert result.returncode == 0, result.stdout + result.stderr
+    jobs = job_counts(result.stdout)
+    assert jobs["get_dfam"] == len(dfam_files)
+    for dfam_file in dfam_files:
+        assert f"{tmp_path}/data/global/dfam/{dfam_file}" in result.stdout
+    # The command is split over two lines in the rule
+    lines = result.stdout.splitlines()
+    n = next(i for i, line in enumerate(lines) if line.strip().startswith(f"{tmp_path}/data/global/repeatmasker/RepeatMasker "))
+    repeatmasker_command = lines[n] + lines[n + 1]
+    assert ("-uncurated" in repeatmasker_command) == uncurated
+    assert f"-famdb_data_dir {tmp_path}/data/global/dfam " in repeatmasker_command
+    # The libraries are cached in the scratch folder while RepeatMasker runs, and copied to the output folder after
+    assert "-cache_dir cache " in repeatmasker_command
+    assert f"cp -r cache/. {tmp_path}/data/global/dfam/cache/" in result.stdout
+    assert "-pa 2" in repeatmasker_command  # 8 cores in the dry run, 4 per RMBlast job
+
+
+def test_dry_run_repeatmasker_dfam_invalid(dry_run):
+    """A repeatmasker_dfam value other than curated or all stops the run and names the valid values."""
+    result = dry_run("ensembl", "repeat_masker=True", "repeatmasker_dfam=uncurated")
+    assert result.returncode != 0
+    assert "repeatmasker_dfam must be curated or all, not 'uncurated'." in result.stdout + result.stderr
+
+
+def test_dry_run_refseq_transcripts_from_genome(dry_run, tmp_path):
+    """
+    RefSeq mode gives UtrScan, RepeatMasker and the miRNA layer the transcripts spliced from the genome, not
+    NCBI's rna.fna, whose poly(A) tails and insertions shifted the positions against the GFF3 exons.
+    """
+    result = dry_run("refseq", "repeat_masker=True")
+    assert result.returncode == 0, result.stdout + result.stderr
+    jobs = job_counts(result.stdout)
+    assert jobs["prepare_refseq_transcripts"] == 1
+    assert "get_refseq_cdna" not in jobs
+    transcripts = tmp_path / "data" / "Hsapiens" / "config" / "refseq" / "refseq_transcripts.fa"
+    utrscan = next(" ".join(block.split()) for block in result.stdout.split("\n\n") if "UtrScan -SIGNALLIST" in block)
+    assert f"-INPUT={transcripts} " in utrscan
+    assert f"shorten --fasta {transcripts} " in planned_command(result.stdout, "repeatmasker_ids.py")
+    assert f"--isoform_fasta {transcripts} " in planned_command(result.stdout, "get_mirna_bs_annotation.py")
 
 
 @pytest.mark.parametrize("config, score_option", [
@@ -218,7 +269,7 @@ def test_dry_run_mirna_score_threshold(dry_run, config, score_option):
     result = dry_run("ensembl", *config)
     assert result.returncode == 0, result.stdout + result.stderr
     command = planned_command(result.stdout, "filter_mirna_bs.py")
-    assert f"--species 'Homo sapiens' {score_option}--mirwalk_output " in command
+    assert f"--species 'Homo sapiens' {score_option}--site_types canonical --mirwalk_output " in command
 
 
 def test_dry_run_mirna_score_threshold_missing(dry_run, tmp_path):
@@ -235,8 +286,40 @@ def test_dry_run_mirna_score_threshold_missing(dry_run, tmp_path):
     result = dry_run("ensembl", snakefile=str(snakefile), configfile=str(configfile))
     assert result.returncode == 0, result.stdout + result.stderr
     command = planned_command(result.stdout, "filter_mirna_bs.py")
-    assert "--species 'Homo sapiens' --mirwalk_output " in command
+    assert "--species 'Homo sapiens' --site_types canonical --mirwalk_output " in command
     assert "None" not in command
+
+
+@pytest.mark.parametrize("config, mirbase_file, site_types", [
+    ([], "miRNA_high_conf.dat", "canonical"),
+    (["mirna_mirbase_set=all", "mirna_site_types=canonical_6mer"], "miRNA.dat", "canonical_6mer"),
+    (["mirna_site_types=all"], "miRNA_high_conf.dat", "all"),
+])
+def test_dry_run_mirna_options(dry_run, config, mirbase_file, site_types):
+    """mirna_mirbase_set picks the miRBase file and mirna_site_types the seed match types kept."""
+    result = dry_run("ensembl", *config)
+    assert result.returncode == 0, result.stdout + result.stderr
+    command = planned_command(result.stdout, "filter_mirna_bs.py")
+    assert f"--mirbase_file data/global/miRNA/{mirbase_file} " in command
+    assert f"--site_types {site_types} " in command
+
+
+def test_dry_run_mirna_bad_option(dry_run):
+    result = dry_run("ensembl", "mirna_site_types=strong")
+    assert result.returncode != 0
+    assert "mirna_site_types must be one of canonical, canonical_6mer, all, not 'strong'." in result.stdout + result.stderr
+
+
+def test_dry_run_mirna_regions(dry_run, tmp_path):
+    """Only the 3'UTR miRWalk file is downloaded by default; noncoding is a region of the isoforms, not a download."""
+    result = dry_run("ensembl")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert job_counts(result.stdout)["get_mirwalk"] == 1
+    assert os.path.join(tmp_path, "data", "Hsapiens", "config", "mirna", "3UTR.zip") in result.stdout
+    command = planned_command(result.stdout, "get_mirna_bs_annotation.py")
+    classification = tmp_path / "data" / "Hsapiens" / "config" / "ensembl" / "sqanti_classification.txt"
+    assert f"--classification {classification} " in command
+    assert "--regions 3UTR noncoding --output " in command
 
 
 def test_dry_run_reactome_missing(dry_run, tmp_path):
@@ -259,18 +342,90 @@ def test_dry_run_reactome_missing(dry_run, tmp_path):
 
 
 def test_dry_run_biomart_table(dry_run, tmp_path):
-    """With biomart_table set, layer_go and layer_reactome get the saved table instead of querying BioMart."""
+    """With biomart_table set, layer_go and layer_reactome read that table and nothing is downloaded from BioMart."""
     table = tmp_path / "biomart_table.tsv"
     table.write_text("Gene stable ID\tGene name\tGO term accession\tGO term name\tGO domain\n")
     result = dry_run("ensembl", f"biomart_table={table}")
     assert result.returncode == 0, result.stdout + result.stderr
+    assert "get_biomart_table" not in job_counts(result.stdout)
     assert f"--db ensembl --biomart_table {table} " in planned_command(result.stdout, "layer_go.py")
     assert f"--db ensembl --biomart_table {table} --output " in planned_command(result.stdout, "layer_reactome.py")
 
 
-def test_dry_run_without_biomart_table(dry_run):
-    """Without biomart_table the layers query BioMart as before."""
-    result = dry_run("ensembl")
+@pytest.mark.parametrize("database", ["ensembl", "refseq", "mytranscripts"])
+def test_dry_run_downloads_the_biomart_table_once(dry_run, tmp_path, synthetic_dir, database):
+    """
+    Without biomart_table, one job saves the BioMart table of the release in the config and both layers
+    read it. The GTF URL goes with it, so its release can be compared with the one BioMart serves.
+    """
+    config = [f"fasta_cdna={synthetic_dir / 'ensembl_cdna.fa'}"] if database == "mytranscripts" else []
+    result = dry_run(database, *config)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "--biomart_table" not in planned_command(result.stdout, "layer_go.py")
-    assert "--biomart_table" not in planned_command(result.stdout, "layer_reactome.py")
+    assert job_counts(result.stdout)["get_biomart_table"] == 1
+    table = tmp_path / "data" / "Hsapiens" / "config" / "biomart" / "hsapiens_gene_ensembl_biomart.tsv"
+    command = planned_command(result.stdout, "save_biomart_tables.py")
+    assert f"--biomart_host e115.ensembl.org --biomart_dataset hsapiens_gene_ensembl --output {table} --ensembl_gtf_url https://ftp.ensembl.org/pub/release-115/gtf/" in command
+    assert f"--biomart_table {table} " in planned_command(result.stdout, "layer_go.py")
+    assert f"--biomart_table {table} --output " in planned_command(result.stdout, "layer_reactome.py")
+    assert "--biomart_host" not in planned_command(result.stdout, "layer_go.py")
+
+
+def test_dry_run_no_biomart_table_without_its_layers(dry_run):
+    """With the GO and Reactome layers off, nothing is asked to BioMart."""
+    result = dry_run("ensembl", "layer_go=no", "reactome=no")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "get_biomart_table" not in job_counts(result.stdout)
+
+
+def test_dry_run_biomart_host_missing(dry_run, tmp_path):
+    """A config without biomart_host asks www.ensembl.org. The old default, with https://, could not connect."""
+    with open(os.path.join(ISOANNOT_DIR, "config", "ensembl", "hsapiens", "config.yaml")) as h:
+        lines = [line for line in h if not line.startswith("biomart_host")]
+    configfile = tmp_path / "config.yaml"
+    configfile.write_text("".join(lines))
+    # The species Snakefile loads its own config.yaml, which has the key, so include the generic one directly
+    snakefile = tmp_path / "Snakefile.smk"
+    snakefile.write_text(f'configfile: "{configfile}"\n\n'
+                         f'include: "{os.path.join(ISOANNOT_DIR, "config", "generic", "Snakefile_ensembl.smk")}"\n')
+    result = dry_run("ensembl", snakefile=str(snakefile), configfile=str(configfile))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "--biomart_host www.ensembl.org --biomart_dataset" in planned_command(result.stdout, "save_biomart_tables.py")
+
+
+@pytest.mark.parametrize("option", ["fasta_cdna", "gtf_cdna"])
+def test_dry_run_mytranscripts_fastq(dry_run, tmp_path, option):
+    """FASTQ transcripts stop the run while the job graph is built, with a hint to convert them, before any job runs."""
+    fastq = tmp_path / "isoforms.fastq"
+    fastq.write_text("@PB.1.1\nACGT\n+\nIIII\n")
+    result = dry_run("mytranscripts", f"{option}={fastq}")
+    assert result.returncode != 0
+    assert f"ERROR: File '{fastq}' looks like a FASTQ (starts with '@')" in result.stdout + result.stderr
+    assert f"seqtk seq -a {fastq} > transcripts.fasta" in result.stdout + result.stderr
+    assert "Job stats:" not in result.stdout
+
+
+@pytest.mark.parametrize("config, cache_option", [
+    ([], "--cache_dir {}/data/global/nucimport_cache "),
+    (["nls_cache=False"], "--no_cache "),
+])
+def test_dry_run_nls_cache_toggle(dry_run, tmp_path, config, cache_option):
+    """The NucImport cache is on by default and kept in data/global; nls_cache=False sends every protein to NucImport."""
+    result = dry_run("ensembl", *config)
+    assert result.returncode == 0, result.stdout + result.stderr
+    jobs = job_counts(result.stdout)
+    assert jobs["nls_cache_lookup"] == 1
+    assert jobs["nls_cache_store"] == 1
+    assert cache_option.format(tmp_path) in planned_command(result.stdout, "nls_cache.py lookup")
+    assert cache_option.format(tmp_path) in planned_command(result.stdout, "nls_cache.py store")
+
+
+@pytest.mark.parametrize("config, scratch_option", [
+    ([], '--scratch_dir "" '),
+    (["scratch_dir=/local/scratch"], '--scratch_dir "/local/scratch" '),
+])
+def test_dry_run_repeatmasker_scratch(dry_run, config, scratch_option):
+    """RepeatMasker works in a folder made by scratch_dir.py, in scratch_dir when it is given, not in the output folder."""
+    result = dry_run("ensembl", "repeat_masker=True", *config)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert scratch_option in planned_command(result.stdout, "scratch_dir.py")
+    assert 'cd "$WORKDIR"' in result.stdout

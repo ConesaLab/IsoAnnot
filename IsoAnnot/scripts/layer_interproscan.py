@@ -142,6 +142,18 @@ def get_structural_classification_prot(classification_filename):
     return structural_classification
 
 
+def sort_rows(rows, transcript_order):
+    """
+    Transcripts stay in the order they first appear. Inside a transcript the lines go by source, then the
+    domains by start, end and ID, and the clan lines (without position) after the domains of their source.
+    """
+    def _key(row):
+        is_clan = row[2] == "clan"
+        start, end = (0, 0) if is_clan else (int(row[3]), int(row[4]))
+        return transcript_order[row[0]], row[1], is_clan, start, end, row[8]
+    return sorted(rows, key=_key)
+
+
 def main():
     try:
         parser = argparse.ArgumentParser(description='IsoAnnot InterProScan Layer')
@@ -165,6 +177,10 @@ def main():
             output_file_tsv = csv.writer(output_file, delimiter="\t")
             # One clan line per transcript and clan: it was written once per domain
             clans_written = set()
+            # InterProScan runs its analyses in parallel, so the order of its matches changes from run to run.
+            # The lines are gathered and written in a fixed order, so two runs give the same file.
+            rows = []
+            transcript_order = {}
             
             # Get interproscan info
             for transcript_interproscan in interproscan_info:
@@ -183,7 +199,8 @@ def main():
                     transcript_name = transcript_interproscan.get("name")
                     transcript_desc = transcript_interproscan.get("desc")
 
-                    output_file_tsv.writerow([
+                    transcript_order.setdefault(transcript_id, len(transcript_order))
+                    rows.append([
                         transcript_id,  # seqname
                         transcript_db,  # source
                         transcript_interproscan.get("feature"),  # feature
@@ -204,7 +221,7 @@ def main():
                         pfam_desc = clan_descriptions.get(pfam_id, pfam_name)
                         clans_written.add((transcript_id, pfam_id))
 
-                        output_file_tsv.writerow([
+                        rows.append([
                             transcript_id,  # seqname
                             transcript_db,  # source
                             "clan",  # feature
@@ -215,6 +232,8 @@ def main():
                             ".",  # frame
                             f"ID={pfam_id}; Name={pfam_name}; Desc={pfam_desc}"  # attribute
                         ])
+
+            output_file_tsv.writerows(sort_rows(rows, transcript_order))
 
     except Exception as ex:
         logging.error(str(ex), exc_info=True)

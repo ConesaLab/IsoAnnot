@@ -62,6 +62,7 @@ def test_merge_nls_chunks_keeps_first_protein(run_rule, nls_dir):
     """The merge skipped 3 lines of every chunk after the first, so it lost their first protein."""
     chunk_dir = nls_dir / "tmp"
     chunk_dir.mkdir(parents=True)
+    (nls_dir / "cached_results.txt").write_text(nucimport_output())
     (chunk_dir / "output_chunk_0.txt").write_text(nucimport_output("P1", "P4"))
     (chunk_dir / "output_chunk_1.txt").write_text(nucimport_output("P2", "P5"))
     (chunk_dir / "output_chunk_2.txt").write_text(nucimport_output("P3"))
@@ -71,10 +72,23 @@ def test_merge_nls_chunks_keeps_first_protein(run_rule, nls_dir):
     assert merged.read_text() == nucimport_output("P1", "P4", "P2", "P5", "P3")
 
 
+def test_merge_nls_chunks_with_cached(run_rule, nls_dir):
+    """The cached results come first, then the new ones; with every chunk empty the header still comes from the cached file."""
+    chunk_dir = nls_dir / "tmp"
+    chunk_dir.mkdir(parents=True)
+    (nls_dir / "cached_results.txt").write_text(nucimport_output("P1", "P2"))
+    (chunk_dir / "output_chunk_0.txt").write_text(nucimport_output("P3"))
+    (chunk_dir / "output_chunk_1.txt").write_text("")
+    merged = nls_dir / "output_merged.txt"
+    result = run_rule("merge_nls_chunks", [merged], "nls_chunks=2")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert merged.read_text() == nucimport_output("P1", "P2", "P3")
+
+
 def test_split_proteins_fewer_proteins_than_chunks(run_rule, nls_dir):
     """With fewer proteins than nls_chunks, awk did not create the extra chunks and Snakemake stopped with MissingOutputException."""
     nls_dir.mkdir(parents=True)
-    (nls_dir / "unique_proteins.fa").write_text(">P1\nMSPKKKRKVEDPAAAALLLL\n>P2\nMAAAAGGGGLLLLVVVVSSSS\n")
+    (nls_dir / "to_predict.fa").write_text(">P1\nMSPKKKRKVEDPAAAALLLL\n>P2\nMAAAAGGGGLLLLVVVVSSSS\n")
     chunks = [nls_dir / "chunks_temp" / f"chunk_{n}.fa" for n in range(4)]
     result = run_rule("split_proteins", chunks, "nls_chunks=4")
     assert result.returncode == 0, result.stdout + result.stderr
@@ -82,13 +96,18 @@ def test_split_proteins_fewer_proteins_than_chunks(run_rule, nls_dir):
     assert records == [[">P1", "MSPKKKRKVEDPAAAALLLL"], [">P2", "MAAAAGGGGLLLLVVVVSSSS"], [], []]
 
 
-def test_merge_nls_chunks_empty_chunks(run_rule, nls_dir):
-    """Empty chunks give a NucImport output with only the two header lines; the pattern-based merge keeps one header."""
+@pytest.mark.parametrize("empty_output", ["", nucimport_output()])
+def test_merge_nls_chunks_empty_chunks(run_rule, nls_dir, empty_output):
+    """
+    Empty chunks give an empty output (run_nucimport skips Java), or only the two header lines when NucImport
+    ran on them. The pattern-based merge keeps one header in both cases.
+    """
     chunk_dir = nls_dir / "tmp"
     chunk_dir.mkdir(parents=True)
-    (chunk_dir / "output_chunk_0.txt").write_text(nucimport_output())
+    (nls_dir / "cached_results.txt").write_text(nucimport_output())
+    (chunk_dir / "output_chunk_0.txt").write_text(empty_output)
     (chunk_dir / "output_chunk_1.txt").write_text(nucimport_output("P1"))
-    (chunk_dir / "output_chunk_2.txt").write_text(nucimport_output())
+    (chunk_dir / "output_chunk_2.txt").write_text(empty_output)
     merged = nls_dir / "output_merged.txt"
     result = run_rule("merge_nls_chunks", [merged], "nls_chunks=3")
     assert result.returncode == 0, result.stdout + result.stderr
@@ -117,7 +136,7 @@ def leftover_aout():
 
 
 def test_run_nucimport_own_folder(run_rule, nls_dir, leftover_aout):
-    """Parallel NucImport runs all wrote aout.txt into software/NucImport; each chunk now runs in its own folder, also when an old aout.txt is there. Empty chunks give a header-only output."""
+    """Parallel NucImport runs all wrote aout.txt into software/NucImport; each chunk now runs in its own folder, also when an old aout.txt is there. Empty chunks give an empty output."""
     if shutil.which("java") is None:
         pytest.skip("java not found on PATH")
     chunk_dir = nls_dir / "chunks_temp"
@@ -142,7 +161,21 @@ def test_run_nucimport_own_folder(run_rule, nls_dir, leftover_aout):
     assert [[r[0], r[3], r[4], r[5]] for r in rows] == [["P1", "AALLLLKRKRRSPPKKKRKV", "Class1", "15"],
                                                          ["P3", "PRGRPKKKRKVLLAAAPEDK", "Class1", "4"]]
     assert [float(r[1]) for r in rows] == pytest.approx([0.99499797, 0.99333969])
-    assert outputs[1].read_text() == nucimport_output()
+    assert outputs[1].read_text() == ""
+
+
+def test_run_nucimport_empty_chunk(run_rule, tmp_path, nls_dir):
+    """An empty chunk gets an empty output without starting Java, which took about 6 s per chunk."""
+    chunk_dir = nls_dir / "chunks_temp"
+    chunk_dir.mkdir(parents=True)
+    (chunk_dir / "chunk_0.fa").write_text("")
+    output = nls_dir / "tmp" / "output_chunk_0.txt"
+    result = run_rule("run_nucimport", [output], "nls_chunks=1")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert output.read_text() == ""
+    log = tmp_path / "logs" / "Hsapiens" / "ensembl" / "run_nucimport" / "run_nucimport_chunk_0.log"
+    assert log.read_text() == "Empty chunk: NucImport not run\n"
+    assert not (nls_dir / "tmp" / "nucimport_chunk_0").exists()
 
 
 @pytest.mark.parametrize("config, xmx", [((), "-Xmx2g"), (("nls_java_memory=6g",), "-Xmx6g")])
@@ -163,7 +196,42 @@ def test_expand_nls_writes_log(run_rule, tmp_path, nls_dir):
     (nls_dir / "nls_parsed.tsv").write_text("ID\tImpProb\tcNLSProb\tSeq\tClass\tPos\n"
                                             "P1\t0.995\t0.806\tAALLLLKRKRRSPPKKKRKV\tClass1\t15\n")
     (nls_dir / "protein_mapping.tsv").write_text("UniqueID\tOriginalIDs\nP1\tP1,P2\nP3\tP3\n")
+    (nls_dir / "nucimport_missing.txt").write_text("")
     result = run_rule("expand_nls", [nls_dir / "nls_final_expanded.tsv"])
     assert result.returncode == 0, result.stdout + result.stderr
     log = tmp_path / "logs" / "Hsapiens" / "ensembl" / "expand_nls.log"
     assert log.read_text().splitlines()[-1] == "INFO: Expansion complete. Total annotations generated: 2"
+
+
+@pytest.mark.parametrize("merged_text", ["", nucimport_output()])
+def test_parse_nls_no_results(run_rule, tmp_path, nls_dir, merged_text):
+    """No protein reached NucImport (all shorter than 30 aa): parse_nls stopped the run instead of giving an empty layer."""
+    nls_dir.mkdir(parents=True)
+    (nls_dir / "output_merged.txt").write_text(merged_text)
+    parsed = nls_dir / "nls_parsed.tsv"
+    result = run_rule("parse_nls", [parsed])
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert parsed.read_text() == "ID\tImpProb\tcNLSProb\tSeq\tClass\tPos\n"
+    log = (tmp_path / "logs" / "Hsapiens" / "ensembl" / "parse_nls.log").read_text()
+    assert "WARNING: NucImport returned no results, so the NLS layer will be empty." in log
+
+
+def test_expand_nls_no_results(run_rule, nls_dir):
+    """The empty table of parse_nls gives an empty expanded table."""
+    nls_dir.mkdir(parents=True)
+    (nls_dir / "nls_parsed.tsv").write_text("ID\tImpProb\tcNLSProb\tSeq\tClass\tPos\n")
+    (nls_dir / "protein_mapping.tsv").write_text("UniqueID\tOriginalIDs\nP1\tP1,P2\n")
+    (nls_dir / "nucimport_missing.txt").write_text("")
+    result = run_rule("expand_nls", [nls_dir / "nls_final_expanded.tsv"])
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (nls_dir / "nls_final_expanded.tsv").read_text() == "ID\tImpProb\tcNLSProb\tSeq\tClass\tPos\n"
+
+
+def test_nls_deduplicate_no_proteins(run_rule, nls_dir):
+    """No protein of 30 aa or longer: the redundancy percentage divided by zero."""
+    nls_dir.mkdir(parents=True)
+    (nls_dir / "nls_filtered_proteins.fa").write_text("")
+    result = run_rule("nls_deduplicate", [nls_dir / "unique_proteins.fa"])
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (nls_dir / "unique_proteins.fa").read_text() == ""
+    assert (nls_dir / "protein_mapping.tsv").read_text() == "UniqueID\tOriginalIDs\n"

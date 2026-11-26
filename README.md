@@ -2,7 +2,8 @@
 
 IsoAnnot is a new tool for generating functional and structural annotation at isoform level, capable of collecting and integrating information from different databases to categorize and describe each isoform, including functional and structural information for both transcript and protein.
 
-⚠️⚠️ IsoAnnot is currenlty under beta-testing. Please see the [latest release](https://github.com/ConesaLab/IsoAnnot/releases/tag/v0.9.0b1) and download IsoAnnot from the [release](https://github.com/ConesaLab/IsoAnnot/tree/v0.9.0b1) branch.
+⚠️ IsoAnnot is in pre-release. Please download it from the [releases page](https://github.com/ConesaLab/IsoAnnot/releases) and report any problem in the [issues](https://github.com/ConesaLab/IsoAnnot/issues).
+
 ## Requirements
 
 ### Computational Requirements
@@ -25,7 +26,7 @@ IsoAnnot requires the following software to be installed before use:
 1. **Operating System**: GNU/Linux (tested and supported)
 2. **Python**: Python 3 (managed automatically by conda)
 3. **Conda**: For dependency management
-4. **Snakemake**: Workflow management system (version 7.x recommended)
+4. **Snakemake**: Workflow management system (version 8; IsoAnnot is developed and tested with 8.28)
 
 ---
 
@@ -62,7 +63,7 @@ conda activate snakemake
 Follow the official Snakemake installation guide: https://snakemake.readthedocs.io/en/stable/getting_started/installation.html
 
 ```bash
-conda create -n snakemake -c conda-forge -c bioconda snakemake
+conda create -n snakemake -c conda-forge -c bioconda snakemake=8
 conda activate snakemake
 ```
 
@@ -144,6 +145,7 @@ cd IsoAnnot
 
 **Optional parameter:**
 - `--outputdir`: Output directory to store the results. By default, the IsoAnnot install folder (where `isoannot.sh` is). A relative path is taken from the folder you run `isoannot.sh` in.
+- `--scratch`: Folder on a local disk where RepeatMasker works. By default, the system's temporary folder. On a cluster, give the local disk of the compute nodes (see note 5).
 - `--config`: Additional configuration options (required for `mytranscripts`)
 
 **Supported databases:**
@@ -175,6 +177,23 @@ cd IsoAnnot
 
 This example annotates potato (*Solanum tuberosum*) transcripts from a custom FASTA file.
 
+### Layers available for each species
+
+Not every layer exists for every species. The table shows what the configurations shipped with IsoAnnot produce:
+
+| Layer | Human, mouse | Zebrafish, fruit fly | *Arabidopsis* |
+|---|---|---|---|
+| Exons, junctions, NMD, UTR motifs, repeats | Yes | Yes | Yes |
+| Protein domains (InterProScan), GO, UniProt features | Yes | Yes | Yes |
+| Pathways | Reactome | Reactome | Plant Reactome |
+| PTMs from PhosphoSitePlus | Yes | No | No |
+| NLS (NucImport) | Yes | No | No |
+| miRNA binding sites (miRWalk) | Yes | No | No |
+
+- NLS and miRNA sites need the `nls_model` and miRWalk keys in the species configuration, which only human and mouse have.
+- PhosphoSitePlus is mostly human, mouse and rat. Other species get the PTMs that UniProt reports.
+- `mytranscripts` is shipped for human only. For another species, see [Creating a New Config File](#creating-a-new-config-file).
+
 ### Command-line Parameters
 
 | Parameter | Description | Required | Values |
@@ -182,9 +201,11 @@ This example annotates potato (*Solanum tuberosum*) transcripts from a custom FA
 | `--database` | Database source | Yes | `ensembl`, `refseq`, `mytranscripts` |
 | `--species` | Species identifier | Yes | Lowercase species code (e.g., `hsapiens`, `mmusculus`) |
 | `--outputdir`| Output directory | No | Path to directory (IsoAnnot install folder by default). A relative path is taken from the current folder |
+| `--scratch` | Folder RepeatMasker works in | No | Path to a folder on a local disk (the system's temporary folder by default). See note 5 |
 | `--config` | Override config values | Conditional* | `key=value` pairs |
 | `--configfile` | Custom config file path | No | Path to YAML file |
 | `--snakefile` | Custom snakefile path | No | Path to Snakefile |
+| `--version` | Print the IsoAnnot version and exit. Every run also prints it as its first line | No | |
 
 *Required when using `--database mytranscripts` with custom files
 
@@ -276,6 +297,7 @@ pfam_clan_desc_url: https://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfa
 dir_sqanti: "scripts/sqanti3/"
 nls_chunks: 50
 nls_java_memory: 2g
+nls_cache: True
 ```
 
 **Key parameters**:
@@ -285,6 +307,7 @@ nls_java_memory: 2g
 - `dir_sqanti`: Directory containing SQANTI3 scripts
 - `nls_chunks`: Number of chunks the proteins are split into for NucImport. The chunks run in parallel.
 - `nls_java_memory`: Maximum Java heap of each NucImport run (`-Xmx`). NucImport needs 2g. Each chunk is a separate Java process, so plan for this amount times the number of cores.
+- `nls_cache`: Reuse NucImport results from earlier runs (`True` by default). NucImport is the longest step of a run (about 5 days for human Ensembl on 32 cores), and its result depends only on the protein sequence. Each run adds its new results to `<outputdir>/data/global/nucimport_cache/`, and later runs in the same output folder only predict the sequences that are not there yet: another Ensembl release, the RefSeq proteins, or `mytranscripts` ORFs identical to a reference protein. The store files can be copied to another output folder's `data/global/nucimport_cache/` to share them. A result is only reused with the same `nls_model` and the same NucImport jar. Set `nls_cache=False` to predict every protein.
 
 ---
 
@@ -320,7 +343,7 @@ Here's a complete template for creating a new species configuration. The example
 species:  Homo sapiens
 species_name: human
 
-biomart_host: http://www.ensembl.org
+biomart_host: e108.ensembl.org
 biomart_dataset: hsapiens_gene_ensembl
 
 ensembl_cdna: ftp://ftp.ensembl.org/pub/release-108/fasta/homo_sapiens/cdna/Homo_sapiens.GRCh38.cdna.all.fa.gz
@@ -393,7 +416,7 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
 |-----------|-------------|---------|
 | `species` | Full scientific name | `Homo sapiens` |
 | `species_name` | Common name (lowercase) | `human` |
-| `biomart_host` | BioMart server URL | `http://www.ensembl.org` |
+| `biomart_host` | BioMart host of the Ensembl release of your files (see note 6) | `e115.ensembl.org` |
 | `biomart_dataset` | BioMart dataset identifier | `hsapiens_gene_ensembl` |
 | `ensembl_cdna` | Ensembl cDNA FASTA file URL | URL to .fa.gz file |
 | `ensembl_proteins` | Ensembl protein FASTA file URL | URL to .fa.gz file |
@@ -410,8 +433,15 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
 | `uniprot_dat` | UniProt DAT file URLs (list) | List of URLs |
 | `reactome` | Reactome pathway mapping file URL | URL or pathway-specific URL; `no` to skip the layer |
 | `layer_go` | Include Gene Ontology layer | `si`, `yes` or `true` to include; `no`, `false` or omit to skip |
-| `repeat_masker` | Include the RepeatMasker layer | `False` by default; `True` to include (needs a Dfam library, see note 5) |
-| `biomart_table` | Saved BioMart table for the GO and Reactome layers, read instead of querying BioMart (optional) | `/abs/path/hsapiens_e115_biomart.tsv` |
+| `ptm_both_sources` | Write a modification reported by both Swiss-Prot and PhosphoSitePlus once for each source | `False` by default: one row, with Swiss-Prot as the source |
+| `utrscan_noncoding` | Write the UTRscan motifs of transcripts without a CDS, as `ncRNAmotif` (see note 10) | `True` by default; `False` leaves them out |
+| `repeat_masker` | Include the RepeatMasker layer | `True` by default; `False` to leave it out (see note 5) |
+| `repeatmasker_dfam` | Dfam repeat families RepeatMasker searches | `curated` (default) or `all` for curated and uncurated (see note 5) |
+| `biomart_table` | BioMart table saved before, read by the GO and Reactome layers instead of downloading it (optional, see note 6) | `/abs/path/hsapiens_e115_biomart.tsv` |
+| `mirna_regions_to_use` | Regions of each isoform where miRNA binding sites are kept (see note 8); an empty list skips the miRNA layer | `["3UTR", "noncoding"]` by default; also `5UTR`, `CDS` |
+| `mirna_mirbase_set` | miRNAs whose sites are kept | `high_confidence` (default) or `all` |
+| `mirna_site_types` | Seed match types kept | `canonical` (default), `canonical_6mer` or `all` |
+| `mirna_db_evidence_score_threshold` | Minimum miRWalk binding probability | `0.95` |
 
 **Important notes**:
 
@@ -434,16 +464,33 @@ reactome: https://plantreactome.gramene.org/download/current/Ensembl2PlantReacto
    - Plants: `https://plantreactome.gramene.org/download/current/Ensembl2PlantReactome_All_Levels.txt`
 
 5. **RepeatMasker**:
-   - It is off by default, because the `repeats` conda environment comes with an empty Dfam library and RepeatMasker can't run with it.
-   - To turn it on, install in that environment a Dfam library its RepeatMasker can read (RepeatMasker 4.1.5 can't read the Dfam 4.0 files), then add `repeat_masker=True` to `--config`.
+   - It is on by default. Add `repeat_masker=False` to `--config` to leave it out.
+   - IsoAnnot installs RepeatMasker 4.2.6 from its [GitHub release](https://github.com/Dfam-consortium/RepeatMasker/releases) and downloads the Dfam 4.0 library, both into `{outputdir}/data/global/`. The curated families (the default) are a 90 MB download and take 600 MB on disk. `repeatmasker_dfam=all` adds the uncurated ones: a 4.2 GB download (about 40 minutes on our cluster) that takes 25 GB on disk.
+   - RepeatMasker writes thousands of small temporary files, which can block a network filesystem (Ceph, NFS, Lustre...) for every user of a cluster. So it works in a folder of its own on a local disk, and only its result is copied to the output folder. The folder is made in the system's temporary folder (`$TMPDIR`, or `/tmp`), or in the folder you give with `--scratch`, and it is removed when RepeatMasker ends. If that folder is on a network filesystem, the run stops before RepeatMasker starts. ⚠️**Warning**: on a cluster, give the local disk of the compute nodes, for example `--scratch /scr_local/$USER`, and never a folder of your home or of the shared storage.
+   - Curated families cover human, mouse and zebrafish well (about 1,400 to 2,000 each) but plants hardly at all: Dfam 4.0 has only 9 curated families for *Arabidopsis thaliana*, and 503 uncurated ones. For plants use `repeatmasker_dfam=all`.
 
-6. **`biomart_table`**: the GO and Reactome layers ask BioMart for gene names and GO terms while the pipeline runs. `www.ensembl.org` always serves the newest Ensembl release, which may not be the release of your GTF, and the run fails if BioMart is down. To avoid both, save the answer once with the archive host of your release and point `biomart_table` to it (absolute path):
+6. **BioMart (`biomart_host` and `biomart_table`)**: the GO and Reactome layers take gene names and GO terms from Ensembl BioMart. IsoAnnot downloads them once per output folder, into `data/<Prefix>/config/biomart/`, and both layers read that table.
+   - `biomart_host` has to be the BioMart of the Ensembl release of your files, because `www.ensembl.org` always serves the newest release. Ensembl has one host per release: `e115.ensembl.org` for release 115, and `eg62-plants.ensembl.org` for Ensembl Plants 62. It can be written with or without `https://`.
+   - If the release of `biomart_host` is not the release in the `ensembl_gtf` URL, the run goes on and shows a warning. Ensembl does not keep an archive of every old release, above all for plants: in that case use `plants.ensembl.org` or `www.ensembl.org`, and expect the warning.
+   - To run without internet, or when BioMart is down, save the table once and give it with `biomart_table` (absolute path). Nothing is downloaded then:
    ```bash
    cd IsoAnnot/scripts
-   ./save_biomart_tables.py --biomart_host sep2025.archive.ensembl.org \
+   ./save_biomart_tables.py --biomart_host e115.ensembl.org \
        --biomart_dataset hsapiens_gene_ensembl --output /abs/path/hsapiens_e115_biomart.tsv
    ```
-   The archive host of each release is listed at https://www.ensembl.org/info/website/archives/. Run it in the `isoannotpy` environment, which has `pybiomart`.
+   Run it in the `isoannotpy` environment.
+
+7. **RefSeq transcript sequences**: in refseq mode, UTRScan, RepeatMasker and the miRNA layer read the RefSeq transcripts spliced from the genome (`ensembl_reference`) with the exons of `refseq_gtf`, not NCBI's `rna.fna`. Some `rna.fna` sequences differ from the genome (a poly(A) tail, or bases the genome does not have), and their positions did not match the exons of the GFF3. The positions now match, but differences of the RefSeq mRNA from the genome are not annotated. The `refseq_cdna` key is no longer used.
+
+8. **miRNA binding sites** (human and mouse): the sites come from miRWalk 3 predictions and are placed on every isoform whose sequence contains them.
+   - **Seed match type.** A miRNA finds its targets mainly through its seed, nucleotides 2–8. IsoAnnot classifies each site from the miRWalk duplex, following TargetScan: `8mer` (seed 2–8 paired and an A opposite position 1), `7mer-m8` (2–8), `7mer-A1` (2–7 and the A), `6mer` (2–7), `offset-6mer` (3–8), `seed-GU` (seed paired only with G:U wobbles) and `noncanonical`. About 63% of the miRWalk sites are non-canonical; such sites bind Argonaute but have little effect on target levels (Agarwal et al. 2015, *eLife* 4:e05005). By default only `8mer` and `7mer` sites are kept (`mirna_site_types: canonical`); `canonical_6mer` adds the 6mers and `all` keeps every site. For human, the default keeps about 8% of the sites.
+   - **miRNAs.** `high_confidence` keeps the miRBase high-confidence miRNAs (814 in human), `all` every miRBase miRNA with experimental evidence (2,482 in human).
+   - **Region.** The region is computed for each isoform from its own CDS: `5UTR`, `CDS` (a site that touches the CDS), `3UTR`, or `noncoding` for isoforms without a CDS. Sites in the CDS and the 5′UTR are much less effective than 3′UTR sites, because ribosomes displace the miRNA complex. One miRWalk file is downloaded for each of `3UTR`, `5UTR` and `CDS` in the list (3′UTR only by default, 6.8 GB for human). Sites on non-coding isoforms come from the downloaded files.
+   - **In the GFF3**, each site has feature `miRNA_8mer`, `miRNA_7mer`, `miRNA_6mer` or `miRNA_noncanonical`, so the classes can be selected separately in tappAS, and `Desc=<region>_<type>`, e.g. `ID=hsa-miR-21-5p; Desc=3UTR_7mer-A1`.
+
+9. **Nonsense-mediated decay (NMD)**: a coding isoform gets the `NMD` feature when its stop codon is more than 50 nt before the last exon-exon junction (the 50 nt rule, the same limit as `predicted_NMD` of SQANTI3), in the three modes. The distance is measured on the spliced transcript. SQANTI3 measures it on the genome, which also counts the introns between the stop codon and the last junction, so an isoform whose stop lies two or more exons before the last one is always a predicted target there. IsoAnnot does not follow it in that case, because the NMD feature is read as biology in tappAS: in human, 141 Ensembl and 99 RefSeq transcripts are not NMD targets on the spliced transcript, the main transcript of NRAS among them (its stop codon is 43 nt before the last junction on the transcript and more than 380 nt on the genome). For a long-read isoform, the `NMD` feature can therefore differ from the `predicted_NMD` column of its SQANTI3 classification.
+
+10. **UTR motifs (UTRscan)**: UTRscan searches the 59 motifs of UTRsite along each whole transcript, and its catalogue (`software/bin/UtrSite.Command`) says in which UTR each motif acts. IsoAnnot keeps a motif only there: an upstream ORF, an IRES or a TOP tract in the 5′UTR (`uORF`, `5UTRmotif`), a polyadenylation signal or a Musashi element in the 3′UTR (`PAS`, `3UTRmotif`), and the few motifs defined for both in either. A short ORF found after the CDS is therefore not reported as an upstream ORF. Transcripts without a CDS have no UTR: their motifs are written as `ncRNAmotif` (`PAS` for the polyadenylation signal), without the 5′UTR motifs, which act on the translation of a CDS. `utrscan_noncoding: False` leaves them out. The catalogue also gives the group of organisms of each motif, which IsoAnnot does not use yet, so a human annotation still has some motifs described in insects.
 
 ---
 

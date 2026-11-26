@@ -1,7 +1,7 @@
 species:  Mus musculus
 species_name: mouse
 
-biomart_host: www.ensembl.org
+biomart_host: e115.ensembl.org
 biomart_dataset: mmusculus_gene_ensembl
 
 ensembl_cdna: https://ftp.ensembl.org/pub/release-115/fasta/mus_musculus/cdna/Mus_musculus.GRCm39.cdna.all.fa.gz
@@ -32,11 +32,18 @@ layer_go: si
 nls_model: Model4
 nls_threshold_import: 0.7
 nls_threshold_cnls: 0.3
+# The miRWalk server has no HTTPS: these URLs must stay http.
 mirwalk_urls:
   5UTR: http://mirwalk.umm.uni-heidelberg.de/download/mmu_miRWalk_5UTR.zip
   CDS:  http://mirwalk.umm.uni-heidelberg.de/download/mmu_miRWalk_CDS.zip
   3UTR: http://mirwalk.umm.uni-heidelberg.de/download/mmu_miRWalk_3UTR.zip
-mirna_regions_to_use: ["3UTR", "5UTR", "CDS"]
+# Regions of each isoform where miRNA sites are kept: 3UTR, 5UTR, CDS (each one a miRWalk download) and
+# noncoding (sites on isoforms without a CDS)
+mirna_regions_to_use: ["3UTR", "noncoding"]
+# miRNAs: high_confidence (miRBase high-confidence set) or all (every miRNA with experimental evidence)
+mirna_mirbase_set: high_confidence
+# Seed match of the sites: canonical (8mer, 7mers), canonical_6mer (also 6mers) or all (also non-canonical sites)
+mirna_site_types: canonical
 mirna_db_evidence_score_threshold: 0.95
 
 rna_fasta_mirwalk: https://ftp.ncbi.nlm.nih.gov/genomes/all/annotation_releases/10090/109/GCF_000001635.27_GRCm39/GCF_000001635.27_GRCm39_rna.fna.gz

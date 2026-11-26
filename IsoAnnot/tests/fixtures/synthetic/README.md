@@ -83,7 +83,7 @@ Snakefile rules. They are the exact output of the current scripts, including the
   name in the Ensembl genome. `refProt` is the versioned RefSeq protein ID and `structural_category`
   is `NA`. `NM_900002.1` is the only `NMD` transcript.
 * **`parsed_databases.json`**: output of `parse_protein_databases.py` (rule `parse_protein_databases`). It maps
-  each protein sequence to its IDs by source (`swissprot`, `trembl`, `refseq`, `ensembl`), without versions.
+  each protein sequence to its IDs by source (`swissprot`, `trembl`, `refseq`, `ensembl`), in the form of each annotation (`NP_900001.1`, `ENSP00000000001`).
 
 ## Not included
 

@@ -43,6 +43,23 @@ def _free_df(df):
     gc.collect()
 
 
+# TransDecoder ORF types that end in a stop codon. SQANTI3 counts the stop in protein_length.
+ORF_TYPES_WITH_STOP = ("complete", "5prime_partial")
+
+
+def get_protein_length(line):
+    """
+    Number of amino acids of the protein of a classification line. referenceSQANTI.py (ensembl and refseq
+    modes) writes it in ORF_length. SQANTI3 (mytranscripts) writes it in protein_length, with the stop
+    codon counted, and its ORF_length is the span of the CDS on the genome, introns included: the
+    protein line of PB.15693.1 was 2758 long for a protein of 635 amino acids.
+    """
+    if line.get("protein_length") not in (None, "", "NA"):
+        length = int(float(line["protein_length"]))
+        return length - 1 if line.get("CDS_type") in ORF_TYPES_WITH_STOP else length
+    return int(float(line["ORF_length"]))
+
+
 def get_structural_classification_df(classification_filename):
     '''
     Gets structural information for each transcript from the 
@@ -68,7 +85,7 @@ def get_structural_classification_df(classification_filename):
                 "second_class": ["RT_switching"] if line.get("RTS_stage") == "positive" else [],
                 "cds_start": None if line.get("coding") != "coding" else line.get("CDS_start"),
                 "cds_end": None if line.get("coding") != "coding" else line.get("CDS_end"),
-                "ORF_length": None if line.get("coding") != "coding" else line.get("ORF_length"),
+                "ORF_length": None if line.get("coding") != "coding" else get_protein_length(line),
                 "ref_protein": None,
                 # "ref_CDS": None,
             }
@@ -187,7 +204,7 @@ def get_primary_dfs(classification_file, gene_desc_file, protein_assoc_info, ext
                                   ".", t_prop.get("strand"), ".", "; ".join(cds_attributes)])
 
     if n_ref_protein_fallback:
-        logging.warning(f"{n_ref_protein_fallback} coding transcripts have no reference protein with the same sequence. "
+        logging.warning(f"{n_ref_protein_fallback} coding transcripts have a refProt that is not in parsed_databases.json. "
                         f"Their refProt from the classification file is used as protein ID.")
 
     output_dfs = {

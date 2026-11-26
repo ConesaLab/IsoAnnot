@@ -5,7 +5,8 @@ def select_user_cdna(wildcards):
     return []
     
 def select_fasta_cdna(wildcards):
-    return rules.prepare_refseq_cdna.output.fa
+    # Spliced from the genome, not NCBI's rna.fna, so the transcript positions match the GFF3 exons
+    return rules.prepare_refseq_transcripts.output.fa
 
 def select_gtf(wildcards):
     return rules.prepare_refseq_gtf.output

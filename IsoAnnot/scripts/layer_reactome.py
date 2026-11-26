@@ -12,7 +12,7 @@ Reactome entries).
 
 import argparse, sys, os, logging, csv
 import pandas as pd
-from IsoAnnot import openfile, query_biomart_with_retry, read_biomart_table
+from IsoAnnot import openfile, read_biomart_table
 from t2goAnnotationFile import get_structural_classification_df
 
 
@@ -52,18 +52,11 @@ def main():
         parser.add_argument('--reactome_file', nargs=None, required=True)
         parser.add_argument('--classification_file', nargs=None, required=True)
         parser.add_argument('--output', nargs=None, required=True)
-        parser.add_argument('--biomart_host', nargs="?", const="https://www.ensembl.org")
-        parser.add_argument('--biomart_dataset', nargs=None, required=True)
         parser.add_argument('--species', nargs=None, required=True)
         parser.add_argument('--db', nargs=None, required=True)
-        parser.add_argument('--biomart_table', default=None, help='Table written by save_biomart_tables.py, read instead of querying BioMart')
+        parser.add_argument('--biomart_table', required=True, help='Table written by save_biomart_tables.py, with the BioMart answer of the Ensembl release in use')
 
         args = parser.parse_args()
-
-        if "plants" in args.biomart_host:
-            biomart_schema = "plants_mart"
-        else:
-            biomart_schema = "default"
 
         # Get info from files
         transcript_info = get_structural_classification_df(args.classification_file)
@@ -71,20 +64,9 @@ def main():
         reactome_info.rename(columns={reactome_info.columns[0]: 'ensembl_gene_id', reactome_info.columns[1]: 'reactome_ID', reactome_info.columns[2]: 'URL', reactome_info.columns[3]: 'pathway', reactome_info.columns[4]: 'evidence', reactome_info.columns[5]: 'species'}, inplace=True)
         reactome_info = reactome_info[reactome_info.species == args.species]
 
-        # Get ENSG-Gene_name conversion with Biomart and connect it with
+        # Get ENSG-Gene_name conversion from the BioMart table and connect it with
         # the reactome dataframe
-        if args.biomart_table:
-            # Same rows as the query below: BioMart returns unique rows for the attributes asked for
-            gene_name_table = read_biomart_table(args.biomart_table, "layer_reactome")[['Gene stable ID', 'Gene name']].drop_duplicates()
-        else:
-            # Imported here: a run with a saved BioMart table does not need pybiomart
-            from pybiomart import Dataset
-            dataset = Dataset(name=args.biomart_dataset, host=args.biomart_host, virtual_schema=biomart_schema)
-            gene_name_table = query_biomart_with_retry(
-                dataset=dataset,
-                attributes=['ensembl_gene_id', 'external_gene_name'],
-                layer_name="layer_reactome"
-            )
+        gene_name_table = read_biomart_table(args.biomart_table, "layer_reactome")[['Gene stable ID', 'Gene name']].drop_duplicates()
         gene_name_table.rename(columns={'Gene stable ID': 'ensembl_gene_id', 'Gene name': 'gene_name'}, inplace=True)
         gene_name_table = gene_name_table.dropna()
         reactome_info = pd.merge(reactome_info, gene_name_table, how='inner', on='ensembl_gene_id')

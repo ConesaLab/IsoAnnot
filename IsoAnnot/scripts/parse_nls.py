@@ -36,18 +36,22 @@ def main():
     # 1. Load the NucImport output
     # NucImport results usually have a non-standard whitespace separator and header stars
     logging.info(f"Reading NucImport results from {args.input}")
+    columns = ['ID', 'ImpProb', 'cNLSProb', 'Seq', 'Class', 'Pos']
     try:
         # Use regex separator '\s+' to handle variable spaces between columns
         # Skip the first 2 lines (usually decorative star headers in NucImport)
-        df = pd.read_csv(args.input, sep=r'\s+', skiprows=2, header=None,
-                         names=['ID', 'ImpProb', 'cNLSProb', 'Seq', 'Class', 'Pos'])
+        df = pd.read_csv(args.input, sep=r'\s+', skiprows=2, header=None, names=columns)
+    except pd.errors.EmptyDataError:
+        # Only the header lines, or an empty file when every chunk was empty
+        df = pd.DataFrame(columns=columns)
     except Exception as e:
         logging.error(f"Error reading file {args.input}: {e}")
         sys.exit(1)
 
+    # No protein reached NucImport (all shorter than 30 aa): the layer is empty, the run goes on
     if df.empty:
-        logging.warning("The input file appears to be empty. No predictions to process.")
-        sys.exit(1)
+        logging.warning("NucImport returned no results, so the NLS layer will be empty. "
+                        "Only proteins of 30 aa or longer are predicted.")
 
     # 2. Apply Filters based on biological confidence
     # High Confidence: Both Import and Motif probabilities meet the user thresholds

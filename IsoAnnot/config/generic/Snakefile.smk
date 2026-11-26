@@ -20,6 +20,7 @@ path_output = config["path_output"]
 nls_model = config.get("nls_model", None)
 nls_chunks = int(config.get("nls_chunks", 50))
 nls_java_memory = config.get("nls_java_memory", "2g")
+repeatmasker_dfam = str(config.get("repeatmasker_dfam", "curated")).lower()
 
 
 def is_feature_enabled(key, default=True):
@@ -71,6 +72,15 @@ def _remove_extension(config_value, all=False):
 def _uniprot_files(config_key):
     # Chosen by config list, not by the .dat.gz/.fasta.gz ending, so plain (not gzipped) URLs are kept too
     return [os.path.join(path_output, "data", prefix, "config", "uniprot", os.path.basename(url)) for url in config[config_key]]
+
+def select_dfam_files(wildcards):
+    # The root file holds the taxonomy and is always needed. The uncurated files (partitions 0 and 1 in Dfam 4.0)
+    # are only read by RepeatMasker -uncurated, so they are downloaded only with repeatmasker_dfam: all
+    dfam_parts = {"curated": ["0", "curated.consensus.0"],
+                  "all": ["0", "curated.consensus.0", "uncurated.consensus.0", "uncurated.consensus.1"]}
+    if repeatmasker_dfam not in dfam_parts:
+        raise ValueError(f"repeatmasker_dfam must be curated or all, not '{config['repeatmasker_dfam']}'.")
+    return [os.path.join(path_output, "data", "global", "dfam", f"{config['dfam_prefix']}.{part}.h5") for part in dfam_parts[repeatmasker_dfam]]
 
 def get_sqanti_extra_params(wildcards):
     if config.get("fasta_cdna"):
@@ -270,6 +280,24 @@ rule prepare_ensembl_reference:
         gunzip -k {input} &> {log}
         """
 
+# RefSeq transcript sequences spliced from the genome and the RefSeq GTF. NCBI's rna.fna can differ from the
+# genome (poly(A) tails, insertions), which shifted the UtrScan and RepeatMasker positions against the GFF3 exons
+rule prepare_refseq_transcripts:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        gtf=rules.prepare_refseq_gtf.output,
+        reference=rules.prepare_ensembl_reference.output,
+        chr_ref=rules.get_refseq_acc.output
+    output:
+        fa=os.path.join(path_output, "data", prefix, "config", "refseq", "refseq_transcripts.fa")
+    log:
+        os.path.join(path_output, "logs", prefix, "prepare_refseq_transcripts.log")
+    shell:
+        """
+        scripts/transcripts_from_genome.py --gtf {input.gtf} --genome {input.reference} --chr_ref {input.chr_ref} --output {output.fa} &> {log}
+        """
+
 rule get_ensembl_gtf:
     output:
         os.path.join(path_output, "data", prefix, "config", "ensembl", os.path.basename(config["ensembl_gtf"]))
@@ -304,12 +332,14 @@ rule check_chromosome_consistency:
         ref_fasta = rules.prepare_ensembl_reference.output
     output:
         touch(os.path.join(path_output, "data", prefix, "config", "check_chromosomes.done"))
+    log:
+        os.path.join(path_output, "logs", prefix, "check_chromosomes.log")
     shell:
         """
         python3 scripts/check_chromosomes.py \
             --user_input {input.user_input} \
             --ref_gtf {input.ref_gtf} \
-            --ref_fasta {input.ref_fasta}
+            --ref_fasta {input.ref_fasta} 2> {log}
         """
 
 rule get_pfam_clan:
@@ -349,6 +379,55 @@ rule prepare_pfam_clan:
     shell:
         """
         gunzip -k {input} &> {log}
+        """
+
+# One Dfam file per job, checked against the md5 that Dfam publishes next to it
+rule get_dfam:
+    resources:
+        n_downloads=1
+    output:
+        os.path.join(path_output, "data", "global", "dfam", "{dfam_file}.h5")
+    params:
+        URL=config["dfam_url"],
+        outdir=os.path.join(path_output, "data", "global", "dfam")
+    log:
+        os.path.join(path_output, "logs", prefix, "get_dfam", "{dfam_file}.log")
+    shell:
+        """
+        cd {params.outdir}
+        wget -nv -O {wildcards.dfam_file}.h5.gz {params.URL}/{wildcards.dfam_file}.h5.gz &> {log}
+        wget -nv -O {wildcards.dfam_file}.h5.gz.md5 {params.URL}/{wildcards.dfam_file}.h5.gz.md5 &>> {log}
+        md5sum -c {wildcards.dfam_file}.h5.gz.md5 &>> {log}
+        gunzip -f {wildcards.dfam_file}.h5.gz &>> {log}
+        rm {wildcards.dfam_file}.h5.gz.md5
+        """
+
+# RepeatMasker comes from its GitHub release, because bioconda only has 4.2.4 and 4.2.6 adds -famdb_data_dir and
+# -cache_dir. configure writes the paths of the repeats env into the install, so each output folder builds its own
+rule install_repeatmasker:
+    conda:
+        "../../envs/repeats.yaml"
+    resources:
+        n_downloads=1
+    output:
+        os.path.join(path_output, "data", "global", "repeatmasker", "RepeatMasker")
+    params:
+        URL=config["repeatmasker_url"],
+        sha256=config["repeatmasker_sha256"],
+        outdir=os.path.join(path_output, "data", "global", "repeatmasker")
+    log:
+        os.path.join(path_output, "logs", prefix, "install_repeatmasker.log")
+    shell:
+        """
+        rm -rf {params.outdir}
+        mkdir -p {params.outdir}
+        cd {params.outdir}
+        wget -nv -O repeatmasker.tar.gz {params.URL} &> {log}
+        echo "{params.sha256}  repeatmasker.tar.gz" | sha256sum -c &>> {log}
+        tar xzf repeatmasker.tar.gz --strip-components=1 &>> {log}
+        rm repeatmasker.tar.gz
+        perl ./configure -perlbin "$CONDA_PREFIX/bin/perl" -trf_prgm "$CONDA_PREFIX/bin/trf" -rmblast_dir "$CONDA_PREFIX/bin" \
+            -hmmer_dir "$CONDA_PREFIX/bin" -default_search_engine rmblast -famdb_dir "$(ls -d $CONDA_PREFIX/share/famdb-*)" < /dev/null &>> {log}
         """
 
 
@@ -413,11 +492,16 @@ rule get_mirwalk:
         shell("wget -O {output} {target_url} &> {log}")
 
 
+def mirwalk_regions():
+    """miRWalk files to download: noncoding is not a miRWalk file, it keeps the sites on non-coding isoforms."""
+    return [region for region in config.get("mirna_regions_to_use", []) if region != "noncoding"]
+
+
 rule prepare_mirwalk:
     input:
         files = expand(
             os.path.join(path_output, "data", prefix, "config", "mirna", "{region}.zip"),
-            region=config.get("mirna_regions_to_use", [])
+            region=mirwalk_regions()
         )
     output:
         merged = os.path.join(path_output, "data", prefix, "config", "mirna", "mirwalk_merged.txt")
@@ -586,40 +670,69 @@ rule run_repeatmasker:
     conda:
         "../../envs/repeats.yaml"
     input:
-        select_fasta_cdna
+        fasta=select_fasta_cdna,
+        dfam=select_dfam_files,
+        repeatmasker=rules.install_repeatmasker.output
     output:
         os.path.join(path_output, "data", prefix, "output", "{db}", "repeat_masker", f"{os.path.basename(select_fasta_cdna(config))}.out")
+    threads: 16
     params:
         species=config["species"],
-        outdir=os.path.join(path_output, "data", prefix, "output", "{db}", "repeat_masker/"),
-        ids_script=os.path.abspath("scripts/repeatmasker_ids.py"),  # absolute: the rule cd's into outdir
+        # Absolute: the rule cd's into the scratch folder
+        ids_script=os.path.abspath("scripts/repeatmasker_ids.py"),
+        dfam_dir=os.path.join(path_output, "data", "global", "dfam"),
+        # The species libraries RepeatMasker builds from Dfam. Their names say the species and whether uncurated
+        # families are in, and runs can share the folder
+        cache_dir=os.path.join(path_output, "data", "global", "dfam", "cache"),
+        scratch_dir=config.get("scratch_dir") or "",
+        uncurated="-uncurated" if repeatmasker_dfam == "all" else "",
+        # Each RepeatMasker job runs RMBlast with 4 threads
+        parallel_jobs=lambda wildcards, threads: max(1, threads // 4)
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "run_repeatmasker.log")
     shell:
         r"""
-        mkdir -p {params.outdir}
-        cd {params.outdir}
-
-        # Prepare libraries
-        LIBDIR="$CONDA_PREFIX/lib"
-        if [ ! -e "$LIBDIR/libnsl.so.1" ]; then
-            ln -sf "$LIBDIR/libnsl.so.3" "$LIBDIR/libnsl.so.1"  #A symbolic link is created; there is no version that installs the required dependency
-        fi
-        export LD_LIBRARY_PATH="$LIBDIR${{LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}}"
+        # RepeatMasker works in a folder of its own on a local disk and only its result is copied to the output
+        # folder: its thousands of temporary files blocked the shared filesystem of a cluster for every user.
+        # scratch_dir.py stops the run if the folder is on a network filesystem
+        WORKDIR=$(scripts/scratch_dir.py --scratch_dir "{params.scratch_dir}" --prefix isoannot_repeatmasker 2> {log}) || {{ cat {log} >&2; exit 1; }}
+        trap 'rm -rf "$WORKDIR"' EXIT
+        cd "$WORKDIR"
+        if [ -d {params.cache_dir} ]; then cp -r {params.cache_dir} cache; fi
 
         # RepeatMasker stops on FASTA IDs longer than 50 characters: run it on a copy with those IDs hashed,
         # then put the original IDs back in the .out file
-        {params.ids_script} shorten --fasta {input} --output tmp_hashed.fasta --mapping id_mapping.tsv &> {log}
-        RepeatMasker tmp_hashed.fasta -species "{params.species}" -dir . &>> {log}
+        {params.ids_script} shorten --fasta {input.fasta} --output tmp_hashed.fasta --mapping id_mapping.tsv &>> {log}
+        {input.repeatmasker} tmp_hashed.fasta -species "{params.species}" {params.uncurated} -famdb_data_dir {params.dfam_dir} \
+            -cache_dir cache -pa {params.parallel_jobs} -dir . &>> {log}
         {params.ids_script} restore --repeatmasker_file tmp_hashed.fasta.out --mapping id_mapping.tsv --output {output} &>> {log}
+        # Keep the species libraries for the next run
+        if [ -d cache ]; then mkdir -p {params.cache_dir} && cp -r cache/. {params.cache_dir}/; fi
         """
+
+MIRBASE_FILES = {"high_confidence": "data/global/miRNA/miRNA_high_conf.dat", "all": "data/global/miRNA/miRNA.dat"}
+MIRNA_SITE_TYPES = ["canonical", "canonical_6mer", "all"]
+
+def mirbase_file():
+    mirbase_set = config.get("mirna_mirbase_set", "high_confidence")
+    if mirbase_set not in MIRBASE_FILES:
+        raise ValueError(f"mirna_mirbase_set must be one of {', '.join(MIRBASE_FILES)}, not '{mirbase_set}'.")
+    return MIRBASE_FILES[mirbase_set]
+
+def mirna_site_types():
+    site_types = config.get("mirna_site_types", "canonical")
+    if site_types not in MIRNA_SITE_TYPES:
+        raise ValueError(f"mirna_site_types must be one of {', '.join(MIRNA_SITE_TYPES)}, not '{site_types}'.")
+    return site_types
 
 rule filter_interactions:
     input:
         mirwalk=rules.prepare_mirwalk.output
     params:
         species_name=config["species"],
-        mirbase="data/global/miRNA/miRNA.dat",
+        # miRBase high-confidence miRNAs by default, all miRNAs with experimental evidence on request
+        mirbase=mirbase_file(),
+        site_types=mirna_site_types(),
         # Left out when the key is missing, so filter_mirna_bs.py uses its default
         score=_optional_param("mirna_db_evidence_score_threshold", "--score")
     output:
@@ -628,7 +741,7 @@ rule filter_interactions:
         os.path.join(path_output, "logs", prefix, "filter_interactions.log")
     shell:
         """
-        scripts/filter_mirna_bs.py --mirbase_file {params.mirbase} --mirwalk_file {input.mirwalk} --species {params.species_name:q} {params.score} --mirwalk_output {output} &> {log}
+        scripts/filter_mirna_bs.py --mirbase_file {params.mirbase} --mirwalk_file {input.mirwalk} --species {params.species_name:q} {params.score} --site_types {params.site_types} --mirwalk_output {output} &> {log}
         """
  
 rule run_mirwalk2gen:
@@ -711,14 +824,17 @@ rule get_mirna_bs_annotation:
         fasta=select_fasta_cdna,
         gene_prediction=rules.run_gtftogenepred.output,
         mirna_bs=rules.run_mirwalk2gen.output,
-        chr_ref=rules.get_refseq_acc.output
+        chr_ref=rules.get_refseq_acc.output,
+        classification=select_sqanti_classification
+    params:
+        regions=" ".join(config.get("mirna_regions_to_use", []))
     output:
         os.path.join(path_output, "data", prefix, "output", "{db}", "mirna_bs_annotation.txt")
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "get_mirna_bs_annotation.log")
     shell:
         """
-        scripts/get_mirna_bs_annotation.py --chr_ref {input.chr_ref} --genepred {input.gene_prediction} --isoform_fasta {input.fasta} --mirwalk_genomic {input.mirna_bs} --output {output} &> {log}
+        scripts/get_mirna_bs_annotation.py --chr_ref {input.chr_ref} --genepred {input.gene_prediction} --isoform_fasta {input.fasta} --mirwalk_genomic {input.mirna_bs} --classification {input.classification} --regions {params.regions} --output {output} &> {log}
         """
 
 rule get_genomic_coordinates:
@@ -765,14 +881,16 @@ rule get_uniprot_phosphosite_annotation:
         protein_assoc=select_prot_assoc
     params:
         keep_version = config["transcript_versioned"],
-        biomart_host = config.get("biomart_host", [])        
+        biomart_host = config.get("biomart_host", []),
+        # A PTM reported by Swiss-Prot and PhosphoSitePlus is written once, as Swiss-Prot, unless ptm_both_sources is on
+        both_sources = "--keep_both_sources" if is_feature_enabled("ptm_both_sources", default=False) else ""
     output:
         os.path.join(path_output, "data", prefix, "output", "{db}", "uniprot_Phosphosite_info.txt")
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "get_uniprot_phosphosite_annotation.log")
     shell:           
         """
-        scripts/uniprotPhosphosite_annotation.py --orf_fasta {input.fasta_orf} --classification_file {input.classification} --genepred_file {input.gene_prediction} --uniprotmotif_file {input.motif_info} --chr_ref {input.chr_ref} --protein_association {input.protein_assoc} --keep_version {params.keep_version} --db {wildcards.db} --biomart_host {params.biomart_host} --output {output} &> {log}
+        scripts/uniprotPhosphosite_annotation.py --orf_fasta {input.fasta_orf} --classification_file {input.classification} --genepred_file {input.gene_prediction} --uniprotmotif_file {input.motif_info} --chr_ref {input.chr_ref} --protein_association {input.protein_assoc} --keep_version {params.keep_version} --db {wildcards.db} --biomart_host {params.biomart_host} {params.both_sources} --output {output} &> {log}
         """
 
 
@@ -783,6 +901,9 @@ rule parse_protein_databases:
         uniprot_fasta = _uniprot_files("uniprot_fasta"),
         refseq_fasta=rules.prepare_refseq_proteins.output,
         ensembl_fasta=rules.get_ensembl_proteins.output.fa,
+        # The annotations as downloaded: they give the form of the protein IDs of each database
+        refseq_gtf=rules.get_refseq_gtf.output,
+        ensembl_gtf=rules.get_ensembl_gtf.output,
     output:
         os.path.join(path_output, "data", prefix, "config", "parsed_databases.json")
     params:
@@ -792,7 +913,7 @@ rule parse_protein_databases:
         os.path.join(path_output, "logs", prefix, "parse_protein_databases.log")
     shell:
         """
-        scripts/parse_protein_databases.py --uniprot_fasta {input.uniprot_fasta} {params.ensembl_fasta_regex} {params.refseq_fasta_regex} --ensembl_fasta {input.ensembl_fasta} --refseq_fasta {input.refseq_fasta} --output {output} &> {log}
+        scripts/parse_protein_databases.py --uniprot_fasta {input.uniprot_fasta} {params.ensembl_fasta_regex} {params.refseq_fasta_regex} --ensembl_fasta {input.ensembl_fasta} --refseq_fasta {input.refseq_fasta} --ensembl_gtf {input.ensembl_gtf} --refseq_gtf {input.refseq_gtf} --output {output} &> {log}
         """
 
 
@@ -800,9 +921,6 @@ rule transcript_to_reference:
     conda:
         "../../envs/isoannotpy.yaml"
     input:
-        refseq_gtf=rules.prepare_refseq_gtf.output if config.get("refseq_gtf") else [],
-        ensembl_gtf=rules.prepare_ensembl_gtf.output,
-        chr_ref=rules.get_refseq_acc.output if config.get("refseq_chr_accessions") else [],
         classification_file=select_sqanti_classification,
         corrected_gtf=rules.run_sqanti.output.gtf, 
         fasta_proteins=rules.run_sqanti.output.fasta_proteins,
@@ -814,9 +932,7 @@ rule transcript_to_reference:
         os.path.join(path_output, "logs", prefix, "{db}", "transcript_to_reference.log")
     shell:
         """
-        scripts/transcript2reference.py --ensembl_gtf {input.ensembl_gtf} \
-        --refseq_gtf {input.refseq_gtf} \
-        --chr_ref {input.chr_ref} --classification_file {input.classification_file} --corrected_gtf {input.corrected_gtf} \
+        scripts/transcript2reference.py --classification_file {input.classification_file} --corrected_gtf {input.corrected_gtf} \
         --corrected_fasta_proteins {input.fasta_proteins} --output_assoc {output.protein_assoc} --output_nmd {output.nmd} \
         --database {wildcards.db} --species_db {input.species_db} &> {log}    
         """
@@ -837,6 +953,15 @@ rule reference_protein_assoc:
         """
         scripts/reference_protein_assoc.py --classification_file {input.classification} --species_db {input.species_db} --database {wildcards.db} --output {output} &> {log}
         """
+
+# NucImport always runs with the mouse model and ID=F (no ID lookups). Its result then depends only on the
+# protein sequence, so results are kept in a store shared by the runs of this output folder (nls_cache)
+nucimport_jar = os.path.abspath("software/NucImport/NucImportMay2012.jar")
+nucimport_organism = "Mouse"
+nucimport_id_flag = "ID=F"
+nls_cache_option = (f"--cache_dir {os.path.join(path_output, 'data', 'global', 'nucimport_cache')}"
+                    if is_feature_enabled("nls_cache", True) else "--no_cache")
+nucimport_options = f"--model {nls_model} --organism {nucimport_organism} --id_flag {nucimport_id_flag} --jar {nucimport_jar} {nls_cache_option}"
 
 rule filter_nls:
     conda:
@@ -868,9 +993,25 @@ rule nls_deduplicate:
             --output_fasta {output.fasta} --output_mapping {output.mapping} &> {log}
         """
 
+rule nls_cache_lookup:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        rules.nls_deduplicate.output.fasta
+    output:
+        to_predict = os.path.join(path_output,"data",prefix,"output","{db}","nls","to_predict.fa"),
+        cached = os.path.join(path_output,"data",prefix,"output","{db}","nls","cached_results.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "nls_cache_lookup.log")
+    shell:
+        """
+        scripts/nls_cache.py lookup --fasta {input} {nucimport_options} \
+            --to_predict {output.to_predict} --cached {output.cached} &> {log}
+        """
+
 rule split_proteins:
     input: 
-        rules.nls_deduplicate.output.fasta
+        rules.nls_cache_lookup.output.to_predict
     output: 
         expand(os.path.join(path_output,"data",prefix,"output","{{db}}","nls", "chunks_temp", "chunk_{n}.fa"), n=range(nls_chunks))
     log:
@@ -895,24 +1036,32 @@ rule run_nucimport:
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "run_nucimport", "run_nucimport_chunk_{n}.log")
     params:
-        jar_dir = os.path.abspath("software/NucImport"),
-        jar_name = "NucImportMay2012.jar",
+        jar_dir = os.path.dirname(nucimport_jar),
+        jar_name = os.path.basename(nucimport_jar),
         work_dir = os.path.join(path_output, "data", prefix, "output", "{db}", "nls", "tmp", "nucimport_chunk_{n}")
     shell:
         """
         # NucImport reads its model files from the current folder and also writes its results to aout.txt there.
         # Each chunk runs in its own folder with links to the model files, so parallel runs do not share aout.txt.
         # Link only the files the jar reads: a glob would also link an aout.txt left in software/NucImport by older runs.
-        rm -rf {params.work_dir}
-        mkdir -p {params.work_dir}
-        ln -s {params.jar_dir}/{params.jar_name} {params.jar_dir}/*.mod {params.jar_dir}/HomologFinal*.txt {params.jar_dir}/Int*.txt {params.work_dir}/
-        (cd {params.work_dir} && java -Xmx{nls_java_memory} -jar {params.jar_name} {input} {nls_model} Mouse ID=F > {output} 2> {log})
-        rm -rf {params.work_dir}
+        # An empty chunk (fewer proteins than nls_chunks) gets an empty output: starting Java for it takes about 6 s for nothing.
+        if [ ! -s {input} ]; then
+            : > {output}
+            echo "Empty chunk: NucImport not run" > {log}
+        else
+            rm -rf {params.work_dir}
+            mkdir -p {params.work_dir}
+            ln -s {params.jar_dir}/{params.jar_name} {params.jar_dir}/*.mod {params.jar_dir}/HomologFinal*.txt {params.jar_dir}/Int*.txt {params.work_dir}/
+            (cd {params.work_dir} && java -Xmx{nls_java_memory} -jar {params.jar_name} {input} {nls_model} {nucimport_organism} {nucimport_id_flag} > {output} 2> {log})
+            rm -rf {params.work_dir}
+        fi
         """
 
 rule merge_nls_chunks:
     input: 
-        expand(os.path.join(path_output,"data",prefix,"output","{{db}}","nls","tmp", "output_chunk_{n}.txt"), n=range(nls_chunks))
+        # The cached results go first: they always start with the header, even when every chunk is empty
+        cached = rules.nls_cache_lookup.output.cached,
+        chunks = expand(os.path.join(path_output,"data",prefix,"output","{{db}}","nls","tmp", "output_chunk_{n}.txt"), n=range(nls_chunks))
     output: 
         os.path.join(path_output,"data",prefix,"output","{db}","nls","output_merged.txt")
     log:
@@ -921,7 +1070,25 @@ rule merge_nls_chunks:
         """
         # Each chunk starts with a header line and a line of stars. Keep them once and match them by
         # pattern: skipping a fixed number of lines lost the first protein of every chunk but the first.
-        awk '/^Protein ID\\t/ {{ if (!header++) print; next }} /^\\*+$/ {{ if (!stars++) print; next }} {{ print }}' {input} > {output} 2> {log}
+        awk '/^Protein ID\\t/ {{ if (!header++) print; next }} /^\\*+$/ {{ if (!stars++) print; next }} {{ print }}' {input.cached} {input.chunks} > {output} 2> {log}
+        """
+
+rule nls_cache_store:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    input:
+        fasta = rules.nls_cache_lookup.output.to_predict,
+        results = rules.merge_nls_chunks.input.chunks
+    output:
+        missing = os.path.join(path_output,"data",prefix,"output","{db}","nls","nucimport_missing.txt")
+    log:
+        os.path.join(path_output, "logs", prefix, "{db}", "nls_cache_store.log")
+    params:
+        name = lambda wildcards: f"{prefix}_{wildcards.db}"
+    shell:
+        """
+        scripts/nls_cache.py store --fasta {input.fasta} {nucimport_options} \
+            --results {input.results} --name {params.name} --missing {output.missing} &> {log}
         """
 
 rule parse_nls:
@@ -948,7 +1115,9 @@ rule expand_nls:
         "../../envs/isoannotpy.yaml"
     input:
         parsed_tsv = rules.parse_nls.output,
-        mapping = rules.nls_deduplicate.output.mapping
+        mapping = rules.nls_deduplicate.output.mapping,
+        # Not read: makes the run store the new results and stop when most proteins got none
+        missing = rules.nls_cache_store.output.missing
     output:
         os.path.join(path_output,"data",prefix,"output","{db}","nls","nls_final_expanded.tsv")
     log:
@@ -960,25 +1129,50 @@ rule expand_nls:
         """
 
 # LAYERS
+# Gene names and GO terms of the Ensembl release of biomart_host, saved once and read by layer_go and
+# layer_reactome. BioMart is not asked inside the layers: www.ensembl.org serves the newest release,
+# which is not the release of the downloaded files for long.
+rule get_biomart_table:
+    conda:
+        "../../envs/isoannotpy.yaml"
+    resources:
+        n_downloads=1
+    output:
+        os.path.join(path_output, "data", prefix, "config", "biomart", f"{config.get('biomart_dataset') or 'biomart'}_biomart.tsv")
+    params:
+        biomart_host=config.get("biomart_host") or "www.ensembl.org",
+        biomart_dataset=config.get("biomart_dataset", []),
+        ensembl_gtf_url=_optional_param("ensembl_gtf", "--ensembl_gtf_url")
+    log:
+        os.path.join(path_output, "logs", prefix, "get_biomart_table.log")
+    shell:
+        """
+        scripts/save_biomart_tables.py --biomart_host {params.biomart_host} --biomart_dataset {params.biomart_dataset} --output {output} {params.ensembl_gtf_url} &> {log}
+        # A BioMart release that is not the release of the files is shown in the run, not only in the log
+        grep "WARNING" {log} >&2 || true
+        """
+
+
+def select_biomart_table(wildcards=None):
+    # A table given with biomart_table is read as it is, and nothing is downloaded
+    return config.get("biomart_table") or rules.get_biomart_table.output
+
+
 rule layer_go:
     conda:
         "../../envs/isoannotpy.yaml"
     input:
         classification_file=select_sqanti_classification,
-        # Saved BioMart answer (save_biomart_tables.py), read instead of querying BioMart
-        biomart_table=config.get("biomart_table") or []
+        biomart_table=select_biomart_table
     output:
         _output_layer_db("layer_go", lambda x: config.get("biomart_dataset", []))
     params:
-        biomart_table=_optional_param("biomart_table", "--biomart_table"),
-        biomart_host=config.get("biomart_host", []),
-        biomart_dataset=config.get("biomart_dataset", []),
         db=config.get("db")
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "layer_go.log")
     shell:
         """
-        scripts/layer_go.py --classification_file {input.classification_file} --output {output} --biomart_host {params.biomart_host} --biomart_dataset {params.biomart_dataset} --db {params.db} {params.biomart_table} &> {log}
+        scripts/layer_go.py --classification_file {input.classification_file} --output {output} --db {params.db} --biomart_table {input.biomart_table} &> {log}
         """
 
 
@@ -1056,11 +1250,8 @@ rule layer_reactome:
     input:
         classification_file=select_sqanti_classification,
         reactome_file=rules.get_reactome.output,
-        biomart_table=config.get("biomart_table") or []
+        biomart_table=select_biomart_table
     params:
-        biomart_table=_optional_param("biomart_table", "--biomart_table"),
-        biomart_host=config.get("biomart_host", []),
-        biomart_dataset=config.get("biomart_dataset", []),
         species=config["species"],
         db=config.get("db")
     output:
@@ -1069,7 +1260,7 @@ rule layer_reactome:
         os.path.join(path_output, "logs", prefix, "{db}", "layer_reactome.log")
     shell:
         """
-        scripts/layer_reactome.py --reactome_file {input.reactome_file} --classification_file {input.classification_file} --biomart_host {params.biomart_host} --biomart_dataset {params.biomart_dataset} --species {params.species:q} --db {params.db} {params.biomart_table} --output {output} &> {log}
+        scripts/layer_reactome.py --reactome_file {input.reactome_file} --classification_file {input.classification_file} --species {params.species:q} --db {params.db} --biomart_table {input.biomart_table} --output {output} &> {log}
         """
 
 
@@ -1095,9 +1286,11 @@ rule layer_mirna_bs:
         _output_layer_db("layer_mirna_bs", external_rule=rules.get_mirna_bs_annotation.output)
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "layer_mirna_bs.log")
+    # sort -u compares only the -k keys, so different miRNAs or features at the same coordinates were merged;
+    # uniq drops whole-line duplicates only. LC_ALL=C makes sort break key ties bytewise, so equal lines are adjacent.
     shell:
         """
-        sort -u -V -k1,1 -k4,4n -k5,5n {input.mirna_bs_file} > {output} 2> {log}
+        LC_ALL=C sort -V -k1,1 -k4,4n -k5,5n {input.mirna_bs_file} 2> {log} | uniq > {output}
         """
 
 rule layer_uniprot:
@@ -1107,9 +1300,11 @@ rule layer_uniprot:
         _output_layer_db("layer_uniprot", external_rule=rules.get_uniprot_phosphosite_annotation.output)
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "layer_uniprot.log")
+    # Whole-line dedup, as in layer_mirna_bs. A PTM reported by both Swiss-Prot and PhosphoSitePlus has
+    # two rows here only with ptm_both_sources: uniprotPhosphosite_annotation.py leaves out the second one.
     shell:
         """
-        sort -u -V -k1,1 -k3,3 -k4,4n -k5,5n {input.uniprot_file} > {output} 2> {log}
+        LC_ALL=C sort -V -k1,1 -k3,3 -k4,4n -k5,5n {input.uniprot_file} 2> {log} | uniq > {output}
         """
 
 
@@ -1123,9 +1318,12 @@ rule layer_utrscan:
         _output_layer_db("layer_utrscan", external_rule=rules.run_utrscan.output)
     log:
         os.path.join(path_output, "logs", prefix, "{db}", "layer_utrscan.log")
+    params:
+        utrsite_cmd = rules.run_utrscan.params.utrsite_cmd,
+        skip_noncoding = "" if is_feature_enabled("utrscan_noncoding", default=True) else "--skip_noncoding"
     shell:
         """
-        scripts/layer_utrscan.py --utrscan_file {input.utrscan_file} --classification_file {input.classification_file} --output {output} &> {log}
+        scripts/layer_utrscan.py --utrscan_file {input.utrscan_file} --classification_file {input.classification_file} --utrsite_file {params.utrsite_cmd} {params.skip_noncoding} --output {output} &> {log}
         """
 
 rule layer_nls:

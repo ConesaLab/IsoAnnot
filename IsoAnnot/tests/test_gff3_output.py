@@ -21,26 +21,33 @@ def read_tsv(path):
         return [line.rstrip("\n").split("\t") for line in handle]
 
 
-def make_layers(run_script, synthetic_dir, classification, outdir):
+# Transcripts with a GO term in the small GO layer of the tests: the first SYNA and the first SYNB one
+GO_TRANSCRIPTS = {"ensembl": ("ENST00000000001", "ENST00000000003"), "refseq": ("NM_900001.1", "NM_900003.2")}
+
+
+def make_layers(run_script, synthetic_dir, classification, outdir, database="ensembl"):
     """Exon, junction and NMD layers made by the layer scripts on the fixture, plus a small GO layer."""
     layers = {name: outdir / f"layer_{name}.gtf" for name in ("exons", "junctions", "nmd", "go")}
-    for args in (("layer_exons.py", "--gtf_file", synthetic_dir / "ensembl.gtf"),
-                 ("layer_junctions.py", "--junctions_file", synthetic_dir / "ensembl_sqanti_junctions.txt",
+    # As rule layer_exons: the RefSeq GTF has NCBI chromosome names, translated with chr2acc
+    chr_ref = ("--chr_ref", synthetic_dir / "chr2acc") if database == "refseq" else ()
+    for args in (("layer_exons.py", "--gtf_file", synthetic_dir / f"{database}.gtf", *chr_ref),
+                 ("layer_junctions.py", "--junctions_file", synthetic_dir / f"{database}_sqanti_junctions.txt",
                   "--classification_file", classification),
-                 ("layer_nmd.py", "--nmd_file", synthetic_dir / "ensembl_sqanti_NMD.txt",
+                 ("layer_nmd.py", "--nmd_file", synthetic_dir / f"{database}_sqanti_NMD.txt",
                   "--classification_file", classification)):
         name = args[0][len("layer_"):-len(".py")]
         result = run_script(*args, "--output", layers[name])
         assert result.returncode == 0, result.stderr
-    layers["go"].write_text("ENST00000000001\tGeneOntology\tC\t.\t.\t.\t.\t.\tID=GO:0005737; Name=cytoplasm\n"
-                            "ENST00000000003\tGeneOntology\tF\t.\t.\t.\t.\t.\tID=GO:0005515; Name=protein binding\n")
+    first, second = GO_TRANSCRIPTS[database]
+    layers["go"].write_text(f"{first}\tGeneOntology\tC\t.\t.\t.\t.\t.\tID=GO:0005737; Name=cytoplasm\n"
+                            f"{second}\tGeneOntology\tF\t.\t.\t.\t.\t.\tID=GO:0005515; Name=protein binding\n")
     return layers
 
 
-def run_t2go(run_script, synthetic_dir, tmp_path, classification=None, protein_assoc=None):
+def run_t2go(run_script, synthetic_dir, tmp_path, classification=None, protein_assoc=None, database="ensembl"):
     """Runs t2goAnnotationFile.py as rule tappas_annotation does and returns the output rows."""
-    classification = classification or synthetic_dir / "ensembl_sqanti_classification.txt"
-    layers = make_layers(run_script, synthetic_dir, classification, tmp_path)
+    classification = classification or synthetic_dir / f"{database}_sqanti_classification.txt"
+    layers = make_layers(run_script, synthetic_dir, classification, tmp_path, database)
     output = tmp_path / "annotation.gff3"
     args = ["--classification_file", classification, "--input_transcripts", layers["nmd"],
             "--input_genomic", layers["exons"], layers["junctions"], "--input_protein", layers["go"],
@@ -172,32 +179,65 @@ def test_reference_protein_assoc_refseq(synthetic_dir, run_script, tmp_path):
     output, result = run_reference_protein_assoc(run_script, synthetic_dir, tmp_path, "refseq", classification)
     assert read_tsv(output) == [
         ["NM_900003.2", "P0SYB1-2", "swissprot", "sequence"],
-        ["NM_900003.2", "NP_900003", "refseq", "sequence"],
-        ["NM_900003.2", "NP_900004", "refseq", "sequence"],
-        ["NM_900006.3", "NP_900006", "refseq", "sequence"],
+        ["NM_900003.2", "NP_900003.1", "refseq", "sequence"],
+        ["NM_900003.2", "NP_900004.1", "refseq", "sequence"],
+        ["NM_900006.3", "NP_900006.2", "refseq", "sequence"],
     ]
     assert "1 of 3 coding transcripts" in result.stderr
+    assert "another version" not in result.stderr
 
 
-def test_reference_protein_assoc_ambiguous_native_id(run_script, tmp_path):
+def test_reference_protein_assoc_other_version(synthetic_dir, run_script, tmp_path):
     """
-    A native ID that maps to two sequences once the version is removed (AT1G01010.1 and AT1G01010.2 in
-    Ensembl Plants) is not used to pick a sequence.
+    A refProt whose version differs from the protein FASTA (annotation and proteins of different releases)
+    still finds its sequence. The IDs written are the ones of the protein FASTA, and a warning counts it.
+    """
+    classification = write_classification(tmp_path / "classification.txt", [
+        ["NM_900006.3", "1", "+", 1100, "protein_coding", "SYND", "NM_900006.3", "coding", 267, 101, 901, "NP_900006.3"],
+    ])
+    output, result = run_reference_protein_assoc(run_script, synthetic_dir, tmp_path, "refseq", classification)
+    assert read_tsv(output) == [["NM_900006.3", "NP_900006.2", "refseq", "sequence"]]
+    assert "1 of 1 coding transcripts have a refProt that" in result.stderr
+
+
+def test_reference_protein_assoc_isoform_numbers(run_script, tmp_path):
+    """
+    In Ensembl Plants the number is the isoform (AT1G01010.1 and AT1G01010.2 are two proteins). The IDs are
+    kept whole, so each transcript gets the UniProt ID of its own protein.
     """
     species_db = tmp_path / "parsed_databases.json"
-    species_db.write_text(json.dumps({"MAAA": {"swissprot": ["Q00001"], "ensembl": ["AT1G01010"]},
-                                      "MCCC": {"ensembl": ["AT1G01010"]},
-                                      "MGGG": {"swissprot": ["Q00002"], "ensembl": ["AT1G01020"]}}))
+    species_db.write_text(json.dumps({"MAAA": {"swissprot": ["Q00001"], "ensembl": ["AT1G01010.1"]},
+                                      "MCCC": {"swissprot": ["Q00001-2"], "ensembl": ["AT1G01010.2"]}}))
     classification = write_classification(tmp_path / "classification.txt", [
         ["AT1G01010.1", "1", "+", 900, "protein_coding", "G1", "AT1G01010.1", "coding", 3, 1, 9, "AT1G01010.1"],
-        ["AT1G01020.1", "1", "+", 900, "protein_coding", "G2", "AT1G01020.1", "coding", 3, 1, 9, "AT1G01020.1"],
+        ["AT1G01010.2", "1", "+", 900, "protein_coding", "G1", "AT1G01010.2", "coding", 3, 1, 9, "AT1G01010.2"],
     ])
     output = tmp_path / "assoc.txt"
     result = run_script("reference_protein_assoc.py", "--classification_file", classification,
                         "--species_db", species_db, "--database", "ensembl", "--output", output)
     assert result.returncode == 0, result.stderr
-    assert read_tsv(output) == [["AT1G01020.1", "Q00002", "swissprot", "sequence"],
-                                ["AT1G01020.1", "AT1G01020", "ensembl", "sequence"]]
+    assert read_tsv(output) == [["AT1G01010.1", "Q00001", "swissprot", "sequence"],
+                                ["AT1G01010.1", "AT1G01010.1", "ensembl", "sequence"],
+                                ["AT1G01010.2", "Q00001-2", "swissprot", "sequence"],
+                                ["AT1G01010.2", "AT1G01010.2", "ensembl", "sequence"]]
+
+
+def test_reference_protein_assoc_ambiguous_native_id(run_script, tmp_path):
+    """A refProt without number is not looked up by its gene when the isoforms have different proteins."""
+    species_db = tmp_path / "parsed_databases.json"
+    species_db.write_text(json.dumps({"MAAA": {"swissprot": ["Q00001"], "ensembl": ["AT1G01010.1"]},
+                                      "MCCC": {"ensembl": ["AT1G01010.2"]},
+                                      "MGGG": {"swissprot": ["Q00002"], "ensembl": ["AT1G01020.1"]}}))
+    classification = write_classification(tmp_path / "classification.txt", [
+        ["AT1G01010", "1", "+", 900, "protein_coding", "G1", "AT1G01010", "coding", 3, 1, 9, "AT1G01010"],
+        ["AT1G01020", "1", "+", 900, "protein_coding", "G2", "AT1G01020", "coding", 3, 1, 9, "AT1G01020"],
+    ])
+    output = tmp_path / "assoc.txt"
+    result = run_script("reference_protein_assoc.py", "--classification_file", classification,
+                        "--species_db", species_db, "--database", "ensembl", "--output", output)
+    assert result.returncode == 0, result.stderr
+    assert read_tsv(output) == [["AT1G01020", "Q00002", "swissprot", "sequence"],
+                                ["AT1G01020", "AT1G01020.1", "ensembl", "sequence"]]
 
 
 def test_novel_protein_ids():
@@ -222,7 +262,7 @@ def test_transcript2reference_writes_novel_rows(synthetic_dir, run_script, tmp_p
                     f">PB.10.1 GeneMark.hmm|4_aa|+|11|22\nMKKK\n")
     protein_assoc = tmp_path / "protein_assoc_data.txt"
     nmd = tmp_path / "nmd.txt"
-    result = run_script("transcript2reference.py", "--ensembl_gtf", synthetic_dir / "ensembl.gtf",
+    result = run_script("transcript2reference.py",
                         "--corrected_gtf", corrected_gtf, "--corrected_fasta_proteins", orfs,
                         "--database", "mytranscripts", "--species_db", synthetic_dir / "parsed_databases.json",
                         "--output_assoc", protein_assoc, "--output_nmd", nmd)
@@ -230,7 +270,7 @@ def test_transcript2reference_writes_novel_rows(synthetic_dir, run_script, tmp_p
     assert [line.split("\t") for line in protein_assoc.read_text().splitlines()] == [
         ["PB.2.1", "Protein_PB.2.1", "novel", "sequence"],
         ["PB.3.1", "P0SYA1", "swissprot", "sequence"],
-        ["PB.3.1", "NP_900001", "refseq", "sequence"],
+        ["PB.3.1", "NP_900001.1", "refseq", "sequence"],
         ["PB.3.1", "ENSP00000000001", "ensembl", "sequence"],
         ["PB.10.1", "Protein_PB.2.1", "novel", "sequence"],
     ]
@@ -248,7 +288,7 @@ def test_transcript2reference_orfs_with_stop_codon(synthetic_dir, run_script, tm
     for name, stop in (("with_stop", "*"), ("without_stop", "")):
         orfs = tmp_path / f"{name}.faa"
         orfs.write_text(f">PB.3.1 GeneMark.hmm|150_aa|+|11|460\n{p0sya1}{stop}\n")
-        result = run_script("transcript2reference.py", "--ensembl_gtf", synthetic_dir / "ensembl.gtf",
+        result = run_script("transcript2reference.py",
                             "--corrected_gtf", corrected_gtf, "--corrected_fasta_proteins", orfs,
                             "--database", "mytranscripts", "--species_db", synthetic_dir / "parsed_databases.json",
                             "--output_assoc", tmp_path / f"{name}_assoc.txt", "--output_nmd", tmp_path / f"{name}_nmd.txt")
@@ -256,7 +296,7 @@ def test_transcript2reference_orfs_with_stop_codon(synthetic_dir, run_script, tm
         outputs[name] = (tmp_path / f"{name}_assoc.txt").read_text()
     assert [line.split("\t") for line in outputs["with_stop"].splitlines()] == [
         ["PB.3.1", "P0SYA1", "swissprot", "sequence"],
-        ["PB.3.1", "NP_900001", "refseq", "sequence"],
+        ["PB.3.1", "NP_900001.1", "refseq", "sequence"],
         ["PB.3.1", "ENSP00000000001", "ensembl", "sequence"],
     ]
     assert outputs["with_stop"] == outputs["without_stop"]
@@ -344,6 +384,60 @@ def test_end_to_end_gff3(synthetic_dir, run_script, tmp_path):
     assert all(re.match(r"^ID=[A-Za-z0-9_.\-]+;", attributes) for _, _, attributes in proteins.values())
 
 
+def test_end_to_end_gff3_refseq(synthetic_dir, run_script, tmp_path):
+    """
+    The same layout in RefSeq mode, which only the gold panel checked. The RefSeq models of the fixture
+    are the Ensembl ones, so blocks and coordinates are those of test_end_to_end_gff3. The protein IDs
+    are RefSeq ones with their version, as the RefSeq annotation writes them.
+    """
+    classification = synthetic_dir / "refseq_sqanti_classification.txt"
+    protein_assoc, _ = run_reference_protein_assoc(run_script, synthetic_dir, tmp_path, "refseq", classification)
+    run_t2go(run_script, synthetic_dir, tmp_path, protein_assoc=protein_assoc, database="refseq")
+    result = run_script("renameFeatures.py", tmp_path / "annotation.gff3")
+    assert result.returncode == 0, result.stderr
+    rows = read_tsv(tmp_path / "annotation.gff3_mod")
+
+    assert all(len(row) == 9 and re.search(r"[^;\s]; PosType=[TGPN]$", row[8]) for row in rows)
+
+    # Each transcript's lines are contiguous and in the legacy tappAS order
+    transcripts = list(dict.fromkeys(row[0] for row in rows))
+    assert transcripts == ["NM_900001.1", "NM_900002.1", "NM_900003.2", "NM_900004.1", "NM_900006.3", "NR_900005.1"]
+    assert [row[0] for row in rows] == sorted((row[0] for row in rows), key=transcripts.index)
+    blocks = {transcript: "".join(block_letter(row) for row in rows if row[0] == transcript)
+              for transcript in transcripts}
+    assert blocks == {"NM_900001.1": "tgcGeeejjpN", "NM_900002.1": "tgcTGeeeejjjp",
+                      "NM_900003.2": "tgcGeeeejjjpN", "NM_900004.1": "tgcGeeeeejjjjp",
+                      "NM_900006.3": "tgcGep", "NR_900005.1": "tgGeej"}
+
+    # Integer coordinates, except the position-less GO and NMD features
+    for row in rows:
+        if row[1] in ("GeneOntology", "NMD"):
+            assert (row[3], row[4]) == (".", ".")
+        else:
+            assert re.match(r"^\d+$", row[3]) and re.match(r"^\d+$", row[4]), row
+
+    # No duplicate lines
+    assert len(rows) == len({tuple(row) for row in rows})
+
+    # Same ID and Desc on CDS and protein lines, shared by the two SYNB transcripts
+    cds = {row[0]: (row[3], row[4], row[8]) for row in rows if row[2] == "CDS"}
+    proteins = {row[0]: (row[3], row[4], row[8]) for row in rows if row[2] == "protein"}
+    assert cds == {
+        "NM_900001.1": ("101", "550", "ID=P0SYA1; Desc=NP_900001.1; PosType=T"),
+        "NM_900002.1": ("101", "361", "ID=A0A0S1YNA6; Desc=NP_900002.1; PosType=T"),
+        "NM_900003.2": ("51", "611", "ID=P0SYB1-2; Desc=NP_900003.1,NP_900004.1; PosType=T"),
+        "NM_900004.1": ("111", "671", "ID=P0SYB1-2; Desc=NP_900003.1,NP_900004.1; PosType=T"),
+        "NM_900006.3": ("101", "901", "ID=NP_900006.2; PosType=T"),
+    }
+    assert proteins == {
+        "NM_900001.1": ("1", "150", "ID=P0SYA1; Desc=NP_900001.1; PosType=P"),
+        "NM_900002.1": ("1", "87", "ID=A0A0S1YNA6; Desc=NP_900002.1; PosType=P"),
+        "NM_900003.2": ("1", "187", "ID=P0SYB1-2; Desc=NP_900003.1,NP_900004.1; PosType=P"),
+        "NM_900004.1": ("1", "187", "ID=P0SYB1-2; Desc=NP_900003.1,NP_900004.1; PosType=P"),
+        "NM_900006.3": ("1", "267", "ID=NP_900006.2; PosType=P"),
+    }
+
+
 def test_t2go_empty_blocks(run_script, tmp_path):
     """
     Layers can be empty (no UTR motif, no NMD transcript). When every file of a block is empty, t2go
@@ -429,6 +523,18 @@ def test_rename_features_uniprot_features(run_script, tmp_path, feature):
     assert "does not know" not in result.stderr
 
 
+@pytest.mark.parametrize("feature", ["miRNA_8mer", "miRNA_7mer", "miRNA_6mer", "miRNA_noncanonical", "miRNA_binding_site"])
+def test_rename_features_mirna_features(run_script, tmp_path, feature):
+    """Every seed match class get_mirna_bs_annotation.py writes is a positional transcript feature."""
+    gff3 = tmp_path / "annotation.gff3"
+    gff3.write_text(f"TX1\tmiRWalk\t{feature}\t600\t620\t.\t+\t.\tID=hsa-miR-1; Desc=3UTR_8mer\n")
+    result = run_script("renameFeatures.py", gff3)
+    assert result.returncode == 0, result.stderr
+    assert read_tsv(tmp_path / "annotation.gff3_mod") == [
+        ["TX1", "miRWalk", feature, "600", "620", ".", "+", ".", "ID=hsa-miR-1; Desc=3UTR_8mer; PosType=T"]]
+    assert "does not know" not in result.stderr
+
+
 def test_rename_features_malformed_line(run_script, tmp_path):
     """
     A line without 9 columns stops with its line number instead of a NameError on idx, and leaves no
@@ -464,7 +570,7 @@ def test_protein_id_fallbacks(run_script, tmp_path):
     assert result.returncode == 0, result.stderr
     cds = {row[0]: row[8] for row in read_tsv(output) if row[2] == "CDS"}
     assert cds == {"ENST00000000001": "ID=P0SYA1", "ENST00000000006": "ID=ENSP00000000006"}
-    assert ("WARNING:root:1 coding transcripts have no reference protein with the same sequence. "
+    assert ("WARNING:root:1 coding transcripts have a refProt that is not in parsed_databases.json. "
             "Their refProt from the classification file is used as protein ID.") in result.stderr.splitlines()
 
     # mytranscripts: SQANTI3 classifications have no refProt column
@@ -479,6 +585,31 @@ def test_protein_id_fallbacks(run_script, tmp_path):
     assert result.returncode == 0, result.stderr
     cds = {row[0]: row[8] for row in read_tsv(output) if row[2] == "CDS"}
     assert cds == {"PB.1.1": "ID=Protein_PB.1.1", "PB:2,1": "ID=Protein_PB_2_1"}
+
+
+def test_protein_length_of_sqanti3_classification(run_script, tmp_path):
+    """
+    In a SQANTI3 classification (mytranscripts) ORF_length is the span of the CDS on the genome, and
+    protein_length counts the stop codon of the ORFs that have one. The protein line has the number of
+    amino acids: PB.1.1 (CDS of 453 nt with its stop) is 150 long, not 2758.
+    """
+    sqanti = tmp_path / "sqanti_classification.txt"
+    sqanti.write_text("isoform\tchrom\tstrand\tlength\tstructural_category\tassociated_gene\tassociated_transcript"
+                      "\tcoding\tORF_length\tCDS_length\tprotein_length\tCDS_start\tCDS_end\tCDS_type\n"
+                      "PB.1.1\t1\t+\t750\tfull-splice_match\tSYNA\tENST00000000001\tcoding\t2758\t453\t151\t101\t553\tcomplete\n"
+                      "PB.1.2\t1\t+\t750\tnovel_in_catalog\tSYNA\tnovel\tcoding\t900\t453\t151\t1\t453\t5prime_partial\n"
+                      "PB.1.3\t1\t+\t750\tnovel_in_catalog\tSYNA\tnovel\tcoding\t900\t450\t150\t301\t750\t3prime_partial\n"
+                      "PB.1.4\t1\t+\t750\tnovel_in_catalog\tSYNA\tnovel\tcoding\t750\t750\t250\t1\t750\tinternal\n"
+                      "PB.1.5\t1\t+\t750\tnovel_in_catalog\tSYNA\tnovel\tnon_coding\tNA\tNA\tNA\tNA\tNA\tNA\n")
+    exons = tmp_path / "exons.gtf"
+    exons.write_text("PB.1.1\ttappAS\texon\t1001\t1750\t.\t+\t.\tChr=chr1\n")
+    output = tmp_path / "annotation.gff3"
+    result = run_script("t2goAnnotationFile.py", "--classification_file", sqanti,
+                        "--input_transcripts", exons, "--input_genomic", exons, "--input_protein", exons,
+                        "--output", output)
+    assert result.returncode == 0, result.stderr
+    proteins = {row[0]: (row[3], row[4]) for row in read_tsv(output) if row[2] == "protein"}
+    assert proteins == {"PB.1.1": ("1", "150"), "PB.1.2": ("1", "150"), "PB.1.3": ("1", "150"), "PB.1.4": ("1", "250")}
 
 
 def test_t2go_empty_protein_association(run_script, tmp_path):
@@ -500,5 +631,5 @@ def test_t2go_empty_protein_association(run_script, tmp_path):
     assert result.returncode == 0, result.stderr
     assert {row[2]: row[8] for row in read_tsv(output) if row[2] in ("CDS", "protein")} == {
         "CDS": "ID=ENSP00000000001", "protein": "ID=ENSP00000000001"}
-    assert ("WARNING:root:1 coding transcripts have no reference protein with the same sequence. "
+    assert ("WARNING:root:1 coding transcripts have a refProt that is not in parsed_databases.json. "
             "Their refProt from the classification file is used as protein ID.") in result.stderr.splitlines()
