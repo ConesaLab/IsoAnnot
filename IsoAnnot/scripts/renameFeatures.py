@@ -5,20 +5,28 @@ Author: Pedro Salguero - psalguero@cipf.es
 Script to add a new field inside Description field that indicates the PosType for each annot (T, P, G or N)
 '''
 
-import sys
+import logging, os, sys
+from collections import Counter
 
 #line + (T,P,G,N)
 def addPosType(res, line, posType):
     res.write(line[0:-1] + "; PosType=" + posType + "\n")
 
 
+def addUnknown(res, line, fields, unknown_pairs):
+    # Unknown source/feature pairs (e.g. from user transcript_gtf/genomic_gtf/protein_gtf files) used to
+    # stop the loop, which truncated the file with exit code 0. Keep them without a position.
+    unknown_pairs[f"{fields[1]}/{fields[2]}"] += 1
+    addPosType(res, line, "N")
+
+
 def updateGTF(filepath):
-    # open new file
-    res = open(filepath + "_mod", "w")
-    # open annotation file and process all data
-    with open(filepath, 'r') as f:
+    unknown_pairs = Counter()
+    # open annotation file and process all data. Write to a .tmp file so that a failed run leaves no
+    # partial _mod file behind.
+    with open(filepath, 'r') as f, open(filepath + "_mod.tmp", "w") as res:
         # process all entries - no header line in file
-        for line in f:
+        for idx, line in enumerate(f, 1):
             if len(line) == 0:
                 break
             else:
@@ -41,15 +49,13 @@ def updateGTF(filepath):
                             elif fields[2] == 'protein':
                                 addPosType(res, line, "P")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
                         elif fields[1] == "COILS":   
                             if fields[2] == 'COILED':
                                 addPosType(res, line, "P")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
                         elif fields[1] == "GeneOntology":
                             if fields[2] in ('C', 'cellular_component'):
@@ -69,22 +75,19 @@ def updateGTF(filepath):
                             if fields[2] == 'DISORDER' :
                                 addPosType(res, line, "P")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
                         elif fields[1] == "NMD": 
                             if fields[2] == 'NMD':
                                 addPosType(res, line, "T")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
                         elif fields[1] in ("PAR-CLIP", "PAR-clip"):
                             if fields[2] in ('RNA_binding', 'RNA_Binding_Protein', 'RBP_Binding') or fields[2].startswith('RNA_binding_'):
                                 addPosType(res, line, "T")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
                         elif fields[1] == "PFAM":    
                             if fields[2] == 'DOMAIN':
@@ -92,43 +95,37 @@ def updateGTF(filepath):
                             elif fields[2] in ("CLAN","clan"):
                                 addPosType(res, line, "N")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
                         elif fields[1] == "Provean": 
                             if fields[2] == 'FunctionalImpact':
                                 addPosType(res, line, "N")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
                         elif fields[1] in ("REACTOME","Reactome"):
                             if fields[2] in ('PATHWAY','pathway', 'Pathway'):
                                 addPosType(res, line, "N")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
                         elif fields[1] == "RepeatMasker":
                             if fields[2] == 'repeat':
                                 addPosType(res, line, "T")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
                         elif fields[1] == "SIGNALP_EUK": 
                             if fields[2] == 'SIGNAL':
                                 addPosType(res, line, "P")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
                         elif fields[1] == "TMHMM":   
                             if fields[2] == 'TRANSMEM':
                                 addPosType(res, line, "P")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
                         elif fields[1] == "TranscriptAttributes":
                             if fields[2] == '3UTR_Length':
@@ -140,8 +137,7 @@ def updateGTF(filepath):
                             elif fields[2] == 'polyA_Site':
                                 addPosType(res, line, "T")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
                         elif fields[1] == "UTRsite": 
                             if fields[2] == 'uORF':
@@ -152,9 +148,10 @@ def updateGTF(filepath):
                                 addPosType(res, line, "T")
                             elif fields[2] == '3UTRmotif':
                                 addPosType(res, line, "T")
+                            elif fields[2] == 'ncRNAmotif':
+                                addPosType(res, line, "T")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
                         elif fields[1] in ("UniProtKB/Swiss-Prot_Phosphosite", "Swissprot_Phosphosite"):
                             if fields[2] == 'ACT_SITE':
@@ -173,25 +170,24 @@ def updateGTF(filepath):
                                 addPosType(res, line, "P")
                             elif fields[2] == 'INTRAMEM':
                                 addPosType(res, line, "P")
-                            elif fields[2] == 'NON_STD':
+                            # layer_uniprot writes UniProt's own NONT_STD and CA_BIND names
+                            elif fields[2] in ('NON_STD', 'NONT_STD', 'CA_BIND'):
                                 addPosType(res, line, "P")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
-                        elif fields[1] in ("cNLS_mapper", "NLS_mapper"): 
-                            if fields[2] == 'MOTIF': 
+                        elif fields[1] in ("NucImport"): 
+                            if fields[2] == 'NLS': 
                                 addPosType(res, line, "P")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
-                        elif fields[1] in ("miRWalk", "mirWalk"): 
-                            if fields[2] in('miRNA', 'miRNA_Binding'):
+                        elif fields[1] == "miRWalk":
+                            # One feature per seed match class (get_mirna_bs_annotation.py); miRNA_binding_site is the old name
+                            if fields[2] in ["miRNA_8mer", "miRNA_7mer", "miRNA_6mer", "miRNA_noncanonical", "miRNA_binding_site"]:
                                 addPosType(res, line, "T")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
                         elif fields[1] == "scanForMotifs":   
                             if fields[2] == 'PAS':
@@ -199,57 +195,49 @@ def updateGTF(filepath):
                             elif fields[2] in ('3UTRmotif', "3'UTRmotif"):
                                 addPosType(res, line, "T")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
                         elif fields[1] == "MetaCyc":
                             if fields[2] == 'pathway':
                                 addPosType(res, line, "N")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
                         elif fields[1] == "KEGG":
                             if fields[2] in ('pathway','Pathway'):
                                 addPosType(res, line, "N")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
                         elif fields[1] == "SUPERFAMILY":
                             if fields[2] == 'DOMAIN':
                                 addPosType(res, line, "P")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
                         elif fields[1] == "SMART":
                             if fields[2] == 'DOMAIN':
                                 addPosType(res, line, "P")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
                         elif fields[1] == "TIGRFAM":
                             if fields[2] == 'DOMAIN':
                                 addPosType(res, line, "P")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
                         elif fields[1] == "psRNATarget":
                             if fields[2] == 'miRNA':
                                 addPosType(res, line, "T")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
                         elif fields[1] == "CORUM":
                             if fields[2] == 'Complex':
                                 addPosType(res, line, "P")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
                         elif fields[1] == "Orthologues":
                             if fields[2] == 'S.tuberosum':
@@ -257,19 +245,22 @@ def updateGTF(filepath):
                             elif fields[2] in ('A.thaliana'):
                                 addPosType(res, line, "N")
                             else:
-                                print(line)
-                                break
+                                addUnknown(res, line, fields, unknown_pairs)
 
                         else:
-                            print(line)
-                            break
+                            addUnknown(res, line, fields, unknown_pairs)
 
                     else:
-                        raise Exception("Invalid line ({0}): {1}\n".format(idx, line))
-                        break
-        
-        res.close()
-        print("File has been created succesfuly")
+                        # tappAS refuses to load a file with such a line
+                        os.remove(filepath + "_mod.tmp")
+                        raise ValueError(f"Invalid line {idx} ({len(fields)} columns instead of 9): {line}")
+
+    os.replace(filepath + "_mod.tmp", filepath + "_mod")
+    if unknown_pairs:
+        pairs = ", ".join(f"{pair}: {count}" for pair, count in sorted(unknown_pairs.items()))
+        logging.warning(f"{sum(unknown_pairs.values())} lines have a source/feature pair that renameFeatures.py "
+                        f"does not know ({pairs}). They were kept with PosType=N (no position).")
+    print("File has been created succesfuly")
 
 def main():
     if len(sys.argv) > 2:

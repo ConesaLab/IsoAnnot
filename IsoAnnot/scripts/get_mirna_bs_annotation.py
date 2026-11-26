@@ -1,0 +1,286 @@
+#!/usr/bin/env python3
+"""
+Author: Raúl López
+
+Script to map genomic miRNA binding sites (from miRWalk) to transcriptomic coordinates. 
+It performs a sequence-level validation by comparing the genomic sequence provided 
+by miRWalk with the actual sequence extracted from the transcript FASTA file, 
+ensuring the mapping is accurate across exons and introns.
+Each site gets the region it falls in on that isoform (5UTR, CDS, 3UTR or noncoding), computed from the
+isoform's own CDS, and only the regions asked for are kept.
+"""
+
+import argparse, sys, csv, logging, traceback
+from Bio.SeqIO.FastaIO import SimpleFastaParser
+from collections import defaultdict
+from IsoAnnot import read_chr_ref_acc, normalize_id
+from t2goAnnotationFile import get_structural_classification_df
+from bx.intervals.intersection import IntervalTree
+
+# Feature name of each seed match type (filter_mirna_bs.py), so tappAS can switch each class on and off
+FEATURE_BY_SITE_TYPE = {
+    "8mer": "miRNA_8mer",
+    "7mer-m8": "miRNA_7mer",
+    "7mer-A1": "miRNA_7mer",
+    "6mer": "miRNA_6mer",
+    "offset-6mer": "miRNA_6mer",
+    "seed-GU": "miRNA_noncanonical",
+    "noncanonical": "miRNA_noncanonical",
+}
+
+def load_fasta_seqs(fasta_file):
+    """
+    Loads FASTA sequences and creates two indices to handle naming discrepancies 
+    between annotation versions (e.g., presence or absence of version suffixes).
+
+    Args:
+        fasta_file (str): Path to the isoform FASTA file.
+
+    Returns:
+        tuple: (seqs_exact, seqs_no_ver) dictionaries where keys are IDs and values are sequences.
+    """
+    logging.info(f"Loading sequence of isoforms: {fasta_file}")
+    seqs_exact = {}
+    seqs_no_ver = {}
+
+    with open(fasta_file) as handle:
+        for record in SimpleFastaParser(handle):
+            # Extract full ID (stripping description after first whitespace)
+            full_id = record[0].split()[0]
+            sequence = record[1]
+
+            # Store exact match (e.g., ENST000001.1)
+            seqs_exact[full_id] = sequence
+
+            # Store version-less match (e.g., ENST000001) to increase compatibility
+            if '.' in full_id:
+                clean_id = full_id.split('.')[0]
+                seqs_no_ver[clean_id] = sequence
+
+    return seqs_exact, seqs_no_ver
+
+def load_genepred(file_path, chr_ref=None):
+    """
+    Loads transcript structures from a GenePred file into an IntervalTree for 
+    fast genomic overlap lookups.
+
+    Args:
+        file_path (str): Path to the GenePred file.
+        chr_ref (dict, optional): Dictionary for chromosome name mapping (NCBI to Ensembl).
+
+    Returns:
+        tuple: (isoforms_by_chr, exons_by_chr) dictionaries for structural analysis.
+    """
+    logging.info(f"Loading structure (GenePred): {file_path}")
+    data = defaultdict(dict)
+    exons_by_chr = defaultdict(lambda: IntervalTree())
+
+    if chr_ref is None:
+        chr_ref = {}
+
+    with open(file_path, 'r') as f:
+        for line in f:
+            if line.startswith("#"): continue
+            cols = line.strip().split("\t")
+            t_id = cols[0]
+            chrom = cols[1]
+            # Map chromosome name if conversion table is provided
+            clean_chrom = chr_ref.get(chrom, chrom)
+            strand = cols[2]
+            starts = [int(x) for x in cols[8].strip(",").split(",")]
+            ends = [int(x) for x in cols[9].strip(",").split(",")]
+            exons = list(zip(starts, ends))
+            
+            # Order exons based on strand for transcriptomic coordinate calculation
+            if strand == "+":
+                biographical_exons = exons
+            else:
+                biographical_exons = exons[::-1]
+
+            data[clean_chrom][t_id] = {'exons': biographical_exons, 'strand': strand}
+            # Insert every exon into the Interval Tree for the specific chromosome
+            for s, e in exons:
+                exons_by_chr[clean_chrom].insert(s, e, t_id)
+    return data, exons_by_chr
+
+def get_transcript_length_at_genomic_pos(ordered_exons, genomic_pos, strand):
+    """
+    Translates a 1-based genomic position into a 1-based transcriptomic coordinate, 
+    accounting for introns and strand orientation.
+
+    Args:
+        ordered_exons (list): List of (start, end) tuples ordered by transcription flow.
+        genomic_pos (int): The genomic coordinate to translate.
+        strand (str): Strand of the transcript ('+' or '-').
+
+    Returns:
+        int: The relative position within the transcript, or -1 if the position is intronic.
+    """
+    transcript_pos = 0
+
+    for exon_start, exon_end in ordered_exons:
+        exon_len = exon_end - exon_start
+        # Check if genomic position falls within the current exon
+        if exon_start <= (genomic_pos - 1) < exon_end:
+            if strand == "+":
+                offset = genomic_pos - exon_start
+            else:
+                offset = exon_end - genomic_pos + 1
+            return transcript_pos + offset
+
+        # Add current exon length to the running total
+        transcript_pos += exon_len
+    return -1
+
+def site_region(t_start, t_end, cds_start, cds_end):
+    """
+    Region of a site on one isoform, in transcript coordinates (1-based). miRWalk's own region refers to the
+    RefSeq model it predicted on, which can differ from this isoform's. A site that touches the CDS is CDS.
+    """
+    if cds_start is None or cds_end is None:
+        return "noncoding"
+    if t_end < int(cds_start):
+        return "5UTR"
+    if t_start > int(cds_end):
+        return "3UTR"
+    return "CDS"
+
+def main():
+    """
+    Main execution flow:
+    1. Load genomic structures and sequences.
+    2. Parse miRWalk genomic predictions.
+    3. Project genomic coordinates to transcripts.
+    4. Cross-validate sequences against FASTA records.
+    5. Write validated binding sites to a GTF-like output.
+    """
+    parser = argparse.ArgumentParser(description="Map genomic miRNA BS to transcriptomic coordinates")
+    parser.add_argument("--genepred", required=True, help="GenePred file of isoforms")
+    parser.add_argument("--isoform_fasta", required=True, help="FASTA file of isoforms")
+    parser.add_argument("--mirwalk_genomic", required=True, help="miRWalk file with genomic coordinates")
+    parser.add_argument("--output", required=True, help="Final output TSV/GTF")
+    parser.add_argument("--chr_ref", required=False, help="Refseq-Ensembl chromosome mapping table")
+    parser.add_argument("--classification", required=True, help="Classification file of the isoforms (for their CDS)")
+    parser.add_argument("--regions", nargs="+", choices=["3UTR", "5UTR", "CDS", "noncoding"], default=["3UTR", "noncoding"],
+                        help="Regions of the isoform where sites are kept (default: %(default)s)")
+    args = parser.parse_args()
+
+    try:
+        # Step 1: Handle chromosome accessions mapping for RefSeq
+        refseqChrom = {}
+        if args.chr_ref:
+            # The miRWalk sites have Ensembl genome names (mirna_bs_genomic_coord.py), so the isoforms
+            # are translated to Ensembl names in every mode.
+            refseqChrom = read_chr_ref_acc(args.chr_ref, target_db="ensembl")
+            logging.info("Using chromosome accessions mapping (target: Ensembl names).")
+            isoforms_by_chr, exons_by_chr = load_genepred(args.genepred, refseqChrom)
+            refseqChrom.check_unmapped("get_mirna_bs_annotation.py")
+        else:
+            logging.info("Using original chromosome accessions.")
+            isoforms_by_chr, exons_by_chr = load_genepred(args.genepred)
+
+        # Step 2: Load sequences with double indexing (Exact vs No-Version)
+        isoform_seqs_exact, isoform_seqs_no_ver = load_fasta_seqs(args.isoform_fasta)
+        transcript_info = get_structural_classification_df(args.classification)
+
+        logging.info("Starting sequence validation process...")
+
+        with open(args.mirwalk_genomic, "r") as f_in, open(args.output, "w") as f_out:
+            reader = csv.DictReader(f_in, delimiter="\t")
+            writer = csv.writer(f_out, delimiter="\t", lineterminator="\n")
+            count_valid = 0
+            count_mismatch = 0
+            count_other_region = 0
+            count_unclassified = 0
+            
+            for row in reader:
+                overlaps = set()
+                miRNA = row["miRNA"]
+                chrom = row["Chrom"]
+                g_start = int(row["G_Start"])
+                g_end = int(row["G_End"])
+                strand = row["Strand"]
+                source = row["Source"]
+                expected_sequence = row["Sequence"]
+                site_type = row["SiteType"]
+
+                # Chromosome sanity check
+                if chrom not in isoforms_by_chr or chrom not in exons_by_chr: 
+                    continue
+
+                # Find all isoforms overlapping the genomic range of the binding site
+                for interval in exons_by_chr[chrom].find(g_start, g_end):
+                    overlaps.add(interval)
+                
+                for iso_id in overlaps:
+                    iso_data = isoforms_by_chr[chrom][iso_id]
+                    
+                    # Only map if strands are consistent
+                    if iso_data['strand'] == strand:
+                        ex_strand = iso_data['strand']
+                        exons = iso_data['exons']
+                        
+                        # Project genomic start/end to transcript coordinates
+                        t_start = get_transcript_length_at_genomic_pos(exons, g_start, ex_strand)
+                        t_end = get_transcript_length_at_genomic_pos(exons, g_end, ex_strand)
+
+                        if t_start != -1 and t_end != -1:
+                            final_t_start = min(t_start, t_end)
+                            final_t_end = max(t_start, t_end)
+                            
+                            actual_sequence = ""
+                            full_seq = ""
+
+                            # Handle naming mismatches with 3 fallback attempts
+                            # Attempt 1: Exact match (ENST001.1)
+                            if iso_id in isoform_seqs_exact:
+                                full_seq = isoform_seqs_exact[iso_id]
+                                actual_sequence = full_seq[final_t_start-1 : final_t_end]
+
+                            # Attempt 2: GenePred has version, FASTA ID does not
+                            elif iso_id.split('.')[0] in isoform_seqs_exact:
+                                full_seq = isoform_seqs_exact[iso_id.split('.')[0]]
+                                actual_sequence = full_seq[final_t_start-1 : final_t_end]
+
+                            # Attempt 3: GenePred has no version, FASTA ID has
+                            elif iso_id in isoform_seqs_no_ver:
+                                full_seq = isoform_seqs_no_ver[iso_id]
+                                actual_sequence = full_seq[final_t_start-1 : final_t_end]
+
+                            # Sequence validation (Case-insensitive)
+                            if full_seq:
+                                if actual_sequence.upper() == expected_sequence.upper():
+                                    # Same ID fallback as layer_utrscan.py: the exact ID first, then without version
+                                    iso_info = transcript_info.get(iso_id) or transcript_info.get(normalize_id(iso_id))
+                                    if iso_info is None:
+                                        count_unclassified += 1
+                                        continue
+                                    region = site_region(final_t_start, final_t_end, iso_info["cds_start"], iso_info["cds_end"])
+                                    if region not in args.regions:
+                                        count_other_region += 1
+                                        continue
+                                    count_valid += 1
+                                    gtf_attributes = f"ID={miRNA}; Desc={region}_{site_type}"
+                                    writer.writerow([
+                                        iso_id, source, FEATURE_BY_SITE_TYPE[site_type],
+                                        final_t_start, final_t_end,
+                                        ".", ex_strand , ".", gtf_attributes
+                                    ])
+                                else:
+                                    count_mismatch += 1
+                                    # Useful for debugging coordinate shift issues
+                                    logging.warning(f"Mismatch in {iso_id}: Expected {expected_sequence} but got {actual_sequence}")
+
+        logging.info(f"Validation completed. Valid: {count_valid}, Discarded: {count_mismatch}")
+        logging.info(f"Sites outside the regions {' '.join(args.regions)}: {count_other_region}")
+        if count_unclassified:
+            logging.warning(f"{count_unclassified} sites were on isoforms missing from the classification file and were left out.")
+
+    except Exception as ex:
+        traceback.print_exc()
+        sys.exit(1)
+
+if __name__ == "__main__":
+    # Clean logging format for Snakemake logs
+    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+    main()

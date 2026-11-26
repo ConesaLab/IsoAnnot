@@ -10,34 +10,42 @@ proteins associated to each sequenced transcript.
 
 from collections import defaultdict
 import argparse, sys, os, csv, logging, re, traceback, json
-import pandas as pd
-from IsoAnnot import strand_table, get_summary_parts, read_chr_ref_acc
+from IsoAnnot import strand_table, get_summary_parts, natural_key, predict_nmd
 from Bio.SeqFeature import FeatureLocation, SeqFeature
 from uniprotPhosphosite_genomicCoordinates import get_fasta_sequences
 from layer_exons import get_gtf_exons
 
 
-def _get_transcript_exons_location(gtf_data, transcript):
+def group_exons_by_transcript(gtf_data):
+    '''
+    Groups the GTF exon lines by transcript, keeping their order in the file.
+    One pass instead of one scan of the whole GTF per isoform, which grew with the square of the input.
+    '''
+    transcript_exons = defaultdict(list)
+    for line in gtf_data:
+        transcript_id = line.split("transcript_id")[1].split(";")[0].replace('"', '').strip()
+        transcript_exons[transcript_id].append(line)
+    return transcript_exons
+
+
+def _get_transcript_exons_location(exon_lines):
     '''
     Constructs the location of the exons
 
     Args:
-        gtf_data ():
-        transcript_id (str)
+        exon_lines (list): GTF exon lines of one transcript
 
     Returns:
         SeqFeature for exon location
 
     '''
     isoform_exons = []
-    for line in gtf_data:
-        transcript_id = line.split("transcript_id")[1].split(";")[0].replace('"', '').strip()  
-        if transcript_id == transcript:
-            chr = line.split("\t")[0]
-            transcript_exon_start=int(line.split("\t")[3])
-            transcript_exon_end=int(line.split("\t")[4])
-            transcript_exon_strand = line.split("\t")[6]
-            isoform_exons.append({"start" :transcript_exon_start, "end": transcript_exon_end, "strand": transcript_exon_strand})
+    for line in exon_lines:
+        chr = line.split("\t")[0]
+        transcript_exon_start=int(line.split("\t")[3])
+        transcript_exon_end=int(line.split("\t")[4])
+        transcript_exon_strand = line.split("\t")[6]
+        isoform_exons.append({"start" :transcript_exon_start, "end": transcript_exon_end + 1, "strand": transcript_exon_strand})
 
     isoforms_exon_locs = [
         FeatureLocation(exon_block['start'], exon_block['end'], strand_table.get(exon_block['strand'], None)) for exon_block
@@ -54,29 +62,13 @@ def _get_transcript_exons_location(gtf_data, transcript):
 
 def _calculate_nmd(prot_start, prot_end, exon_locations):
     '''
-    Calculates nonsense mediated decay with the 55 nucleotide rule:
-    A termination codon that falls more than 55 nt upstream of an exon-exon junction 
-    will be potentially detected and degraded via the NMD machinery.
+    NMD status of an isoform from the genomic positions of its CDS, which includes the stop codon.
     '''
-    exons_starts, exons_ends = [], []
-
-    for part in exon_locations.parts:
-        exons_starts.append(part.start)
-        exons_ends.append(part.end)
-
-    exons_starts.sort()
-    exons_ends.sort()
-
-    prot_ord = sorted([prot_start, prot_end])
-
-    nmd_status = "nonNMD"
-
-    if exon_locations.strand == 1 and prot_ord[1] < exons_starts[-1] and (exons_ends[-2] - prot_ord[1] + 1) > 55:
-        nmd_status = "NMD"
-    elif exon_locations.strand == -1 and prot_ord[0] > exons_ends[0] and (prot_ord[0] - exons_starts[1] + 1) > 55:
-        nmd_status = "NMD"
-
-    return nmd_status
+    # The exon parts are half-open
+    exons = [(int(part.start), int(part.end) - 1) for part in exon_locations.parts]
+    if exon_locations.strand == -1:
+        return predict_nmd(exons, min(prot_start, prot_end), "-", stop_in_cds=True)
+    return predict_nmd(exons, max(prot_start, prot_end), "+", stop_in_cds=True)
 
 
 def _calculate_cds_positions(cds_start, cds_end, location):
@@ -96,8 +88,9 @@ def _retrieve_pacbio_info(gtf_data, fasta_data):
     '''
     Gets header information from predicted ORFs (isoform ID and CDS)
     '''
-    capture_regex = re.compile(r"(.+)\s.*?\|.*?\|.*?\|.*?\|([0-9]+)")
+    capture_regex = re.compile(r"^(\S+)\s.*?\|.*?\|.*?\|([0-9]+)\|[0-9]+$")
     isoforms_cds = {}
+    transcript_exons = group_exons_by_transcript(gtf_data)
 
     for fasta_id, fasta_seq in fasta_data.items():
         match_id = re.match(capture_regex, fasta_id)
@@ -106,7 +99,7 @@ def _retrieve_pacbio_info(gtf_data, fasta_data):
             isoform_id, cds_start = match_id.groups()
             cds_start = int(cds_start)
             cds_end = cds_start + len(fasta_seq)*3 -1 
-            exons_final_location = _get_transcript_exons_location(gtf_data, isoform_id)
+            exons_final_location = _get_transcript_exons_location(transcript_exons.get(isoform_id, []))
             isoforms_cds[isoform_id] = _calculate_cds_positions(cds_start, cds_end, exons_final_location.location)
             isoforms_cds[isoform_id]['chr'] = exons_final_location.id
 
@@ -128,50 +121,31 @@ def _retrieve_pacbio_id(fasta_data):
     return cleaned_dict
 
 
-def read_genomic_cds_from_gtf_group_chr(gtf_file, chr_ref={}):
+def get_novel_protein_ids(isoform_proteins, all_proteins):
     '''
-    Gets CDS genomic positions 
+    ORFs with no exact match in the reference proteins get the IsoAnnotLite ID Protein_<isoform>,
+    instead of one "Novel" ID that tappAS would treat as a single protein (GitHub #10).
+    Isoforms with the same ORF share the ID of the first of them in natural order, so tappAS groups
+    them as one protein. Characters that tappAS does not accept in IDs become '_'.
     '''
-    aux_dict = {"Chromosome":[], "protein_id": [], "Start":[], "End": []}
-    parsed_dict = defaultdict(dict)
+    novel_isoforms = defaultdict(list)
+    for isoform_id, isoform_seq in isoform_proteins.items():
+        if isoform_seq not in all_proteins:
+            novel_isoforms[isoform_seq].append(isoform_id)
 
-    with open(gtf_file, "r") as gtf_content:
-        for line in gtf_content:
-            if line[0] != "#":
-                if line.split("\t")[2]=="CDS":
-                    try:
-                        protein_id = line.split("protein_id")[1].split(";")[0].replace('"', '').strip()
-                    except IndexError:
-                        continue
-                    chr = line.split("\t")[0]
-                    chr_name = chr_ref.get(chr, chr)
-                    start = line.split("\t")[3]
-                    end = line.split("\t")[4]
-                    aux_dict["Chromosome"].append(chr_name)
-                    aux_dict["protein_id"].append(protein_id)
-                    aux_dict["Start"].append(start)
-                    aux_dict["End"].append(end)
-    
-    gtf_cds = pd.DataFrame.from_dict(aux_dict)
+    novel_protein_ids = {}
+    for isoform_ids in novel_isoforms.values():
+        protein_id = "Protein_" + re.sub(r"[^A-Za-z0-9_.\-]", "_", min(isoform_ids, key=natural_key))
+        for isoform_id in isoform_ids:
+            novel_protein_ids[isoform_id] = protein_id
 
-    for chr, values in gtf_cds.groupby("Chromosome"):
-        for prot_id, prot_values in values.groupby("protein_id"):
-            parsed_dict[chr][prot_id] = {
-                "start": sorted(prot_values['Start'].tolist()),
-                "end": sorted(prot_values['End'].tolist())
-            }
-
-    return parsed_dict
+    return novel_protein_ids
 
 
 def main():
 
     # Inputs
     parser = argparse.ArgumentParser(description="PacbioToReference")
-    parser.add_argument("--ensembl_gtf", required=True)
-    parser.add_argument("--refseq_gtf", required=False, default=None)
-    parser.add_argument("--chr_ref", required=False, default=None)
-
     parser.add_argument("--classification_file", required=False)
     parser.add_argument("--corrected_gtf", required=True)
     parser.add_argument("--corrected_fasta_proteins", required=True)
@@ -191,17 +165,6 @@ def main():
         with open(args.species_db, "rb") as fp:
             all_proteins = json.load(fp)
 
-        # Get chromosome Ensembl-RefSeq IDs equivalence if we
-        # are using GTF data
-        if args.refseq_gtf:
-            chrom_ref = read_chr_ref_acc(args.chr_ref)
-
-        # Get Ensembl and RefSeq CDS info
-        cds_ensembl = read_genomic_cds_from_gtf_group_chr(args.ensembl_gtf)
-        if args.refseq_gtf:
-            cds_refseq = read_genomic_cds_from_gtf_group_chr(args.refseq_gtf,
-                                      chrom_ref)
-            
         # Get isoforms exon locations and predicted proteins of sequenced transcriptome
         # using SQANTI outputs
         corrected_exons = get_gtf_exons(args.corrected_gtf)
@@ -215,9 +178,14 @@ def main():
         # In the previous step we needed the original fasta headers to extract useful info (ie. cds positions
         # for Pacbio). Now we clean the data by keeping only the transcript id.
         corrected_fasta_proteins = _retrieve_pacbio_id(corrected_fasta_proteins)
+        # SQANTI3 ORFs end with the stop codon (*) and the reference proteins don't, so no ORF matched.
+        # The * is only dropped here: the CDS end above, and so the NMD call, includes the stop codon.
+        corrected_fasta_proteins = {isoform: seq.rstrip("*") for isoform, seq in corrected_fasta_proteins.items()}
+        novel_protein_ids = get_novel_protein_ids(corrected_fasta_proteins, all_proteins)
 
-        # 2 output files: associated proteins and NMD
-        with open(args.output_assoc, "w") as output_file_assoc, open(args.output_nmd, "w") as output_file_nmd:
+        # 2 output files: associated proteins and NMD. Both go to .tmp first, so a failed run leaves no
+        # partial file that Snakemake would reuse.
+        with open(args.output_assoc + ".tmp", "w") as output_file_assoc, open(args.output_nmd + ".tmp", "w") as output_file_nmd:
             output_assoc_tsv = csv.writer(output_file_assoc, delimiter="\t")
             output_nmd_tsv = csv.writer(output_file_nmd, delimiter="\t")
 
@@ -237,22 +205,11 @@ def main():
                         for protein in protein_ids:
                             associated_prots.append(protein)
                             output_assoc_tsv.writerow([isoform_id, protein, source_tag, "sequence"])
+                    if isoform_id in novel_protein_ids:
+                        output_assoc_tsv.writerow([isoform_id, novel_protein_ids[isoform_id], "novel", "sequence"])
 
-                    # # Compare CDSs between Pacbio and reference transcripts and keep proteins that match CDS coordinates
-                    # transcript_starts = isoform_info.get('start')
-                    # transcript_ends = isoform_info.get('end')
-                    # transcript_chr = isoform_info.get('chr')
-
-                    # chr_ensembl = cds_ensembl.get(transcript_chr, {})
-                    # for cds_ref, cds_props in chr_ensembl.items():
-                    #     if cds_props.get("start") == transcript_starts and cds_props.get("end") == transcript_ends:
-                    #         output_assoc_tsv.writerow([isoform_id, cds_ref, "ensembl", "coord"])
-
-                    # if cds_refseq:
-                    #     chr_refseq = cds_refseq.get(transcript_chr, {})
-                    #     for cds_ref, cds_props in chr_refseq.items():
-                    #         if cds_props.get("start") == transcript_starts and cds_props.get("end") == transcript_ends:
-                    #             output_assoc_tsv.writerow([isoform_id, cds_ref, "refseq", "coord"])
+        os.replace(args.output_assoc + ".tmp", args.output_assoc)
+        os.replace(args.output_nmd + ".tmp", args.output_nmd)
 
     except Exception as ex:
         logging.error(str(ex), exc_info=True)

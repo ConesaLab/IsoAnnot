@@ -1,6 +1,8 @@
 #! /usr/bin/env bash
 
 POSITIONAL=()
+# Empty, so a CONFIG variable from the environment is not passed to snakemake
+CONFIG=""
 while [[ $# -gt 0 ]]
 do
 key="$1"
@@ -26,12 +28,38 @@ case $key in
     shift # past argument
     shift # past value
     ;;
-    --config)
-    CONFIG="$2"
+    --outputdir)
+    OUTPUTDIR="$2"
     shift # past argument
+    shift # past value
+    ;;
+    --scratch)
+    SCRATCH="$2"
+    shift # past argument
+    shift # past value
+    ;;
+    --config)
+    shift # past argument
+    # Take every key=value up to the next --option, so --config a=1 b=2 keeps b=2 too.
+    # The quoted form --config "a=1 b=2" still works because $CONFIG is word-split below.
+    # Other words (-n, a stray value) are not passed on: snakemake would read them as options or reject them
+    while [[ $# -gt 0 && "$1" != --* ]]
+    do
+        if [[ "$1" == *=* ]]
+        then
+            CONFIG="$CONFIG $1"
+        else
+            echo "Warning: --config only takes key=value pairs. Ignoring: $1" >&2
+        fi
+        shift # past value
+    done
     ;;
     --default)
     DEFAULT=YES
+    shift # past argument
+    ;;
+    --version)
+    SHOW_VERSION=YES
     shift # past argument
     ;;
     *)    # unknown option
@@ -45,6 +73,15 @@ set -- "${POSITIONAL[@]}" # restore positional parameters
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 SHADOW_DIR="$( paste -d'/' <(echo "$DIR") <(paste -d'_' <( echo ".$SPECIES" ) <( echo "$DATABASE" )) )"
 
+# The version is kept in one place, scripts/IsoAnnot.py
+VERSION="$( sed -n 's/^__version__ = "\(.*\)"$/\1/p' "$DIR/scripts/IsoAnnot.py" )"
+
+if [ "$SHOW_VERSION" = "YES" ]
+then
+    echo "IsoAnnot $VERSION"
+    exit 0
+fi
+
 
 if [ -z "$DATABASE" ]
 then
@@ -56,6 +93,25 @@ if [ -z "$SPECIES" ]
 then
     echo "You need to provide the species name, ie: hsapiens, mmusculus..."
     exit 1
+fi
+
+if [ -z "$OUTPUTDIR" ]
+then
+    OUTPUTDIR="$DIR"
+fi
+
+# run_nucimport and run_repeatmasker cd before using their paths, so a relative
+# --outputdir has to be made absolute. It is taken from the current folder; before,
+# snakemake resolved it from the install folder ($DIR) because of --directory
+if [[ "$OUTPUTDIR" != /* ]]
+then
+    OUTPUTDIR="$PWD/$OUTPUTDIR"
+fi
+
+# RepeatMasker cd's into the scratch folder, so a relative --scratch is made absolute like --outputdir
+if [ -n "$SCRATCH" ] && [[ "$SCRATCH" != /* ]]
+then
+    SCRATCH="$PWD/$SCRATCH"
 fi
 
 if [ -z "$SNAKEFILE" ]
@@ -77,4 +133,9 @@ fi
 # TODO ASK the user the directory where they want to store the final annotation. Connect with isoannot.sh script
 
 
-exec snakemake -pr --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE $CONFIG --directory $DIR --cores 8 all --rerun-incomplete --nolock #-n
+# First line of every run, so the log says which version made the output
+echo "IsoAnnot $VERSION"
+
+exec snakemake -p --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE "path_output=$OUTPUTDIR" ${SCRATCH:+"scratch_dir=$SCRATCH"} $CONFIG --directory $DIR --cores ${SLURM_CPUS_PER_TASK:-8} all --rerun-incomplete --nolock --resources n_downloads=1 #-n
+#exec snakemake -p --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE $CONFIG --directory $DIR --cores 8 all  --rerun-incomplete --nolock --summary
+#exec snakemake -p --nolock --use-conda --conda-frontend conda --snakefile $SNAKEFILE --configfile $CONFIGFILE --config db=$DATABASE $CONFIG --directory $DIR --cores 8 all --rerun-incomplete --dag | dot -Tsvg > dag.svg

@@ -3,6 +3,7 @@
 """
 Author: Carlos Martínez
 Modified by: Alessandra Martinez
+Modified by: Raúl López
 
 Script to retrieve Gene Ontology information at gene resolution
 (all the transcripts coming from the same gene will have the same
@@ -11,7 +12,7 @@ GO terms).
 
 import argparse, sys, os, logging, csv, traceback
 import pandas as pd
-from pybiomart import Dataset
+from IsoAnnot import read_biomart_table
 from t2goAnnotationFile import get_structural_classification_df
 
 
@@ -25,7 +26,7 @@ def write_output(transcript_id, go_feature, go_accession, go_name, output_filena
         ".",  # score
         ".",  # strand
         ".",  # frame
-        f"ID={go_accession}; Name={go_name};"  # attribute
+        f"ID={go_accession}; Name={go_name}"  # attribute
     ])
 
 
@@ -35,27 +36,20 @@ def main():
     try:
         parser = argparse.ArgumentParser(description='LayerGO')
         parser.add_argument('--classification_file', required=True)
-        parser.add_argument('--biomart_host', nargs="?", const="http://www.ensembl.org")
-        parser.add_argument('--biomart_dataset', nargs=None, required=True)
         parser.add_argument('--output', nargs=None, required=True)
-
+        parser.add_argument('--db', nargs=None, required=True)
+        parser.add_argument('--biomart_table', required=True, help='Table written by save_biomart_tables.py, with the BioMart answer of the Ensembl release in use')
         args = parser.parse_args()
-
-        if "plants" in args.biomart_host:
-            biomart_schema = "plants_mart"
-        else:
-            biomart_schema = "default"
 
         # Get info from files
         transcript_info = get_structural_classification_df(args.classification_file)
 
-        # Open the connection to Biomart server and send query
-        dataset = Dataset(name=args.biomart_dataset, host=args.biomart_host, 
-                          virtual_schema=biomart_schema)
-        go_table = dataset.query(attributes=["external_gene_name",
-                                                "go_id",
-                                                "name_1006", #go name
-                                                "namespace_1003"]) #go category
+        # Select the appropriate gene identifier column based on the database choice
+        gene_column = "Gene stable ID" if args.db == "mytranscripts" else "Gene name"
+
+        # The table has one row per gene ID, name and GO term: the rows of the columns used here are made unique
+        go_columns = [gene_column, "GO term accession", "GO term name", "GO domain"]
+        go_table = read_biomart_table(args.biomart_table, "layer_go")[go_columns].drop_duplicates()
         # Remove NAs and allow only specific go categories 
         go_table = go_table.dropna()
         go_table = go_table[go_table['GO domain'].isin(allowed_features)] 
@@ -65,7 +59,7 @@ def main():
             logging.info(f"Starting GO conversion to GTF {args.output}")
             output_file_tsv = csv.writer(output_file, delimiter="\t")
             for transcript, info in transcript_info.items():
-                select_gene = go_table.loc[go_table["Gene name"] == info["ref_gene_name"]]
+                select_gene = go_table.loc[go_table[gene_column] == info["ref_gene_name"]]
                 if select_gene.empty:
                     continue
                 select_gene_dict = select_gene.to_dict(orient="records")
@@ -87,3 +81,4 @@ def main():
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     main()
+

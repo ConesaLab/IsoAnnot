@@ -1,2 +1,26 @@
 interproscan_path: "software/interproscan/interproscan.sh"
-pfam_clan_url: ftp://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-A.clans.tsv.gz
+pfam_clan_url: https://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-A.clans.tsv.gz
+pfam_clan_desc_url: https://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-C.gz
+nls_chunks: 50
+nls_java_memory: 2g
+# Reuse NucImport results of earlier runs in this output folder (data/global/nucimport_cache), keyed by protein sequence
+nls_cache: True
+# A modification reported by both Swiss-Prot and PhosphoSitePlus is written once, with Swiss-Prot as the source.
+# True writes one row for each source
+ptm_both_sources: False
+# UTRscan motifs of transcripts without a CDS, written as ncRNAmotif. Leave them out with utrscan_noncoding=False
+utrscan_noncoding: True
+# RepeatMasker layer. Turn it off with repeat_masker=False
+repeat_masker: True
+# Folder RepeatMasker works in: it has to be on a local disk, never on a network filesystem. Empty: the system's
+# temporary folder. Set it with --scratch
+scratch_dir:
+# Dfam families RepeatMasker searches: curated (90 MB download, 600 MB on disk) or all, curated and uncurated
+# (4.2 GB download, 25 GB on disk)
+repeatmasker_dfam: curated
+# A fixed Dfam release, so results do not change when Dfam publishes a new one. dfam_prefix is the start of its file names
+dfam_url: https://www.dfam.org/releases/Dfam_4.0/families/FamDB
+dfam_prefix: dfam40
+repeatmasker_url: https://github.com/Dfam-consortium/RepeatMasker/archive/refs/tags/v4.2.6.tar.gz
+repeatmasker_sha256: 05e1ac50a8918de9b7dea6a298ca08702d518ec399489e7ae32d6b10addec1cf
+

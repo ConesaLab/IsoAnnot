@@ -1,34 +1,56 @@
-import sys, os
+import sys
 
 def select_fasta_proteins(wildcards):
-    return "data/Hsapiens/output/mytranscripts/sqanti_fasta_proteins.fasta"
+    return rules.clean_sqanti_proteins.output
 
-def select_user_fasta_cdna(wildcards):
+def select_user_cdna(wildcards):
+    user_gtf = config.get("gtf_cdna", None)
     user_fasta = config.get("fasta_cdna", None)
-    if not user_fasta:
-        print("FOR 'mytranscripts' DATABASE YOU NEED TO PROVIDE A CUSTOM FASTA WITH --config fasta_cdna=myfasta.fasta")
-        sys.exit(os.EX_SOFTWARE)
-    return user_fasta
+    if not user_fasta and not user_gtf:
+        sys.exit("FOR 'mytranscripts' DATABASE YOU NEED TO PROVIDE A CUSTOM FASTA WITH --config fasta_cdna=myfasta.fasta OR A CUSTOM GTF WITH --config gtf_cdna=mygtf.gtf")
+    target = user_gtf if user_gtf else user_fasta
+    try:
+        import gzip
+        opener = gzip.open if target.endswith(".gz") else open
+        with opener(target, "rt") as f:
+            first_line = ""
+            for line in f:
+                if line.strip():
+                    first_line = line
+                    break
+            # Checked here, while the job graph is built, so nothing runs before the error
+            if first_line.startswith("@"):
+                sys.exit(f"ERROR: File '{target}' looks like a FASTQ (starts with '@'). IsoAnnot needs the transcripts as FASTA or GTF.\n Please convert it to FASTA first, for example with: seqtk seq -a {target} > transcripts.fasta")
+            if user_fasta and not first_line.startswith(">"):
+                sys.exit(f"ERROR: File '{target}' was provided as FASTA but doesn't start with '>'.\n FOR 'mytranscripts' DATABASE YOU NEED TO PROVIDE A CUSTOM FASTA WITH --config fasta_cdna=myfasta.fasta OR A CUSTOM GTF WITH --config gtf_cdna=mygtf.gtf")
+            if user_gtf and first_line.startswith(">"):
+                sys.exit(f"ERROR: File '{target}' was provided as GTF but looks like a FASTA (starts with '>').\n FOR 'mytranscripts' DATABASE YOU NEED TO PROVIDE A CUSTOM FASTA WITH --config fasta_cdna=myfasta.fasta OR A CUSTOM GTF WITH --config gtf_cdna=mygtf.gtf")
+    except Exception as e:
+        sys.exit(f"ERROR: Could not read file '{target}': {e}")
+    return target
 
 def select_fasta_cdna(wildcards):
-    return "data/Hsapiens/output/mytranscripts/sqanti_corrected.fasta"
+    return rules.run_sqanti.output.corrected_cdna
 
 def select_gtf(wildcards):
-    return "data/Hsapiens/output/mytranscripts/sqanti_gtf.gtf"
+    return rules.run_sqanti.output.gtf
 
 def select_reference_gtf(wildcards):
-    return expand(rules.prepare_ensembl_gtf.output, prefix=wildcards['prefix'])
+    return rules.prepare_ensembl_gtf.output
 
 def select_sqanti_classification(wildcards):
-    return "data/Hsapiens/output/mytranscripts/sqanti_classification.txt"
+    return rules.run_sqanti.output.classification
 
 def select_sqanti_output(wildcards):
     return rules.run_sqanti.output
 
 def select_nmd_file(wildcards):
-    return expand(rules.transcript_to_reference.output.nmd, prefix=wildcards['prefix'], db=wildcards['db'])
+    return rules.transcript_to_reference.output.nmd
 
 def select_prot_assoc(wildcards):
+    return rules.transcript_to_reference.output.protein_assoc
+
+def select_protein_ids(wildcards):
     return rules.transcript_to_reference.output.protein_assoc
 
 include: "Snakefile.smk"

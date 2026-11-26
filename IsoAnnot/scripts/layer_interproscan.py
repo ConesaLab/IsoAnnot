@@ -7,8 +7,8 @@ Refactored: Carlos Martínez
 Script to retrieve information from Interproscan.
 """
 
-import argparse, sys, os, logging, csv
-from IsoAnnot import openfile
+import argparse, sys, os, logging, csv, gzip
+from IsoAnnot import openfile, normalize_id
 
 def read_interproscan_file(filename):
     """
@@ -42,7 +42,8 @@ def read_interproscan_file(filename):
                 "id": line_fields[3],
                 "name": line_fields[4], 
                 "feature": dict_feature.get(line_fields[1].upper()),
-                "desc": line_fields[5] if line_fields[5] != "None" else dict_desc.get(line_fields[5]),
+                # The default description is looked up by database; the description itself was used as the key
+                "desc": line_fields[5] if line_fields[5] != "None" else dict_desc.get(line_fields[1].upper()),
                 "start": line_fields[6],
                 "end": line_fields[7]
             }
@@ -69,11 +70,31 @@ def get_pfam_classification(filename):
             pfam = line_fields[0]
             output_dict[pfam] = {
                 "id": line_fields[1],
+                "clan_name": line_fields[2],
                 "name": line_fields[3],
                 "desc": line_fields[4]
             }
 
     return output_dict
+
+
+def get_clan_descriptions(filename):
+    """
+    Clan accession (without version) -> description, from Pfam's clan file (Pfam-C), whose
+    entries have "#=GF AC   CL0022.40" and "#=GF DE   Leucine Rich Repeat" lines.
+    """
+    descriptions, accession = {}, None
+    # Pfam-C is UTF-8 except for a few stray bytes in comment lines, so undecodable bytes are replaced
+    open_function = gzip.open if filename.endswith(".gz") else open
+    with open_function(filename, "rt", encoding="utf-8", errors="replace") as read_handler:
+        for line in read_handler:
+            if line.startswith("#=GF AC"):
+                accession = line.split()[2].split(".")[0]
+            elif line.startswith("#=GF DE") and accession:
+                descriptions[accession] = line[7:].strip()
+            elif line.startswith("//"):
+                accession = None
+    return descriptions
 
 
 def get_structural_classification_prot(classification_filename):
@@ -121,12 +142,24 @@ def get_structural_classification_prot(classification_filename):
     return structural_classification
 
 
+def sort_rows(rows, transcript_order):
+    """
+    Transcripts stay in the order they first appear. Inside a transcript the lines go by source, then the
+    domains by start, end and ID, and the clan lines (without position) after the domains of their source.
+    """
+    def _key(row):
+        is_clan = row[2] == "clan"
+        start, end = (0, 0) if is_clan else (int(row[3]), int(row[4]))
+        return transcript_order[row[0]], row[1], is_clan, start, end, row[8]
+    return sorted(rows, key=_key)
+
+
 def main():
     try:
         parser = argparse.ArgumentParser(description='IsoAnnot InterProScan Layer')
         parser.add_argument('--interproscan_file', nargs=None, required=True)
         parser.add_argument('--pfam_file', nargs=None, required=True)
-        parser.add_argument('--keep_version', nargs=None, default="False")
+        parser.add_argument('--pfam_clan_desc', default=None, help="Pfam's clan file (Pfam-C), for the clan descriptions")
         parser.add_argument('--classification_file', nargs=None, required=True)
         parser.add_argument('--allowed_databases', nargs=1, default=["PFAM", "SIGNALP_EUK", "MOBIDB_LITE", "COILS", "TMHMM"])
         parser.add_argument('--output', nargs=None, required=True)
@@ -135,12 +168,19 @@ def main():
 
         # Get info from files
         pfam_classification = get_pfam_classification(args.pfam_file)
+        clan_descriptions = get_clan_descriptions(args.pfam_clan_desc) if args.pfam_clan_desc else {}
         transcript_info = get_structural_classification_prot(args.classification_file)
         interproscan_info = read_interproscan_file(args.interproscan_file)
 
         with open(args.output, "w") as output_file:
             logging.info(f"Starting InterProScan conversion to GTF {args.output}")
             output_file_tsv = csv.writer(output_file, delimiter="\t")
+            # One clan line per transcript and clan: it was written once per domain
+            clans_written = set()
+            # InterProScan runs its analyses in parallel, so the order of its matches changes from run to run.
+            # The lines are gathered and written in a fixed order, so two runs give the same file.
+            rows = []
+            transcript_order = {}
             
             # Get interproscan info
             for transcript_interproscan in interproscan_info:
@@ -148,9 +188,10 @@ def main():
                 transcript_db = transcript_interproscan.get("database")
                 transcript_its_id = transcript_interproscan.get("id")
                 
-                # Keep transcript version or not
-                if args.keep_version.upper() == "FALSE":
-                    transcript_id = transcript_id.split(".")[0]
+                # Strip the version only when the exact ID is not in the classification. transcript_versioned is
+                # not used here, so a wrong value in the config cannot empty the layer.
+                if transcript_id not in transcript_info:
+                    transcript_id = normalize_id(transcript_id)
                 
                 # Only annotate features from the allowed databases
                 if transcript_id in transcript_info and transcript_db in args.allowed_databases:
@@ -158,7 +199,8 @@ def main():
                     transcript_name = transcript_interproscan.get("name")
                     transcript_desc = transcript_interproscan.get("desc")
 
-                    output_file_tsv.writerow([
+                    transcript_order.setdefault(transcript_id, len(transcript_order))
+                    rows.append([
                         transcript_id,  # seqname
                         transcript_db,  # source
                         transcript_interproscan.get("feature"),  # feature
@@ -171,12 +213,15 @@ def main():
                     ])
 
                     # Add additional rows for PFAM database
-                    if transcript_db == "PFAM" and transcript_its_id in pfam_classification:
-                        pfam_id = pfam_classification.get(transcript_its_id).get("id")
-                        pfam_name = pfam_classification.get(transcript_its_id).get("name")
-                        pfam_desc = pfam_classification.get(transcript_its_id).get("desc")
+                    # The clan line names the clan, not the family, and families without a clan get no line
+                    clan = pfam_classification.get(transcript_its_id) if transcript_db == "PFAM" else None
+                    if clan and clan["id"] and (transcript_id, clan["id"]) not in clans_written:
+                        pfam_id = clan["id"]
+                        pfam_name = clan["clan_name"]
+                        pfam_desc = clan_descriptions.get(pfam_id, pfam_name)
+                        clans_written.add((transcript_id, pfam_id))
 
-                        output_file_tsv.writerow([
+                        rows.append([
                             transcript_id,  # seqname
                             transcript_db,  # source
                             "clan",  # feature
@@ -187,6 +232,8 @@ def main():
                             ".",  # frame
                             f"ID={pfam_id}; Name={pfam_name}; Desc={pfam_desc}"  # attribute
                         ])
+
+            output_file_tsv.writerows(sort_rows(rows, transcript_order))
 
     except Exception as ex:
         logging.error(str(ex), exc_info=True)

@@ -1,28 +1,32 @@
 def select_fasta_proteins(wildcards):
-    return expand(rules.prepare_refseq_proteins.output, prefix=wildcards['prefix'])
+    return rules.prepare_refseq_proteins.output
 
-def select_user_fasta_cdna(wildcards):
+def select_user_cdna(wildcards):
     return []
     
 def select_fasta_cdna(wildcards):
-    return expand(rules.prepare_refseq_cdna.output, prefix=wildcards['prefix'])[0]
+    # Spliced from the genome, not NCBI's rna.fna, so the transcript positions match the GFF3 exons
+    return rules.prepare_refseq_transcripts.output.fa
 
 def select_gtf(wildcards):
-    return expand(rules.prepare_refseq_gtf.output.gtf, prefix=wildcards['prefix'])
+    return rules.prepare_refseq_gtf.output
 
 def select_reference_gtf(wildcards):
-    return expand(rules.prepare_refseq_gtf.output.gtf, prefix=wildcards['prefix'])
+    return rules.prepare_refseq_gtf.output
 
 def select_sqanti_classification(wildcards):
-    return expand(rules.run_refsqanti.output.classification, prefix=wildcards['prefix'], db=wildcards['db'])
+    return expand(rules.run_refsqanti.output.classification, db=wildcards['db'])
 
 def select_sqanti_output(wildcards):
     return rules.run_refsqanti.output
 
 def select_nmd_file(wildcards):
-    return expand(rules.run_refsqanti.output.NMD, prefix=wildcards['prefix'], db=wildcards['db'])
+    return expand(rules.run_refsqanti.output.NMD, db=wildcards['db'])
 
 def select_prot_assoc(wildcards):
     return []
+
+def select_protein_ids(wildcards):
+    return rules.reference_protein_assoc.output
 
 include: "Snakefile.smk"
